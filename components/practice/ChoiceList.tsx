@@ -2,6 +2,7 @@
 
 import { CheckCircle2, XCircle } from "lucide-react";
 import type { ChoiceQuestionDTO, UnitResultDTO } from "@/lib/practice/dto";
+import { answerFeedback } from "@/lib/client/motion";
 import { cn } from "@/lib/utils/cn";
 
 interface ChoiceListProps {
@@ -83,7 +84,11 @@ export function ChoiceList({ question, value, onChange, result, number, size = "
         })}
       </div>
       {revealed && (
-        <div className={cn("mt-3 rounded-xl p-3 text-sm", value === undefined ? "bg-surface-muted" : isCorrect ? "bg-success-soft" : "bg-danger-soft")} role="status">
+        <div
+          ref={(el) => answerFeedback(el, value === undefined ? "none" : isCorrect ? "correct" : "wrong")}
+          className={cn("mt-3 rounded-xl p-3 text-sm", value === undefined ? "bg-surface-muted" : isCorrect ? "bg-success-soft" : "bg-danger-soft")}
+          role="status"
+        >
           <p className="font-bold text-ink">
             {value === undefined ? "Not answered." : isCorrect ? "Correct!" : `Not quite. The answer is ${answerId}.`}
           </p>

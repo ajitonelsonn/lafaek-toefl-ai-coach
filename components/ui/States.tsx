@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
+import { LogoLoader } from "./LogoLoader";
 import { cn } from "@/lib/utils/cn";
 
 export function EmptyState({ icon, title, description, action, className }: {
@@ -19,13 +20,9 @@ export function EmptyState({ icon, title, description, action, className }: {
   );
 }
 
+/** Inline loading block with the animated crocodile (see LogoLoader). */
 export function LoadingState({ label = "Loading…", className }: { label?: string; className?: string }) {
-  return (
-    <div role="status" className={cn("flex items-center justify-center gap-2 py-10 text-sm text-muted", className)}>
-      <Loader2 className="size-5 animate-spin text-primary" aria-hidden />
-      {label}
-    </div>
-  );
+  return <LogoLoader compact label={label} className={className} />;
 }
 
 export function ErrorState({ title = "Something went wrong", description, action, className }: {

@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { BookOpen, Bookmark, BookmarkCheck, Check, ChevronLeft, ChevronRight, List, RotateCcw, Search, Share2, Star, Volume2, Zap } from "lucide-react";
 import { VOCAB_CATEGORIES } from "@/lib/content/vocabulary";
 import { getPracticeType } from "@/lib/config/practice-types";
+import { gsap, useMotion } from "@/lib/client/motion";
 import type { VocabCategory, VocabWord } from "@/lib/services/types";
 import { api, errorMessage } from "@/lib/client/api";
 import { useSession } from "@/components/session/SessionProvider";
@@ -71,6 +72,8 @@ export function VocabularyPage({ words, initialProgress, pending, hasPlan }: { w
   const [category, setCategory] = useState<"all" | VocabCategory>("all");
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
+  // Direction of the last move, so the next card slides in from the matching side.
+  const [direction, setDirection] = useState<1 | -1>(1);
   const [quizOpen, setQuizOpen] = useState(false);
 
   const filtered = useMemo(() => {
@@ -210,14 +213,23 @@ export function VocabularyPage({ words, initialProgress, pending, hasPlan }: { w
               word={current}
               position={`${safeIndex + 1} / ${filtered.length}`}
               progress={vocab[current.id]}
-              onPrev={() => setIndex((i) => (i - 1 + filtered.length) % filtered.length)}
-              onNext={() => setIndex((i) => (i + 1) % filtered.length)}
+              direction={direction}
+              onPrev={() => {
+                setDirection(-1);
+                setIndex((i) => (i - 1 + filtered.length) % filtered.length);
+              }}
+              onNext={() => {
+                setDirection(1);
+                setIndex((i) => (i + 1) % filtered.length);
+              }}
               onPronounce={() => pronounce(current)}
               onKnow={() => {
+                setDirection(1);
                 setVocab(current.id, { status: "known" });
                 if (tab !== "review") setIndex((i) => (i + 1) % filtered.length);
               }}
               onReview={() => {
+                setDirection(1);
                 setVocab(current.id, { status: "review" });
                 setIndex((i) => (i + 1) % filtered.length);
               }}
@@ -299,6 +311,7 @@ function Flashcard(props: {
   word: VocabWord;
   position: string;
   progress?: VocabProgress;
+  direction: 1 | -1;
   onPrev: () => void;
   onNext: () => void;
   onPronounce: () => void;
@@ -308,13 +321,20 @@ function Flashcard(props: {
 }) {
   const { word, progress } = props;
   const source = word.taskSlug ? getPracticeType(word.taskSlug)?.title : undefined;
+  const face = useRef<HTMLDivElement>(null);
+  const firstWord = useRef(word.id);
+  useMotion(face, (el) => {
+    if (firstWord.current === word.id) return; // no slide on first show
+    firstWord.current = word.id;
+    gsap.fromTo(el, { x: 36 * props.direction, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: 0.35, ease: "power2.out", clearProps: "transform,opacity,visibility" });
+  }, [word.id]);
   return (
     <Card as="section" aria-label={`Flashcard: ${word.word}`} aria-live="polite">
       <div className="flex items-center gap-3">
         <button type="button" onClick={props.onPrev} className="hidden size-11 shrink-0 items-center justify-center rounded-full border border-line text-primary hover:border-primary sm:inline-flex" aria-label="Previous word">
           <ChevronLeft className="size-5" />
         </button>
-        <div className="grid min-w-0 flex-1 gap-5">
+        <div ref={face} className="grid min-w-0 flex-1 gap-5">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm font-semibold text-muted">{props.position}</span>

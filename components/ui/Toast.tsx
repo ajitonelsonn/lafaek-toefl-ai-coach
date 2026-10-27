@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, Info, TriangleAlert, X } from "lucide-react";
+import { gsap, prefersReducedMotion } from "@/lib/client/motion";
 import { cn } from "@/lib/utils/cn";
 
 type ToastTone = "success" | "info" | "warning";
@@ -9,6 +10,13 @@ interface ToastItem {
   id: number;
   message: string;
   tone: ToastTone;
+}
+
+/** Slides a new toast in once (callback ref; runs only when the element first mounts). */
+function slideIn(el: HTMLDivElement | null) {
+  if (!el || el.dataset.shown || prefersReducedMotion()) return;
+  el.dataset.shown = "1";
+  gsap.from(el, { x: 48, y: 8, autoAlpha: 0, duration: 0.4, ease: "back.out(1.6)", clearProps: "transform,opacity,visibility" });
 }
 
 const ToastContext = createContext<(message: string, tone?: ToastTone) => void>(() => {});
@@ -39,6 +47,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
+            ref={slideIn}
             className={cn(
               "pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border bg-surface p-3.5 text-sm text-ink shadow-xl",
               t.tone === "success" && "border-success/40",

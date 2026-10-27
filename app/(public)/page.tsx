@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Code2, Compass, LockOpen, Sparkles } from "lucide-react";
 import { LandingHeader } from "@/components/landing/LandingHeader";
+import { LandingMotion } from "@/components/landing/LandingMotion";
 import { Logo } from "@/components/brand/Logo";
 import { LinkButton } from "@/components/ui/Button";
 import { Icon3D } from "@/components/ui/Icon3D";
@@ -47,11 +48,12 @@ export default async function LandingPage() {
   return (
     <div className="min-h-dvh bg-surface">
       <LandingHeader user={user} />
+      <LandingMotion />
       <main id="main">
         {/* Hero */}
         <section className="relative overflow-hidden bg-gradient-to-b from-brand-50 to-surface dark:from-page">
           <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 pb-14 pt-10 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:pb-20 lg:pt-16">
-            <div>
+            <div data-hero>
               <p className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted">
                 Open-source TOEFL preparation <span className="h-0.5 w-12 rounded bg-primary" aria-hidden />
               </p>
@@ -81,10 +83,10 @@ export default async function LandingPage() {
                 </li>
               </ul>
             </div>
-            <div className="relative mx-auto w-full max-w-[560px]">
+            <div data-hero-art className="relative mx-auto w-full max-w-[560px]">
               <div className="absolute inset-[8%] rounded-full bg-primary/10 blur-2xl" aria-hidden />
-              <Image src={BRAND.mark.src} alt="The LafaekTOEFL crocodile mascot in a graduation cap, holding a book and giving a thumbs-up" width={BRAND.mark.width} height={BRAND.mark.height} priority sizes="(min-width: 1024px) 560px, 90vw" className="relative h-auto w-full" />
-              <p className="absolute -right-1 top-2 hidden rotate-[-8deg] text-right text-xl font-semibold italic leading-tight text-primary sm:block">
+              <Image src={BRAND.mark.src} alt="The LafaekTOEFL crocodile mascot in a graduation cap, holding a book and giving a thumbs-up" width={BRAND.mark.width} height={BRAND.mark.height} priority sizes="(min-width: 1024px) 560px, 90vw" className="relative h-auto w-full" data-mascot />
+              <p data-tagline className="absolute -right-1 top-2 hidden rotate-[-8deg] text-right text-xl font-semibold italic leading-tight text-primary sm:block">
                 Practise.
                 <br />
                 Learn.

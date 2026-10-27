@@ -17,6 +17,7 @@ import { TipCard } from "@/components/ui/Callouts";
 import { Icon3D } from "@/components/ui/Icon3D";
 import { BarList, LineChart } from "@/components/charts/Charts";
 import { SkillIconTile } from "@/components/practice/icons";
+import { CountUp } from "@/components/motion/CountUp";
 
 export function ProgressPage({ progress, targetScore }: { progress: ProgressDTO; targetScore: number | null }) {
   if (progress.questionsAttempted === 0) {
@@ -216,7 +217,7 @@ function StatTile({ icon, label, value, sub }: { icon: Parameters<typeof Icon3D>
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm text-muted">{label}</p>
-        <p className="text-2xl font-bold text-ink tabular-nums">{value}</p>
+        <p className="text-2xl font-bold text-ink tabular-nums"><CountUp text={value} /></p>
         <div className="mt-1 text-xs text-muted">{sub}</div>
       </div>
     </div>

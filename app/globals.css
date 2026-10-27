@@ -175,6 +175,19 @@ dialog::backdrop {
   animation: pulse-ring 1.2s ease-out infinite;
 }
 
+/* Landing hero entrance (GSAP, components/landing/LandingMotion.tsx). Content is hidden only when
+   JS runs and motion is allowed; if the animation never starts it still appears after 2.5s. */
+@media (prefers-reduced-motion: no-preference) {
+  html.js [data-hero] > *,
+  html.js [data-hero-art] {
+    visibility: hidden;
+    animation: reveal-fallback 0s linear 2.5s forwards;
+  }
+}
+@keyframes reveal-fallback {
+  to { visibility: visible; opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

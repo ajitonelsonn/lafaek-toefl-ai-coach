@@ -1,6 +1,7 @@
 import type { Icon3DName } from "@/lib/config/assets";
 import { Icon3D } from "@/components/ui/Icon3D";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { CountUp } from "@/components/motion/CountUp";
 
 export interface UsageMetricView {
   id: string;
@@ -21,7 +22,7 @@ export function UsageMetricCard({ metric }: { metric: UsageMetricView }) {
         <h3 className="text-sm font-semibold text-muted">{metric.label}</h3>
         {metric.estimate && <StatusBadge tone="warning" className="ml-auto">Estimate</StatusBadge>}
       </div>
-      <p className="text-3xl font-bold text-ink tabular-nums">{metric.value}</p>
+      <p className="text-3xl font-bold text-ink tabular-nums"><CountUp text={metric.value} /></p>
       <p className="text-xs text-muted">{metric.note}</p>
     </article>
   );

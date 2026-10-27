@@ -2,7 +2,7 @@
   "name": "lafaek-toefl",
   "version": "0.1.0",
   "private": true,
-  "description": "LafaekTOEFL AI Coach \u2014 open-source TOEFL preparation frontend (Phase 1: frontend-only with demo data).",
+  "description": "LafaekTOEFL AI Coach — open-source TOEFL preparation frontend (Phase 1: frontend-only with demo data).",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -25,6 +25,7 @@
     "@aws-sdk/client-s3": "^3.1157.0",
     "@aws-sdk/s3-request-presigner": "^3.1157.0",
     "@prisma/client": "^6.19.3",
+    "gsap": "3.15.0",
     "lucide-react": "^1.61.0",
     "next": "^15.5.28",
     "nodemailer": "^10.2.1",
