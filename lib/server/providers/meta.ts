@@ -32,6 +32,24 @@ function headers(extra?: Record<string, string>) {
 
 const base = () => env().META_API_BASE_URL.replace(/\/$/, "");
 const timeoutMs = () => env().GENERATION_TIMEOUT_SECONDS * 1000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Meta's catalog can intermittently omit a model and answer 404 model_not_found (observed
+ * 2026-10-27: muse-spark-1.3 missing from 11 of 30 /models responses). Retry the configured
+ * model a few times, then use the fallback model if one is given.
+ */
+async function withModel<T>(primary: string, fallback: string | undefined, call: (model: string) => Promise<T>): Promise<T> {
+  const plan = [primary, primary, primary, ...(fallback && fallback !== primary ? [fallback] : [])];
+  for (let i = 0; ; i++) {
+    try {
+      return await call(plan[i]);
+    } catch (e) {
+      if (!(e instanceof ProviderError && e.code === "model_not_found") || i === plan.length - 1) throw e;
+      await sleep(500 * 2 ** i + Math.random() * 250);
+    }
+  }
+}
 
 /** Converts a Zod schema to Meta's strict JSON-schema subset. */
 export function toStrictJsonSchema(schema: ZodType): Record<string, unknown> {
@@ -58,7 +76,13 @@ export async function generateText<T>(args: {
   user: string;
   temperature?: number;
 }): Promise<TextResult<T>> {
-  const model = env().META_TEXT_MODEL;
+  return withModel(env().META_TEXT_MODEL, env().META_TEXT_FALLBACK_MODEL, (model) => generateTextWith(model, args));
+}
+
+async function generateTextWith<T>(
+  model: string,
+  args: { task: TextTask; schema: ZodType<T>; system: string; user: string; temperature?: number },
+): Promise<TextResult<T>> {
   const res = await providerFetch(
     `${base()}/chat/completions`,
     {
@@ -111,14 +135,16 @@ const imageResponse = z.object({
 /** Generates one image and returns its bytes (b64_json response format). */
 export async function generateImage(prompt: string, opts: { size?: string } = {}): Promise<{ bytes: Buffer; mimeType: string; model: string; requestId: string | null }> {
   const model = env().META_IMAGE_MODEL;
-  const res = await providerFetch(
-    `${base()}/images/generations`,
-    {
-      method: "POST",
-      headers: headers({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ model, prompt, n: 1, size: opts.size ?? "1536x1024", response_format: "b64_json" }),
-    },
-    { provider: PROVIDER, timeoutMs: Math.max(timeoutMs(), 120_000), retries: 2 },
+  const res = await withModel(model, undefined, (m) =>
+    providerFetch(
+      `${base()}/images/generations`,
+      {
+        method: "POST",
+        headers: headers({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ model: m, prompt, n: 1, size: opts.size ?? "1536x1024", response_format: "b64_json" }),
+      },
+      { provider: PROVIDER, timeoutMs: Math.max(timeoutMs(), 120_000), retries: 2 },
+    ),
   );
   const body = imageResponse.safeParse(await res.json());
   const b64 = body.success ? body.data.data[0].b64_json : undefined;
@@ -132,10 +158,12 @@ const asrResponse = z.object({ transcript: z.string(), audioDurationMs: z.number
 /** Speech-to-text. Input must be WAV, mono, 16-bit PCM at 16 or 24 kHz (≤ 32 MB, ≤ 10 min). */
 export async function transcribeAudio(wav: Buffer): Promise<{ transcript: string; audioDurationMs: number | null; model: string }> {
   const model = env().META_TRANSCRIPTION_MODEL;
-  const form = new FormData();
-  form.append("request", new Blob([JSON.stringify({ model, mode: "PUSH_TO_TALK", audioEncoding: "WAV", languageBias: ["English"] })], { type: "application/json" }));
-  form.append("audio", new Blob([new Uint8Array(wav)], { type: "audio/wav" }), "response.wav");
-  const res = await providerFetch(`${base()}/asr/transcribe`, { method: "POST", headers: headers({ Accept: "application/json" }), body: form }, { provider: PROVIDER, timeoutMs: 60_000, retries: 1 });
+  const res = await withModel(model, undefined, (m) => {
+    const form = new FormData();
+    form.append("request", new Blob([JSON.stringify({ model: m, mode: "PUSH_TO_TALK", audioEncoding: "WAV", languageBias: ["English"] })], { type: "application/json" }));
+    form.append("audio", new Blob([new Uint8Array(wav)], { type: "audio/wav" }), "response.wav");
+    return providerFetch(`${base()}/asr/transcribe`, { method: "POST", headers: headers({ Accept: "application/json" }), body: form }, { provider: PROVIDER, timeoutMs: 60_000, retries: 1 });
+  });
   const body = asrResponse.safeParse(await res.json());
   if (!body.success) throw new ProviderError(PROVIDER, "invalid_output", "Unexpected transcription response.", res.status);
   return { transcript: body.data.transcript, audioDurationMs: body.data.audioDurationMs ?? null, model };

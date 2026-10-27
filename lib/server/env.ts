@@ -35,6 +35,7 @@ const schema = z.object({
   MODEL_API_KEY: optional,
   META_API_BASE_URL: z.string().trim().url().default("https://api.meta.ai/v1"),
   META_TEXT_MODEL: modelId("muse-spark-1.3"),
+  META_TEXT_FALLBACK_MODEL: modelId("muse-spark-1.2"),
   META_IMAGE_MODEL: modelId("muse-image-1.0"),
   META_TRANSCRIPTION_MODEL: modelId("muse-voice-transcribe-1.0"),
   ELEVENLABS_API_KEY: optional,

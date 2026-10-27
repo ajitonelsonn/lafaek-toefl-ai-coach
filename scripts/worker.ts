@@ -22,7 +22,7 @@ async function metaConfigCheck() {
   const visible: string[] = await fetch(`${e.META_API_BASE_URL.replace(/\/$/, "")}/models`, { headers: { Authorization: `Bearer ${e.MODEL_API_KEY ?? ""}` } })
     .then(async (r) => (r.ok ? (((await r.json()) as { data?: { id?: string }[] }).data ?? []).map((m) => m.id ?? "") : [`HTTP ${r.status}`]))
     .catch(() => ["network error"]);
-  const models = { text: e.META_TEXT_MODEL, image: e.META_IMAGE_MODEL, transcription: e.META_TRANSCRIPTION_MODEL };
+  const models = { text: e.META_TEXT_MODEL, textFallback: e.META_TEXT_FALLBACK_MODEL, image: e.META_IMAGE_MODEL, transcription: e.META_TRANSCRIPTION_MODEL };
   log.info("meta config", {
     baseUrl: e.META_API_BASE_URL,
     models,
