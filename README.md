@@ -62,20 +62,20 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
   says so; in that case the script is sent to the browser, otherwise it is withheld.
 - **Speaking.** The browser converts recordings to 16 kHz mono WAV. Meta `muse-voice-transcribe-1.0` transcribes them.
   Listen and Repeat shows a word-alignment similarity score. Recordings are discarded after transcription unless the
-  learner turns on *Keep my speaking recordings* and S3 is configured.
+  learner turns on _Keep my speaking recordings_ and S3 is configured.
 - **Writing.** Mechanical checks (length, structure, greeting/closing, opinion, reasons) are labelled "not AI scoring".
   AI coaching is optional, needs a click, is rate-limited, and is labelled practice feedback.
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `npm run lint` / `npm run typecheck` / `npm run build` | Quality gates |
-| `npm test` | Unit and integration tests (integration uses the isolated `lafaek_test` schema) |
-| `E2E_BASE_URL=http://localhost:3200 npx vitest run tests/e2e` | HTTP end-to-end tests against a server started with the test schema |
-| `node scripts/check-secrets.mjs` | Fails if any secret value appears in client bundles or git-tracked files |
-| `npm run db:status` / `npm run db:deploy` | Migration status / apply |
-| `npm run worker` / `npm run worker:prod` | Generation worker (`--once` drains and exits) |
+| Command                                                       | What it does                                                                    |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `npm run lint` / `npm run typecheck` / `npm run build`        | Quality gates                                                                   |
+| `npm test`                                                    | Unit and integration tests (integration uses the isolated `lafaek_test` schema) |
+| `E2E_BASE_URL=http://localhost:3200 npx vitest run tests/e2e` | HTTP end-to-end tests against a server started with the test schema             |
+| `node scripts/check-secrets.mjs`                              | Fails if any secret value appears in client bundles or git-tracked files        |
+| `npm run db:status` / `npm run db:deploy`                     | Migration status / apply                                                        |
+| `npm run worker` / `npm run worker:prod`                      | Generation worker (`--once` drains and exits)                                   |
 
 New migrations: change `prisma/schema.prisma`, then create a migration with `prisma migrate diff` (Render users
 usually cannot create the shadow database that `migrate dev` needs) and apply it with `db:deploy`.
@@ -84,11 +84,11 @@ usually cannot create the shadow database that `migrate dev` needs) and apply it
 
 - **Web (Vercel).**
   - Set the variables from `.env.example` per environment (Development, Preview, Production) in Vercel's settings.
-  - Use Render's *external* database URL with `sslmode=require`.
+  - Use Render's _external_ database URL with `sslmode=require`.
   - Run `prisma migrate deploy` once per release, not from every instance.
 - **Worker (Render Background Worker).** Start command `npm run worker:prod`, with the same environment variables. As
   an alternative or supplement, a cron job can `POST /api/internal/worker/tick` with `Authorization: Bearer
-  $WORKER_TICK_SECRET`. That processes one job per call; the queue itself stays in PostgreSQL.
+$WORKER_TICK_SECRET`. That processes one job per call; the queue itself stays in PostgreSQL.
 - **S3.** Use a private bucket with Block Public Access and SSE. Give the IAM user least privilege for that one bucket
   (`s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`, `s3:ListBucket`). Add a lifecycle rule for expired recordings.
   Browser uploads are not used, so no CORS is needed.
@@ -97,25 +97,25 @@ usually cannot create the shadow database that `migrate dev` needs) and apply it
 
 ## Data retention
 
-| Data | Kept | Deletion |
-|---|---|---|
-| OTP codes | HMAC only, 10-minute validity | Superseded codes are invalidated; rows go when the account is deleted |
-| Sessions | 30 days (`SESSION_TTL_DAYS`) | Revoked on logout; all deleted with the account |
-| Recordings | Only with opt-in consent and configured storage | Learner can delete each one (`DELETE /api/media/:id`); deleted with the account |
-| Practice answers, plans, generated items, usage | While the account exists | `DELETE /api/account` deletes all rows (cascade) and queues S3 cleanup |
-| Rate-limit counters | 2 days | Pruned by the worker |
+| Data                                            | Kept                                            | Deletion                                                                        |
+| ----------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| OTP codes                                       | HMAC only, 10-minute validity                   | Superseded codes are invalidated; rows go when the account is deleted           |
+| Sessions                                        | 30 days (`SESSION_TTL_DAYS`)                    | Revoked on logout; all deleted with the account                                 |
+| Recordings                                      | Only with opt-in consent and configured storage | Learner can delete each one (`DELETE /api/media/:id`); deleted with the account |
+| Practice answers, plans, generated items, usage | While the account exists                        | `DELETE /api/account` deletes all rows (cascade) and queues S3 cleanup          |
+| Rate-limit counters                             | 2 days                                          | Pruned by the worker                                                            |
 
 ## Costs and scoring caveats
 
 - **Costs.** Meta text calls return token usage (stored as actual units). The model's reasoning makes output tokens
   large: about 6,000 per item in testing. ElevenLabs returns no usage data, so characters and seconds are stored as
-  *estimates*. No prices are configured, so the app shows no cost figures. `GENERATION_ITEMS_PER_TASK` (default 2) and
+  _estimates_. No prices are configured, so the app shows no cost figures. `GENERATION_ITEMS_PER_TASK` (default 2) and
   `GENERATION_DAILY_USER_LIMIT` are the hard limits.
 - **Scores.** All scores and feedback are **practice estimates, never official ETS/TOEFL scores**. The 100-word
   discussion length is shown as a practice guideline. Speaking similarity compares transcripts and is not a
   pronunciation analysis.
 
-## Frontend structure
+##3 Frontend structure
 
 ```text
 app/(public)/      landing, login, signup, verify-email, forgot-password
@@ -138,7 +138,8 @@ UI routes: `/`, `/login`, `/signup`, `/verify-email`, `/forgot-password`, `/dash
 
 ## Known limitations
 
-See `BACKEND_PROGRESS.md` → *Blockers*. In short:
+See `BACKEND_PROGRESS.md` → _Blockers_. In short:
+
 - No S3 bucket yet, so no generated audio or images.
 - The ElevenLabs key cannot list voices, so accent selection isn't applied.
 - No self-service password reset.
