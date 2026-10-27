@@ -10,6 +10,9 @@ import { ApiError } from "../http";
 // worker's lease expires and the job becomes due again.
 
 const ACTIVE: JobStatus[] = ["running", "validating", "storing"];
+export const ALL_JOB_TYPES: JobType[] = ["task_pack", "asset_image", "asset_audio", "reconcile_media", "delete_user_assets"];
+/** Job types that call Meta (text generation and images). */
+export const META_JOB_TYPES: JobType[] = ["task_pack", "asset_image"];
 export const leaseMs = () => env().GENERATION_TIMEOUT_SECONDS * 1000 * 3;
 
 /**
@@ -92,11 +95,13 @@ export async function enqueueJob(data: {
  * Atomically claims up to `limit` due jobs for this worker, never giving one user
  * more than GENERATION_MAX_CONCURRENCY_PER_USER running jobs. Claims are serialised
  * with a transaction-scoped advisory lock so concurrent workers cannot both see
- * the same free slot.
+ * the same free slot. `jobTypes` limits what this worker takes (e.g. a worker that
+ * cannot reach Meta leaves Meta jobs for one that can).
  */
-export async function claimJobs(workerId: string, limit: number): Promise<GenerationJob[]> {
+export async function claimJobs(workerId: string, limit: number, jobTypes: JobType[] = ALL_JOB_TYPES): Promise<GenerationJob[]> {
   const perUser = env().GENERATION_MAX_CONCURRENCY_PER_USER;
   const leaseUntil = new Date(Date.now() + leaseMs());
+  const types = jobTypes.join(",");
   const ids = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(724811)`;
     return tx.$queryRaw<{ id: string }[]>`
@@ -110,6 +115,7 @@ export async function claimJobs(workerId: string, limit: number): Promise<Genera
                row_number() OVER (PARTITION BY j.user_id ORDER BY j.next_attempt_at, j.created_at) AS rn
         FROM generation_jobs j
         WHERE j.status IN ('queued', 'retry_wait') AND j.next_attempt_at <= now()
+          AND j.job_type::text = ANY(string_to_array(${types}, ','))
       ),
       eligible AS (
         SELECT c.id FROM candidates c LEFT JOIN running r ON r.user_id = c.user_id

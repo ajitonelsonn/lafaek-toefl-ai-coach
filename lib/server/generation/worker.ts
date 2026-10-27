@@ -1,7 +1,7 @@
 import "server-only";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
-import type { GenerationJob } from "@prisma/client";
+import type { GenerationJob, JobType } from "@prisma/client";
 import { features } from "../env";
 import { log } from "../log";
 import { pruneRateLimits } from "../rate-limit";
@@ -44,10 +44,10 @@ export async function processJob(job: GenerationJob, owner: string): Promise<voi
 }
 
 /** One bounded pass: housekeeping, then claim and process up to `concurrency` jobs. */
-export async function tick(owner: string, concurrency = 3): Promise<number> {
+export async function tick(owner: string, concurrency = 3, jobTypes?: JobType[]): Promise<number> {
   await recoverExpiredLeases();
   if (features.storage()) await unblockJobs(["asset_audio", "asset_image", "delete_user_assets"]);
-  const jobs = await claimJobs(owner, concurrency);
+  const jobs = await claimJobs(owner, concurrency, jobTypes);
   await Promise.all(jobs.map((j) => processJob(j, owner)));
   return jobs.length;
 }

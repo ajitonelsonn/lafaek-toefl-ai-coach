@@ -59,6 +59,14 @@ describe("generation batches", () => {
     expect(await db.generationJob.count({ where: { jobType: "task_pack" } })).toBe(12);
   });
 
+  it("a worker limited to non-Meta job types leaves task packs alone", async () => {
+    const u = await createUser("a@example.com");
+    await savePlan(u.id, { ...INPUT }, false);
+    await startInitialBatch(u.id, randomUUID());
+    expect(await claimJobs("audio-only", 5, ["asset_audio", "delete_user_assets"])).toHaveLength(0);
+    expect(await claimJobs("full", 5)).toHaveLength(1);
+  });
+
   it("allows one study plan per 30 days; a later plan gets its own batch", async () => {
     const u = await createUser("a@example.com");
     const first = await savePlan(u.id, { ...INPUT }, false);

@@ -60,6 +60,6 @@ export async function savePlan(userId: string, input: StudyPlanInputBody, confir
     }
     if (current) await tx.studyPlan.update({ where: { id: current.id }, data: { status: "superseded" } });
     return tx.studyPlan.create({ data: { userId, version: (current?.version ?? 0) + 1, status: "active", ...data } });
-  });
+  }, { maxWait: 10_000, timeout: 20_000 });
   return toDTO(row);
 }
