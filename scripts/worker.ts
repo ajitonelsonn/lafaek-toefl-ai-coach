@@ -1,6 +1,8 @@
 // Long-running generation worker. Run locally with `npm run worker`, and in
 // production as a Render Background Worker (`npm run worker:prod`).
+import { createHash } from "node:crypto";
 import { log } from "../lib/server/log";
+import { env } from "../lib/server/env";
 import { housekeeping, tick, workerId } from "../lib/server/generation/worker";
 
 const owner = workerId();
@@ -12,8 +14,27 @@ process.on("SIGINT", () => (stopping = true));
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Logs the Meta settings this process actually sees (never the key, only a short fingerprint). */
+async function metaConfigCheck() {
+  const e = env();
+  const fingerprint = e.MODEL_API_KEY ? createHash("sha256").update(e.MODEL_API_KEY).digest("hex").slice(0, 12) : null;
+  const visible: string[] = await fetch(`${e.META_API_BASE_URL.replace(/\/$/, "")}/models`, { headers: { Authorization: `Bearer ${e.MODEL_API_KEY ?? ""}` } })
+    .then(async (r) => (r.ok ? (((await r.json()) as { data?: { id?: string }[] }).data ?? []).map((m) => m.id ?? "") : [`HTTP ${r.status}`]))
+    .catch(() => ["network error"]);
+  const models = { text: e.META_TEXT_MODEL, image: e.META_IMAGE_MODEL, transcription: e.META_TRANSCRIPTION_MODEL };
+  log.info("meta config", {
+    baseUrl: e.META_API_BASE_URL,
+    models,
+    plainAscii: Object.values(models).every((m) => /^[\x21-\x7e]+$/.test(m)),
+    keyFingerprint: fingerprint,
+    available: Object.fromEntries(Object.entries(models).map(([k, m]) => [k, visible.includes(m)])),
+    visibleModels: visible,
+  });
+}
+
 async function main() {
   log.info("worker started", { owner, concurrency });
+  await metaConfigCheck().catch(() => log.warn("meta config check failed"));
   let lastHousekeeping = 0;
   const once = process.argv.includes("--once");
   while (!stopping) {
