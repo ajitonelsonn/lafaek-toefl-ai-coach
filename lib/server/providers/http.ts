@@ -60,7 +60,8 @@ async function toProviderError(provider: string, res: Response): Promise<Provide
   let detail = "";
   try {
     const body = (await res.json()) as { error?: { message?: string; type?: string; code?: string }; detail?: unknown };
-    detail = body.error?.type ?? body.error?.code ?? "";
+    // Type and code are short enums (e.g. "invalid_request_error, model_not_found"); messages are not echoed.
+    detail = [body.error?.type, body.error?.code].filter((v) => typeof v === "string" && /^[\w.-]{1,64}$/.test(v)).join(", ");
   } catch {
     /* non-JSON body: ignore, never echo raw provider payloads */
   }

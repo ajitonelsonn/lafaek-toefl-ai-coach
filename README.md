@@ -86,9 +86,15 @@ usually cannot create the shadow database that `migrate dev` needs) and apply it
   - Set the variables from `.env.example` per environment (Development, Preview, Production) in Vercel's settings.
   - Use Render's _external_ database URL with `sslmode=require`.
   - Run `prisma migrate deploy` once per release, not from every instance.
-- **Worker (Render Background Worker).** Start command `npm run worker:prod`, with the same environment variables. As
-  an alternative or supplement, a cron job can `POST /api/internal/worker/tick` with `Authorization: Bearer
-$WORKER_TICK_SECRET`. That processes one job per call; the queue itself stays in PostgreSQL.
+- **Worker (Render Background Worker).** Vercel cannot host it, because Vercel only runs short request handlers.
+  Without the worker, generation jobs stay queued.
+  - Build command: `npm ci --include=dev`. `tsx` and `prisma` are devDependencies.
+  - Start command: `npm run worker:prod`.
+  - Environment: the same variables as Vercel, with `NODE_ENV=production`.
+  - Alternative or supplement: a cron job can `POST /api/internal/worker/tick` with
+    `Authorization: Bearer $WORKER_TICK_SECRET`. It processes one job per call, and the queue itself stays in PostgreSQL.
+- **Live deployment.** The web app runs at `https://lafaek-toefl-ai-coach.vercel.app`, and the worker is
+  `lafaek-toefl-ai-coach-worker` on Render. See `BACKEND_PROGRESS.md` → _Production deployment_.
 - **S3.** Use a private bucket with Block Public Access and SSE. Give the IAM user least privilege for that one bucket
   (`s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`, `s3:ListBucket`). Add a lifecycle rule for expired recordings.
   Browser uploads are not used, so no CORS is needed.
@@ -115,7 +121,7 @@ $WORKER_TICK_SECRET`. That processes one job per call; the queue itself stays in
   discussion length is shown as a practice guideline. Speaking similarity compares transcripts and is not a
   pronunciation analysis.
 
-##3 Frontend structure
+## Frontend structure
 
 ```text
 app/(public)/      landing, login, signup, verify-email, forgot-password
@@ -140,8 +146,9 @@ UI routes: `/`, `/login`, `/signup`, `/verify-email`, `/forgot-password`, `/dash
 
 See `BACKEND_PROGRESS.md` → _Blockers_. In short:
 
-- No S3 bucket yet, so no generated audio or images.
-- The ElevenLabs key cannot list voices, so accent selection isn't applied.
+- The ElevenLabs key cannot list voices, so a fixed set of premade voices (`ELEVENLABS_VOICE_IDS`) is used and accent
+  selection isn't applied.
+- Starter-set items have no generated audio yet; they use the browser-voice fallback.
 - No self-service password reset.
 - Google sign-in is not implemented.
 - The mock test uses the starter set and is a short practice test.
