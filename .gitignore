@@ -23,8 +23,9 @@ LAFAEK_TOEFL_BACKEND_IMPLEMENTATION_SPEC.md
 credentials
 *.dump
 *.sql.gz
-backups/
-tmp-assets/
-storage/
+/backups/
+/tmp-assets/
+# Root only: lib/server/storage/ is source code
+/storage/
 BACKEND_AUDIT.md
 BACKEND_PROGRESS.md
