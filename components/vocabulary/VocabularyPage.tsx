@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { BookOpen, Bookmark, BookmarkCheck, Check, ChevronLeft, ChevronRight, List, RotateCcw, Search, Share2, Star, Volume2, Zap } from "lucide-react";
 import { VOCAB_CATEGORIES } from "@/lib/content/vocabulary";
 import { getPracticeType } from "@/lib/config/practice-types";
@@ -91,9 +91,30 @@ export function VocabularyPage({ words, initialProgress, pending, hasPlan }: { w
   const safeIndex = Math.min(index, Math.max(0, filtered.length - 1));
   const current = filtered[safeIndex];
 
-  const pronounce = (w: VocabWord) => {
+  // Natural voice (ElevenLabs, made once per word on the server). Signed URLs are cached until
+  // shortly before they expire; the browser voice is only a fallback.
+  const audioUrls = useRef(new Map<string, { url: string; until: number }>());
+  const player = useRef<HTMLAudioElement | null>(null);
+  const [loadingWord, setLoadingWord] = useState<string | null>(null);
+  const pronounce = async (w: VocabWord) => {
     if (!settings.sound) return toast("Sound is turned off in Settings.", "warning");
-    if (!speak(w.word)) toast("This browser cannot read words aloud.", "warning");
+    if (loadingWord) return;
+    try {
+      let cached = audioUrls.current.get(w.id);
+      if (!cached || cached.until < Date.now()) {
+        setLoadingWord(w.id);
+        const r = await api<{ url: string; expiresIn: number }>(`/api/vocabulary/${w.id}/audio`, { method: "POST", body: {} });
+        cached = { url: r.url, until: Date.now() + (r.expiresIn - 30) * 1000 };
+        audioUrls.current.set(w.id, cached);
+      }
+      player.current?.pause();
+      player.current = new Audio(cached.url);
+      await player.current.play();
+    } catch {
+      if (!speak(w.word)) toast("Audio is not available right now.", "warning");
+    } finally {
+      setLoadingWord(null);
+    }
   };
 
   const changeTab = (t: Tab) => {

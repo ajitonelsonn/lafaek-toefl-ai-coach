@@ -64,6 +64,9 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
   Meta for up to `VOCABULARY_WORDS_PER_TASK` (default 10) useful words from those questions' texts. Words that do not
   occur in the texts, or that the learner already has, are dropped. They are stored per learner in
   `vocabulary_words`. Worker housekeeping back-fills vocabulary for packs that finished earlier.
+  Pronunciation uses ElevenLabs (`POST /api/vocabulary/:id/audio`): the clip is made the first time a word is
+  played, in the plan's first accent, stored privately in S3 and served by 5-minute signed URLs. It is
+  rate-limited to 120 new clips per hour. The browser voice is only a fallback.
 - **Audio.** Meta has no text-to-speech model, so the owner approved ElevenLabs. There is one MP3 per script line,
   played as a playlist through 5-minute signed URLs. Until an item has audio, the player uses the browser's voice and
   says so; in that case the script is sent to the browser, otherwise it is withheld.
