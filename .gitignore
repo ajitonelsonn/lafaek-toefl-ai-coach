@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+# Never commit environment files or credentials
+.env
+.env.*
+!.env.example
+LAFAEK_TOEFL_FRONTEND_UI_UX_SPEC.md
+logo_icon/
+ilu/
+example/
+sensitive_info.txt
