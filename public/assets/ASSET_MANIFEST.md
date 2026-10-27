@@ -87,3 +87,19 @@ These visuals exist only in `ilu/` screenshots. They are cropped at about 1× di
   these are not licensed brand assets. Initials avatars, a neutral "lecture slide" illustration, and
   the mascot are used instead.
 - **Whole screenshots** are never displayed as page content.
+
+## Pricing icons (`public/assets/pricing/`)
+
+Cropped from the owner's icon sheet `logo_icon/price_icon.png` (1536×1024, transparent background) by
+`node scripts/crop-pricing-icons.mjs`. Each icon is found by its solid pixels, its soft glow is faded out, and it is
+padded to a square and resized to 192×192.
+
+| File | Source region (approx.) | Used for |
+|---|---|---|
+| `starter.png` | green dino, top-left | Starter plan |
+| `boost.png` | rocket | Boost Pack |
+| `open-source.png` | laptop with GitHub mark | Open Source plan and note |
+| `crown.png` | crown | "Most popular" badge |
+| `mail.png` | blue mail tile, bottom row | "How to upgrade" note |
+| `code.png` | `</>` tile, third row | "View on GitHub" button |
+| `check.png` | green check | (spare) |

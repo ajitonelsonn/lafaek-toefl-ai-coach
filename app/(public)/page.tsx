@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, Code2, Compass, LockOpen, Sparkles } from "lucide-react";
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { LandingMotion } from "@/components/landing/LandingMotion";
+import { PricingSection } from "@/components/landing/PricingSection";
 import { Logo } from "@/components/brand/Logo";
 import { LinkButton } from "@/components/ui/Button";
 import { Icon3D } from "@/components/ui/Icon3D";
@@ -72,11 +73,15 @@ export default async function LandingPage() {
                 </LinkButton>
               </div>
               <ul className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-[15px] text-body">
-                <li className="flex items-center gap-2">
-                  <LockOpen className="size-5 text-success" aria-hidden /> Free
+                <li>
+                  <a href="#pricing" className="flex items-center gap-2 hover:text-primary">
+                    <LockOpen className="size-5 text-success" aria-hidden /> Free to start
+                  </a>
                 </li>
-                <li className="flex items-center gap-2">
-                  <Code2 className="size-5 text-primary" aria-hidden /> Open source
+                <li>
+                  <a href={SITE.githubUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-primary">
+                    <Code2 className="size-5 text-primary" aria-hidden /> Open source
+                  </a>
                 </li>
                 <li className="flex items-center gap-2">
                   <Sparkles className="size-5 text-primary" aria-hidden /> AI-generated practice
@@ -171,6 +176,8 @@ export default async function LandingPage() {
           </div>
         </section>
 
+        <PricingSection signedIn={Boolean(user)} />
+
         {/* About */}
         <section id="about" aria-labelledby="about-title" className="scroll-mt-24 mx-auto grid max-w-7xl items-center gap-8 px-4 py-14 sm:px-6 md:grid-cols-[auto_1fr]">
           <Image src={BRAND.logoTrimmed.src} alt="" width={240} height={203} className="mx-auto h-auto w-48 md:w-60" />
@@ -201,6 +208,12 @@ export default async function LandingPage() {
             <Link href="/practice" className="hover:text-primary">
               Practice
             </Link>
+            <a href="#pricing" className="hover:text-primary">
+              Pricing
+            </a>
+            <a href={SITE.githubUrl} target="_blank" rel="noopener noreferrer" className="hover:text-primary">
+              GitHub
+            </a>
             <Link href={user ? "/dashboard" : "/login"} className="hover:text-primary">
               {user ? "Dashboard" : "Sign in"}
             </Link>

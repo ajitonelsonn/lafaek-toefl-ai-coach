@@ -17,7 +17,7 @@ export const leaseMs = () => env().GENERATION_TIMEOUT_SECONDS * 1000 * 3;
 
 /**
  * Creates the batch for the user's active plan version once; repeated calls return it.
- * Plans are limited to one per STUDY_PLAN_COOLDOWN_DAYS, which also bounds generation.
+ * Each saved plan uses a lifetime study-plan credit (lib/server/credits.ts), which also bounds generation.
  */
 export async function startInitialBatch(userId: string, idempotencyKey: string) {
   const plan = await db.studyPlan.findFirst({ where: { userId, status: "active" } });

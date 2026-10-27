@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CheckCircle2, Clock, FileText, Lightbulb, ListChecks, Play, TrendingUp } from "lucide-react";
-import { SKILLS, practiceTypesForSkill, referenceTotalForSkill, type SkillId } from "@/lib/config/practice-types";
-import { MOCK_DEMO_MINUTES, MOCK_FULL_MINUTES } from "@/lib/config/mock-test";
+import { ArrowRight, CheckCircle2, Clock, History, ListChecks, Play, Sparkles, Ticket, Timer, TrendingUp } from "lucide-react";
+import { SKILLS, getPracticeType, type SkillId } from "@/lib/config/practice-types";
+import { MOCK_BLUEPRINT, MOCK_DEMO_MINUTES, mockQuestionCount } from "@/lib/config/mock-test";
+import { cefrForBand, formatBand } from "@/lib/config/toefl-scale";
+import type { MockResultDTO } from "@/lib/practice/mock-dto";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ProgressRing } from "@/components/ui/ProgressBar";
@@ -14,52 +16,81 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { SKILL_TONE, SkillIconTile } from "@/components/practice/icons";
 import { percent } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
+import { api, ApiClientError, errorMessage } from "@/lib/client/api";
+import { BOOST_PACK } from "@/lib/config/pricing";
+import { useToast } from "@/components/ui/Toast";
+import { UpgradeDialog } from "@/components/upgrade/UpgradeDialog";
+import { MockTestPreparing } from "./MockTestPreparing";
 
-export interface MockSummary {
-  sections: { skill: SkillId; correct: number | null; total: number }[];
-}
-
-export function MockTestIntro({ latest, unitsPerSkill }: { latest: MockSummary | null; unitsPerSkill: Record<SkillId, number> }) {
+export function MockTestIntro({ latest, active, credits }: { latest: MockResultDTO | null; active: { startedAt: string; expiresAt: string } | null; credits: { planCredits: number; mockCredits: number } }) {
   const router = useRouter();
-  const mockResult = latest;
-  const itemsForSections = (skills: SkillId[]) => ({ length: skills.reduce((n, s) => n + (unitsPerSkill[s] ?? 0), 0) });
+  const toast = useToast();
   const [sections, setSections] = useState<SkillId[]>(SKILLS.map((s) => s.id));
   const [error, setError] = useState("");
+  const [starting, setStarting] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const canStart = credits.mockCredits > 0;
 
-  const items = itemsForSections(sections);
+  const questions = sections.reduce((n, s) => n + mockQuestionCount(s), 0);
   const minutes = sections.reduce((n, s) => n + MOCK_DEMO_MINUTES[s], 0);
-  const fullMinutes = Object.values(MOCK_FULL_MINUTES).reduce((a, b) => a + b, 0);
-
-  const graded = mockResult?.sections.filter((s) => s.correct !== null) ?? [];
-  const best = graded.length ? percent(graded.reduce((n, s) => n + (s.correct ?? 0), 0), graded.reduce((n, s) => n + s.total, 0)) : null;
+  const band = latest?.estimatedBand ?? null;
+  const graded = latest?.sections.filter((s) => s.correct !== null) ?? [];
+  const accuracy = graded.length ? percent(graded.reduce((n, s) => n + (s.correct ?? 0), 0), graded.reduce((n, s) => n + s.total, 0)) : null;
 
   const toggle = (id: SkillId) => {
     setError("");
     setSections((cur) => (cur.includes(id) ? cur.filter((s) => s !== id) : [...cur, id]));
   };
 
-  const start = () => {
+  /** Uses one mock-test credit and opens the session (the preparing animation covers the wait). */
+  const start = async () => {
     if (!sections.length) {
       setError("Choose at least one section.");
       return;
     }
-    router.push(`/mock-test/session?sections=${sections.join(",")}`);
+    if (!canStart) {
+      setUpgradeOpen(true);
+      return;
+    }
+    setStarting(true);
+    try {
+      await api("/api/mock-test/start", { body: { sections } });
+      router.push("/mock-test/session");
+    } catch (e) {
+      setStarting(false);
+      if (e instanceof ApiClientError && e.code === "UPGRADE_REQUIRED") setUpgradeOpen(true);
+      else toast(errorMessage(e), "warning");
+    }
   };
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="flex min-w-0 flex-col gap-6">
+        {active && (
+          <section aria-label="Unfinished mock test" className="flex flex-wrap items-center gap-4 rounded-[var(--radius-card)] border-2 border-primary bg-primary-soft/60 p-4">
+            <History className="size-8 shrink-0 text-primary" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-ink">You have a mock test in progress</p>
+              <p className="text-sm text-body">Continue where you stopped. It does not use another mock test. Unfinished tests expire 8 hours after they start.</p>
+            </div>
+            <Button rightIcon={<ArrowRight className="size-4" />} onClick={() => { setStarting(true); router.push("/mock-test/session"); }}>
+              Continue test
+            </Button>
+          </section>
+        )}
+
         <InfoCallout title="About the Mock Test">
-          This short practice test uses questions from the starter set across the four sections, so you can try the test flow and timing.
-          Results are practice estimates, not official TOEFL scores.
+          Every mock test is new: it uses your own personalised questions that you have not seen in a mock test before (starter questions fill any
+          gaps). Each section has its own timer, like the real test. You get an estimated band on the 1–6 scale for Reading and Listening. Results
+          are practice estimates, not official TOEFL scores.
         </InfoCallout>
 
         <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
           {[
-            { icon: Clock, title: `About ${Math.round(fullMinutes / 60)} hours`, body: "Planned full test length" },
-            { icon: FileText, title: "Realistic format", body: "All 12 question types" },
-            { icon: TrendingUp, title: "Section results", body: "See accuracy by skill" },
-            { icon: Lightbulb, title: "Improve faster", body: "Find your weak areas" },
+            { icon: Sparkles, title: "New every time", body: "From your personalised questions" },
+            { icon: Timer, title: "Section timers", body: "Each section is timed" },
+            { icon: TrendingUp, title: "Estimated band", body: "1–6 scale for Reading and Listening" },
+            { icon: Clock, title: "Track progress", body: "History of all your mock tests" },
           ].map(({ icon: Icon, title, body }) => (
             <div key={title} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-4 shadow-card">
               <Icon className="size-7 shrink-0 text-primary" aria-hidden />
@@ -74,9 +105,9 @@ export function MockTestIntro({ latest, unitsPerSkill }: { latest: MockSummary |
         <Card as="section" aria-labelledby="sections-title">
           <CardHeader
             title={<span id="sections-title">Test Sections</span>}
-            description="Choose the sections for your demo test."
+            description="Choose the sections for your mock test."
             icon={<ListChecks className="size-7 text-primary" aria-hidden />}
-            action={<StatusBadge tone="primary">Full test: about {Math.round(fullMinutes / 60)} hours (planned)</StatusBadge>}
+            action={<StatusBadge tone="primary">Short practice test</StatusBadge>}
           />
           <fieldset>
             <legend className="sr-only">Sections to include</legend>
@@ -84,7 +115,7 @@ export function MockTestIntro({ latest, unitsPerSkill }: { latest: MockSummary |
               {SKILLS.map((s) => {
                 const on = sections.includes(s.id);
                 const tone = SKILL_TONE[s.id];
-                const types = practiceTypesForSkill(s.id);
+                const parts = MOCK_BLUEPRINT[s.id];
                 return (
                   <label key={s.id} className={cn("flex cursor-pointer flex-col rounded-xl border-2 p-4 transition-colors has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-primary/40", on ? cn(tone.soft, "border-primary") : "border-line bg-surface opacity-75")}>
                     <span className="flex items-start gap-3">
@@ -93,20 +124,20 @@ export function MockTestIntro({ latest, unitsPerSkill }: { latest: MockSummary |
                       <span>
                         <span className={cn("block text-lg font-bold", tone.text)}>{s.title}</span>
                         <span className="text-xs text-muted">
-                          {types.length} task types · ~{MOCK_FULL_MINUTES[s.id]} min (full)
+                          {mockQuestionCount(s.id)} questions · {MOCK_DEMO_MINUTES[s.id]} min
                         </span>
                       </span>
                     </span>
                     <ul className="mt-3 flex-1 space-y-1.5 text-sm">
-                      {types.map((t) => (
-                        <li key={t.slug} className="flex items-center justify-between gap-2 text-body">
-                          <span>{t.title}</span>
-                          <span className="rounded-full bg-surface px-2 text-xs font-semibold text-ink">{t.referenceCount}</span>
+                      {parts.map((p) => (
+                        <li key={p.slug} className="flex items-center justify-between gap-2 text-body">
+                          <span>{getPracticeType(p.slug)?.title}</span>
+                          <span className="rounded-full bg-surface px-2 text-xs font-semibold text-ink">{p.items * p.unitsPerItem}</span>
                         </li>
                       ))}
                     </ul>
                     <span className="mt-3 rounded-lg bg-surface/80 px-3 py-2 text-sm font-semibold text-ink">
-                      Planned library: {referenceTotalForSkill(s.id)} · This test: {itemsForSections([s.id]).length}
+                      {s.id === "reading" || s.id === "listening" ? "Scored automatically · band estimate" : s.id === "writing" ? "Length and structure checks" : "Recorded for practice"}
                     </span>
                   </label>
                 );
@@ -117,17 +148,29 @@ export function MockTestIntro({ latest, unitsPerSkill }: { latest: MockSummary |
 
         <section aria-label="Start" className="flex flex-col items-center gap-3 rounded-[var(--radius-card)] border border-line bg-primary-soft/50 p-6 text-center">
           <p className="text-sm text-body">
-            Practice test: <span className="font-bold text-ink">{items.length} questions</span> · about <span className="font-bold text-ink">{minutes} minutes</span>
+            Practice test: <span className="font-bold text-ink">{questions} questions</span> · about <span className="font-bold text-ink">{minutes} minutes</span> ·{" "}
+            {sections.length} {sections.length === 1 ? "section" : "sections"}, each timed
           </p>
-          <Button size="lg" className="h-14 px-8 text-lg" leftIcon={<Play className="size-5" />} onClick={start}>
-            Start Mock Test
-          </Button>
+          {canStart ? (
+            <Button size="lg" className="h-14 px-8 text-lg" leftIcon={<Play className="size-5" />} onClick={() => void start()} loading={starting}>
+              Start Mock Test
+            </Button>
+          ) : (
+            <Button size="lg" className="h-14 px-8 text-lg" leftIcon={<Sparkles className="size-5" />} onClick={() => setUpgradeOpen(true)}>
+              Upgrade · ${BOOST_PACK.priceUsd} for 2 more tests
+            </Button>
+          )}
+          <p className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 text-sm font-semibold text-ink ring-1 ring-line">
+            <Ticket className="size-4 text-primary" aria-hidden /> Mock tests left: {credits.mockCredits}
+          </p>
           {error && (
             <p className="text-sm text-danger" role="alert">
               {error}
             </p>
           )}
-          <p className="text-sm text-muted">Are you ready? Let&apos;s see how much you have improved!</p>
+          <p className="text-sm text-muted">
+            {canStart ? "Starting uses 1 mock test. Are you ready? Let's see how much you have improved!" : `Your free Starter mock test is used. A ${BOOST_PACK.name} adds 2 more.`}
+          </p>
         </section>
       </div>
 
@@ -140,12 +183,12 @@ export function MockTestIntro({ latest, unitsPerSkill }: { latest: MockSummary |
             <StatusBadge tone="warning">Estimate</StatusBadge>
           </div>
           <div className="flex items-center gap-4">
-            <ProgressRing value={best ?? 0} size={96} label={best === null ? "Not taken yet" : `${best}% correct`}>
-              <span className="text-lg font-bold text-ink">{best !== null ? `${best}%` : "–"}</span>
+            <ProgressRing value={band !== null ? (band / 6) * 100 : (accuracy ?? 0)} size={96} label={band !== null ? `Estimated band ${formatBand(band)} of 6` : latest ? `${accuracy ?? 0}% correct` : "Not taken yet"}>
+              <span className="text-lg font-bold text-ink">{band !== null ? formatBand(band) : accuracy !== null ? `${accuracy}%` : "–"}</span>
             </ProgressRing>
             <div>
-              <p className="text-sm text-muted">{best !== null ? "Correct answers" : "Not taken yet"}</p>
-              {best !== null && (
+              <p className="text-sm text-muted">{band !== null ? `Estimated band · of 6 · ${cefrForBand(band)}` : latest ? "Correct answers" : "Not taken yet"}</p>
+              {latest && (
                 <Link href="/mock-test/results" className="text-sm font-semibold text-primary hover:underline">
                   View results
                 </Link>
@@ -169,6 +212,8 @@ export function MockTestIntro({ latest, unitsPerSkill }: { latest: MockSummary |
           <p>Take a mock test after you have practised each section at least once. This gives you the most useful result.</p>
         </TipCard>
       </aside>
+      {starting && <MockTestPreparing overlay />}
+      <UpgradeDialog open={upgradeOpen} onClose={() => setUpgradeOpen(false)} reason="mock" credits={credits} />
     </div>
   );
 }

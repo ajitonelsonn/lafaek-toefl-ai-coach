@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowRight, CalendarRange, CheckCircle2, Circle, Pencil, RefreshCw, Trophy } from "lucide-react";
+import { ArrowRight, CalendarRange, CheckCircle2, Circle, Pencil, RefreshCw, Sparkles, Trophy } from "lucide-react";
 import { getPracticeType, practiceHref, type PracticeSlug } from "@/lib/config/practice-types";
 import { cefrForBand, formatBand } from "@/lib/config/toefl-scale";
 import type { StudyPlanInputBody } from "@/lib/validation/schemas";
@@ -22,6 +22,9 @@ import { GenerationProgress } from "@/components/generation/GenerationProgress";
 import { SkillIconTile } from "@/components/practice/icons";
 import { StudyPlanWizard } from "./StudyPlanWizard";
 import { ScheduleCalendar } from "./ScheduleCalendar";
+import { UpgradeDialog } from "@/components/upgrade/UpgradeDialog";
+import { EmptyState } from "@/components/ui/States";
+import { BOOST_PACK } from "@/lib/config/pricing";
 import { cn } from "@/lib/utils/cn";
 
 type PlanDTO = StudyPlanDTO;
@@ -41,8 +44,6 @@ function generationKey(planId: string): string {
   }
 }
 
-/** Fixed locale and time zone so server and browser render the same text. */
-const formatDay = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
 const PHASE_TONES = [
   { box: "border-reading/25 bg-reading-soft", text: "text-reading" },
@@ -51,7 +52,11 @@ const PHASE_TONES = [
   { box: "border-speaking/25 bg-speaking-soft", text: "text-speaking" },
 ];
 
-export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: PlanDTO | null; batch: GenerationBatchDTO | null; progress: ProgressDTO }) {
+export function StudyPlanPage({ plan: initialPlan, batch, progress, credits: initialCredits }: { plan: PlanDTO | null; batch: GenerationBatchDTO | null; progress: ProgressDTO; credits: { planCredits: number; mockCredits: number } }) {
+  const [credits, setCredits] = useState(initialCredits);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  // Lifetime allowance: the free Starter plan plus one per Boost Pack. Every save uses one.
+  const canMake = credits.planCredits > 0;
   const router = useRouter();
   const toast = useToast();
   const [studyPlan, setStudyPlan] = useState(initialPlan);
@@ -67,6 +72,7 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
       // The learner's local date is the first day of the schedule.
       const { plan } = await api<{ plan: PlanDTO }>("/api/study-plan", { body: { input: { ...input, startDate: todayKey() }, confirmNewVersion: Boolean(studyPlan) } });
       setStudyPlan(plan);
+      setCredits((c) => ({ ...c, planCredits: Math.max(0, c.planCredits - 1) }));
       try {
         const r = await api<{ batch: GenerationBatchDTO }>("/api/generation/start", { body: { idempotencyKey: generationKey(plan.id) } });
         setCurrentBatch(r.batch);
@@ -80,7 +86,11 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       toast(errorMessage(e), "warning");
-      if (e instanceof ApiClientError && e.code === "PLAN_LIMIT") setEditing(false);
+      if (e instanceof ApiClientError && e.code === "UPGRADE_REQUIRED") {
+        setEditing(false);
+        setCredits((c) => ({ ...c, planCredits: 0 }));
+        setUpgradeOpen(true);
+      }
     } finally {
       setSaving(false);
     }
@@ -104,17 +114,38 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
     return () => window.clearInterval(timer);
   }, [pending, toast]);
 
-  const lockedUntil = studyPlan?.nextPlanAt ?? null;
-  const lockNote = lockedUntil ? `You can make a new plan from ${formatDay(lockedUntil)}.` : null;
+  const creditNote = canMake
+    ? `You can make ${credits.planCredits} more study plan${credits.planCredits === 1 ? "" : "s"}.`
+    : `You have used your study plans. A ${BOOST_PACK.name} ($${BOOST_PACK.priceUsd}) adds one more.`;
+  const upgradeButton = (
+    <Button size="sm" leftIcon={<Sparkles className="size-4" />} onClick={() => setUpgradeOpen(true)}>
+      Upgrade · ${BOOST_PACK.priceUsd}
+    </Button>
+  );
+  const upgrade = <UpgradeDialog open={upgradeOpen} onClose={() => setUpgradeOpen(false)} reason="plan" credits={credits} />;
 
-  if (!studyPlan || (editing && !lockedUntil)) {
+  if (!studyPlan && !canMake) {
+    return (
+      <>
+        <EmptyState
+          icon={<Sparkles className="size-10 text-primary" aria-hidden />}
+          title="Upgrade to make a study plan"
+          description={`You have used your study plans. A ${BOOST_PACK.name} ($${BOOST_PACK.priceUsd}) gives you a new AI study plan and two mock tests.`}
+          action={upgradeButton}
+        />
+        {upgrade}
+      </>
+    );
+  }
+
+  if (!studyPlan || (editing && canMake)) {
     return (
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <StudyPlanWizard initial={studyPlan?.input} onFinish={finish} onCancel={studyPlan ? () => setEditing(false) : undefined} saving={saving} />
         <TipCard title="How the plan works">
           <p>We suggest which of the 12 practice types to focus on each week, and give you a short list of tasks for each day.</p>
           <p>After you finish, AI creates personalised questions for every practice type in the background.</p>
-          <p>You can make one study plan per month. Each plan gets its own set of personalised questions.</p>
+          <p>Your free Starter account includes one study plan for life. Each plan gets its own set of personalised questions. Need another? A {BOOST_PACK.name} (${BOOST_PACK.priceUsd}) adds one.</p>
         </TipCard>
       </div>
     );
@@ -166,11 +197,15 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
                 <StepNumber n={1} /> Your Goal
               </span>
             }
-            description={lockNote ? `Your target score and study schedule. ${lockNote}` : "Your target score and study schedule."}
+            description={`Your target score and study schedule. ${creditNote}`}
             action={
-              <Button variant="secondary" size="sm" leftIcon={<Pencil className="size-4" />} onClick={() => setEditing(true)} disabled={Boolean(lockedUntil)} title={lockNote ?? undefined}>
-                Edit plan
-              </Button>
+              canMake ? (
+                <Button variant="secondary" size="sm" leftIcon={<Pencil className="size-4" />} onClick={() => setConfirmReset(true)}>
+                  Edit plan
+                </Button>
+              ) : (
+                upgradeButton
+              )
             }
           />
           <div className="grid gap-4 md:grid-cols-3">
@@ -209,9 +244,13 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
             }
             description={studyPlan.schedule?.length ? "Every study day until your test, on the days you chose. Open a week to see each day." : "Based on your goal and level. Ticks show practice types you have tried."}
             action={
-              <Button variant="secondary" size="sm" leftIcon={<RefreshCw className="size-4" />} onClick={() => setConfirmReset(true)} disabled={Boolean(lockedUntil)} title={lockNote ?? undefined}>
-                Make a new plan
-              </Button>
+              canMake ? (
+                <Button variant="secondary" size="sm" leftIcon={<RefreshCw className="size-4" />} onClick={() => setConfirmReset(true)}>
+                  Make a new plan
+                </Button>
+              ) : (
+                upgradeButton
+              )
             }
           />
           {studyPlan.schedule?.length && studyPlan.weeks?.length ? (
@@ -335,15 +374,16 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
 
       <ConfirmDialog
         open={confirmReset}
-        title="Make a new plan?"
-        description="You will answer the questions again, and AI will prepare new personalised questions for the new plan. You can make one plan per month. Your practice history and earlier questions stay the same."
-        confirmLabel="Start new plan"
+        title="Change your study plan?"
+        description={`You will answer the questions again, and AI will prepare a new schedule and new personalised questions. This uses 1 of your ${credits.planCredits} study plan credit${credits.planCredits === 1 ? "" : "s"}. Your practice history and earlier questions stay.`}
+        confirmLabel="Continue"
         onCancel={() => setConfirmReset(false)}
         onConfirm={() => {
           setConfirmReset(false);
           setEditing(true);
         }}
       />
+      {upgrade}
     </div>
   );
 }

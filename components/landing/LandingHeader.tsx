@@ -9,6 +9,7 @@ import { LinkButton } from "@/components/ui/Button";
 const LINKS = [
   { href: "#practice", label: "Practice" },
   { href: "#study-plan", label: "Study Plan" },
+  { href: "#pricing", label: "Pricing" },
   { href: "#about", label: "About" },
 ];
 

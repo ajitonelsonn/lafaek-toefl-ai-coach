@@ -5,18 +5,22 @@ import { MOCK_BLUEPRINT, MOCK_SECTION_ORDER } from "@/lib/config/mock-test";
 import type { PracticeSlug, SkillId } from "@/lib/config/practice-types";
 import { estimateBandFromAccuracy, overallBand } from "@/lib/config/toefl-scale";
 import type { PracticeView, WritingCheckDTO } from "@/lib/practice/dto";
+import type { MockResultDTO, MockSectionResultDTO } from "@/lib/practice/mock-dto";
 import { db } from "./db";
 import { requireEnv } from "./env";
+import { useMockCredit } from "./credits";
 import { ApiError } from "./http";
 import { visibleTo } from "./practice";
 import { buildView, unitIdsOf, type ItemWithMedia } from "./content/view";
 import { scoreUnit } from "./content/scoring";
 
-// Mock test assembled per learner and per attempt: for each section in MOCK_BLUEPRINT it takes the
-// learner's own AI-generated questions that earlier mock tests have not used (fewest practised
-// first), and falls back to the shared starter set. The chosen form is signed (HMAC) and returned
-// to the browser, so submission can only score exactly those questions, once. Results are practice
-// estimates, never official scores.
+// Mock test assembled per learner and per attempt: for each section in MOCK_BLUEPRINT it takes
+// questions earlier mock tests have not used, preferring the learner's own AI-generated ones (fewest
+// practised first) over the shared starter set.
+// Lifecycle: `startMockTest` uses one lifetime mock credit and stores the chosen form as a
+// "started" row (reloading the session resumes it without using another credit); the form is
+// signed (HMAC) for the browser, and `submitMockTest` scores exactly those questions once and marks
+// the row "completed". Results are practice estimates, never official scores.
 export const MOCK_SCORING_VERSION = "mock-2";
 const FORM_TTL_MS = 8 * 3600_000;
 
@@ -27,27 +31,8 @@ export interface MockFormItem {
   view: PracticeView;
 }
 
-export interface MockSectionResult {
-  skill: SkillId;
-  correct: number | null;
-  total: number;
-  answered: number;
-  /** Rough practice band (1–6) for auto-scored sections. */
-  band: number | null;
-  note?: string;
-  checks?: WritingCheckDTO[];
-}
-
-export interface MockResult {
-  id: string;
-  completedAt: string;
-  durationSeconds: number;
-  sections: MockSectionResult[];
-  /** Average of the auto-scored section bands (Reading/Listening), when there is at least one. */
-  estimatedBand: number | null;
-  /** Share of questions that came from the learner's personalised practice. */
-  personalised: number;
-}
+export type MockSectionResult = MockSectionResultDTO;
+export type MockResult = MockResultDTO;
 
 interface FormPayload {
   v: 2;
@@ -95,14 +80,18 @@ function toResult(row: { id: string; completedAt: Date; durationSeconds: number;
 
 const usedItemIds = async (userId: string) =>
   new Set(
-    (await db.mockTestResult.findMany({ where: { userId }, select: { sectionsJson: true }, orderBy: { completedAt: "desc" }, take: 50 })).flatMap((r) => {
+    (await db.mockTestResult.findMany({ where: { userId }, select: { sectionsJson: true, formJson: true }, orderBy: { completedAt: "desc" }, take: 50 })).flatMap((r) => {
+      const form = r.formJson as unknown as FormPayload | null;
+      if (form) return form.f.map(([id]) => id);
       const s = r.sectionsJson as unknown as Stored;
       return Array.isArray(s) ? [] : s.itemIds;
     }),
   );
 
-/** Builds a new mock test for the learner and returns it with its signed token. */
-export async function createMockForm(userId: string, sections: SkillId[]): Promise<{ token: string; items: MockFormItem[] }> {
+const activeWhere = (userId: string) => ({ userId, status: "started", startedAt: { gt: new Date(Date.now() - FORM_TTL_MS) } });
+
+/** Chooses the questions for a new mock test (personalised and unused first). */
+async function pickItems(userId: string, sections: SkillId[]): Promise<MockFormItem[]> {
   const ordered = MOCK_SECTION_ORDER.filter((s) => sections.includes(s));
   const [used, attempted] = await Promise.all([usedItemIds(userId), db.practiceAttempt.findMany({ where: { userId }, select: { practiceItemId: true }, distinct: ["practiceItemId"] })]);
   const practised = new Set(attempted.map((a) => a.practiceItemId));
@@ -111,8 +100,9 @@ export async function createMockForm(userId: string, sections: SkillId[]): Promi
   for (const skill of ordered) {
     for (const part of MOCK_BLUEPRINT[skill]) {
       const rows = (await db.practiceItem.findMany({ where: { ...visibleTo(userId), taskSlug: part.slug }, include: { media: { where: { deletedAt: null } } } })) as ItemWithMedia[];
-      // Personal before starter, unused in mock tests before used, unpractised before practised; random within a tier.
-      const rank = (r: ItemWithMedia) => (r.userId ? 0 : 4) + (used.has(r.id) ? 2 : 0) + (practised.has(r.id) ? 1 : 0);
+      // Unused in earlier mock tests first (so each test is new), then personal before starter, then
+      // unpractised before practised; random within a tier.
+      const rank = (r: ItemWithMedia) => (used.has(r.id) ? 4 : 0) + (r.userId ? 0 : 2) + (practised.has(r.id) ? 1 : 0);
       const picked = rows
         .map((r) => ({ r, k: rank(r) + Math.random() * 0.5 }))
         .sort((a, b) => a.k - b.k)
@@ -124,20 +114,73 @@ export async function createMockForm(userId: string, sections: SkillId[]): Promi
       }
     }
   }
-  const payload: FormPayload = { v: 2, id: randomUUID(), u: userId, t: Date.now(), s: ordered, f: items.map((i) => [itemIdOf(i.view), i.skill, i.units]) };
-  return { token: encodeForm(payload), items };
+  return items;
+}
+
+/**
+ * Starts a mock test: resumes the learner's unfinished one, or uses one mock credit and stores a
+ * new form. Throws 402 UPGRADE_REQUIRED when no credits are left.
+ */
+export async function startMockTest(userId: string, sections: SkillId[]): Promise<{ id: string; resumed: boolean }> {
+  const active = await db.mockTestResult.findFirst({ where: activeWhere(userId), select: { id: true } });
+  if (active) return { id: active.id, resumed: true };
+  const items = await pickItems(userId, sections);
+  if (!items.length) throw new ApiError(409, "CONFLICT", "No questions are available for these sections yet.");
+  const payload: FormPayload = {
+    v: 2,
+    id: randomUUID(),
+    u: userId,
+    t: Date.now(),
+    s: MOCK_SECTION_ORDER.filter((s) => items.some((i) => i.skill === s)),
+    f: items.map((i) => [itemIdOf(i.view), i.skill, i.units]),
+  };
+  return db.$transaction(
+    async (tx) => {
+      // Per-user lock: two quick clicks cannot start two tests or use two credits.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(724813, hashtext(${userId}))`;
+      const again = await tx.mockTestResult.findFirst({ where: activeWhere(userId), select: { id: true } });
+      if (again) return { id: again.id, resumed: true };
+      await useMockCredit(tx, userId);
+      await tx.mockTestResult.create({
+        data: { id: payload.id, userId, status: "started", startedAt: new Date(), formJson: payload as unknown as Prisma.InputJsonValue, sectionsJson: [], durationSeconds: 0, scoringVersion: MOCK_SCORING_VERSION },
+      });
+      return { id: payload.id, resumed: false };
+    },
+    { maxWait: 10_000, timeout: 20_000 },
+  );
+}
+
+/** The learner's unfinished mock test (questions and signed token), if one was started in the last 8 hours. */
+export async function activeMockTest(userId: string): Promise<{ id: string; token: string; items: MockFormItem[]; startedAt: string; expiresAt: string } | null> {
+  const row = await db.mockTestResult.findFirst({ where: activeWhere(userId) });
+  const form = row?.formJson as unknown as FormPayload | null;
+  if (!row || !form) return null;
+  const rows = (await db.practiceItem.findMany({ where: { id: { in: form.f.map(([id]) => id) } }, include: { media: { where: { deletedAt: null } } } })) as ItemWithMedia[];
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const items = form.f.flatMap(([id, skill, units]) => {
+    const r = byId.get(id);
+    return r ? [{ skill, slug: r.taskSlug as PracticeSlug, units, view: buildView(r.taskSlug as PracticeSlug, [r]) }] : [];
+  });
+  return { id: row.id, token: encodeForm(form), items, startedAt: new Date(form.t).toISOString(), expiresAt: new Date(form.t + FORM_TTL_MS).toISOString() };
+}
+
+/** Credits left and any unfinished test, for the mock test start page. */
+export async function mockStatus(userId: string): Promise<{ mockCredits: number; active: { startedAt: string; expiresAt: string } | null }> {
+  const [user, row] = await Promise.all([db.user.findUnique({ where: { id: userId }, select: { mockCredits: true } }), db.mockTestResult.findFirst({ where: activeWhere(userId), select: { startedAt: true } })]);
+  return {
+    mockCredits: user?.mockCredits ?? 0,
+    active: row?.startedAt ? { startedAt: row.startedAt.toISOString(), expiresAt: new Date(row.startedAt.getTime() + FORM_TTL_MS).toISOString() } : null,
+  };
 }
 
 /** The single item id inside a one-item view. */
-function itemIdOf(view: PracticeView): string {
-  const first = (view as { items: { itemId: string }[] }).items[0];
-  return first.itemId;
-}
+const itemIdOf = (view: PracticeView): string => view.items[0].itemId;
 
 export async function submitMockTest(userId: string, input: { token: string; answers: { itemId: string; unitId: string; response: unknown }[]; durationSeconds: number }) {
   const form = decodeForm(input.token, userId);
-  const done = await db.mockTestResult.count({ where: { userId, sectionsJson: { path: ["formId"], equals: form.id } } });
-  if (done) throw new ApiError(409, "CONFLICT", "This test was already submitted.");
+  const started = await db.mockTestResult.findFirst({ where: { id: form.id, userId }, select: { status: true } });
+  if (!started) throw new ApiError(400, "VALIDATION_ERROR", "This test could not be checked. Please start a new mock test.");
+  if (started.status === "completed") throw new ApiError(409, "CONFLICT", "This test was already submitted.");
 
   const ids = [...new Set(form.f.map(([id]) => id))];
   const rows = await db.practiceItem.findMany({ where: { id: { in: ids } } });
@@ -180,15 +223,18 @@ export async function submitMockTest(userId: string, input: { token: string; ans
   const bands = sections.map((s) => s.band).filter((b): b is number => b !== null);
   const personalised = rows.length ? rows.filter((r) => r.userId === userId).length / rows.length : 0;
   const stored: Stored = { format: 2, formId: form.id, itemIds: ids, personalised, estimatedBand: bands.length ? overallBand(bands) : null, sections };
-  const row = await db.mockTestResult.create({
-    data: { userId, sectionsJson: stored as unknown as Prisma.InputJsonValue, durationSeconds: Math.min(input.durationSeconds, 4 * 3600), scoringVersion: MOCK_SCORING_VERSION },
+  // Only a still-started row is completed (a parallel submit of the same test loses).
+  const done = await db.mockTestResult.updateMany({
+    where: { id: form.id, userId, status: "started" },
+    data: { status: "completed", sectionsJson: stored as unknown as Prisma.InputJsonValue, durationSeconds: Math.min(input.durationSeconds, 4 * 3600), completedAt: new Date() },
   });
-  return toResult(row);
+  if (done.count !== 1) throw new ApiError(409, "CONFLICT", "This test was already submitted.");
+  return toResult(await db.mockTestResult.findUniqueOrThrow({ where: { id: form.id } }));
 }
 
 /** The learner's mock tests, newest first. */
 export async function mockHistory(userId: string, take = 20): Promise<MockResult[]> {
-  const rows = await db.mockTestResult.findMany({ where: { userId }, orderBy: { completedAt: "desc" }, take });
+  const rows = await db.mockTestResult.findMany({ where: { userId, status: "completed" }, orderBy: { completedAt: "desc" }, take });
   return rows.map(toResult);
 }
 

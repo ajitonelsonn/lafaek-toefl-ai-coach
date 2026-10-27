@@ -5,8 +5,6 @@ import type { StudyPlanInputBody } from "@/lib/validation/schemas";
 export type StudyPlanDTO = Omit<StudyPlan, "input"> & {
   input: StudyPlanInputBody;
   version: number;
-  /** ISO time when a new plan may be made (one plan per STUDY_PLAN_COOLDOWN_DAYS); null when allowed now. */
-  nextPlanAt: string | null;
   /** The AI pass over the schedule is still queued or running. */
   schedulePending: boolean;
 };

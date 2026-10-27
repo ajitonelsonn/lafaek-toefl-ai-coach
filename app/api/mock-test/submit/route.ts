@@ -3,10 +3,10 @@ import { json, parseBody, route } from "@/lib/server/http";
 import { requireAuth } from "@/lib/server/auth/session";
 import { rateLimit } from "@/lib/server/rate-limit";
 import { submitMockTest } from "@/lib/server/mock-test";
-import { skillSchema } from "@/lib/validation/schemas";
 
 const body = z.object({
-  sections: z.array(skillSchema).min(1).max(4),
+  /** Signed form from the session page; only its questions are scored, once. */
+  token: z.string().min(20).max(8000),
   durationSeconds: z.number().int().nonnegative(),
   answers: z.array(z.object({ itemId: z.string().uuid(), unitId: z.string().regex(/^[a-z]\d{0,2}$/), response: z.unknown() })).max(40),
 });

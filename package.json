@@ -19,7 +19,9 @@
     "db:seed": "dotenv -e .env.local -- tsx --conditions=react-server scripts/seed-starter.ts",
     "worker": "dotenv -e .env.local -- tsx --conditions=react-server scripts/worker.ts",
     "worker:prod": "tsx --conditions=react-server scripts/worker.ts",
-    "verify:providers": "dotenv -e .env.local -- tsx --conditions=react-server scripts/verify-providers.ts"
+    "verify:providers": "dotenv -e .env.local -- tsx --conditions=react-server scripts/verify-providers.ts",
+    "upgrade:grant": "dotenv -e .env.local -- tsx --conditions=react-server scripts/grant-upgrade.ts",
+    "upgrade:grant:prod": "tsx --conditions=react-server scripts/grant-upgrade.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1157.0",

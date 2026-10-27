@@ -100,6 +100,9 @@ model User {
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
   lastLoginAt     DateTime?  @map("last_login_at")
+  /// Lifetime allowances: Starter gives 1 + 1; each Boost Pack adds 1 plan and 2 mock tests.
+  planCredits     Int        @default(1) @map("plan_credits")
+  mockCredits     Int        @default(1) @map("mock_credits")
 
   otps             AuthOtp[]
   sessions         Session[]
@@ -113,6 +116,7 @@ model User {
   preferences      UserPreferences?
   vocabulary       VocabularyProgress[]
   vocabularyWords  VocabularyWord[]
+  creditGrants     CreditGrant[]        @relation("CreditGrantUser")
   drafts           PracticeDraft[]
   mockResults      MockTestResult[]
   adminAuditEvents AdminAuditEvent[]
@@ -431,18 +435,40 @@ model PracticeDraft {
   @@map("practice_drafts")
 }
 
+/// One mock test: "started" (form chosen, credit used) until submitted, then "completed".
 model MockTestResult {
-  id              String   @id @default(uuid()) @db.Uuid
-  userId          String   @map("user_id") @db.Uuid
-  sectionsJson    Json     @map("sections_json")
-  durationSeconds Int      @map("duration_seconds")
-  scoringVersion  String   @map("scoring_version")
-  completedAt     DateTime @default(now()) @map("completed_at")
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  status          String    @default("completed")
+  formJson        Json?     @map("form_json")
+  startedAt       DateTime? @map("started_at")
+  sectionsJson    Json      @map("sections_json")
+  durationSeconds Int       @map("duration_seconds")
+  scoringVersion  String    @map("scoring_version")
+  completedAt     DateTime  @default(now()) @map("completed_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, completedAt])
+  @@index([userId, status])
   @@map("mock_test_results")
+}
+
+/// Ledger of upgrades granted by an admin (payment is arranged by email).
+model CreditGrant {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  packs       Int
+  planCredits Int      @map("plan_credits")
+  mockCredits Int      @map("mock_credits")
+  note        String?
+  grantedBy   String?  @map("granted_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation("CreditGrantUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("credit_grants")
 }
 
 model AdminAuditEvent {

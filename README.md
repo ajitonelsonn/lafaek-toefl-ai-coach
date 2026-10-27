@@ -53,6 +53,7 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
   "not yours" returns the same 404 as "not found".
 - **Content.**
   - Each learner sees the shared **starter set** (hand-written, original) plus their own **personalised items**.
+  - Mock tests use questions not used in earlier mock tests first, preferring personalised ones.
   - Personalised items are generated once per study plan (one batch per user and plan version, behind an idempotency key).
   - Answer keys stay on the server; objective tasks are scored with versioned logic (`objective-1`).
 - **Study plans.**
@@ -75,10 +76,9 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
     - The page shows "Personalising with AI…" until the job finishes.
     - Code: `lib/server/generation/study-schedule.ts`.
   - **Score scale.** Targets use the TOEFL 2026 bands (1–6, see below).
-  - **One study plan per account per 30 days** (`STUDY_PLAN_COOLDOWN_DAYS`). Editing or replacing the plan within
-    that period is refused with `PLAN_LIMIT`, and the Study Plan page disables both buttons and shows the date. A
-    per-user advisory lock stops concurrent saves from bypassing the limit. A new plan after the period gets its own
-    generation batch; earlier questions stay available.
+  - **Lifetime credits.** Every save uses one study-plan credit: the first plan, an edit, or a new plan. See *Plans
+    and upgrades*. Without a credit, the server returns `402 UPGRADE_REQUIRED` and the Study Plan page shows
+    **Upgrade · $5**. Each saved plan gets its own generation batch; earlier questions stay available.
 - **Generation jobs.** Job types are `study_schedule`, `task_pack` (12 per plan; default counts in
   `PRACTICE_TYPES.referenceCount`, 208 questions per plan), `vocabulary_pack`, `asset_image`, `asset_audio`,
   `delete_user_assets` and `reconcile_media`.
@@ -105,6 +105,32 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
   learner turns on _Keep my speaking recordings_ and S3 is configured.
 - **Writing.** Mechanical checks (length, structure, greeting/closing, opinion, reasons) are labelled "not AI scoring".
   AI coaching is optional, needs a click, is rate-limited, and is labelled practice feedback.
+- **Plans and upgrades** (`lib/config/pricing.ts`, `lib/server/credits.ts`). There is no subscription; credits are
+  lifetime and never expire.
+  - **Starter**, free for life: 1 study plan and 1 mock test. These are the column defaults on `users`.
+  - **Boost Pack**, $5 per pack: +1 study plan and +2 mock tests. Learners email the admin (`SITE.adminEmail`) and
+    pay as agreed.
+    - The admin adds packs with `npm run upgrade:grant -- learner@example.com [packs] [note]`. In production (Render
+      Shell) use `npm run upgrade:grant:prod -- …`; an admin can also call `POST /api/admin/upgrades`.
+    - Every grant is recorded in `credit_grants`, and API grants also in `admin_audit_events`.
+  - **Open Source:** self-host from GitHub for personal, non-commercial use. Business use needs the admin's
+    agreement.
+  - Credits are used atomically (`UPDATE … WHERE credits > 0`) under a per-user advisory lock, so concurrent
+    requests cannot overspend.
+- **Mock test.** Each test is built per learner (`lib/server/mock-test.ts`, `MOCK_BLUEPRINT`).
+  - **Contents:** Reading 5, Listening 6, Writing 1 and Speaking 2 questions, about 26 min. It uses the learner's
+    own AI questions first, preferring ones not used in earlier mock tests and not yet practised. The starter set fills
+    any gaps.
+  - **Starting.** `POST /api/mock-test/start` uses one mock credit and stores the chosen form as a `started` row.
+    Reloading `/mock-test/session` resumes it without using another credit; unfinished tests expire after 8 hours.
+    A GSAP "preparing your mock test" screen covers the wait.
+  - **Signed form.** The browser gets the chosen questions in a signed (HMAC) form token, so a submission scores
+    exactly those questions, once, for that user.
+  - **Timing.** Each section has its own timer. When it ends, the next section starts and the learner cannot go
+    back; the last section submits automatically.
+  - **Scoring.** Reading and Listening are scored on the server and get a rough practice band (1–6); the overall
+    estimate is their average. Writing gets length and structure checks, and Speaking is recorded only.
+  - **History.** Every result is kept: the results page shows the latest test plus a history chart and table.
 - **Timing.** Practice tasks have no countdown; only the mock test is timed. Speaking recordings still stop at the
   task's answer time.
 - **Interface motion (GSAP).** All of it is off when the device asks for reduced motion (`lib/client/motion.ts`).

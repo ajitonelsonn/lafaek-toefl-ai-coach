@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SCORE_BANDS, cefrForBand, isScoreBand, normaliseTarget, overallBand } from "@/lib/config/toefl-scale";
+import { SCORE_BANDS, cefrForBand, estimateBandFromAccuracy, isScoreBand, normaliseTarget, overallBand } from "@/lib/config/toefl-scale";
 import { studyPlanInputSchema } from "@/lib/validation/schemas";
 
 // TOEFL iBT 2026 scale: bands 1–6 in 0.5 steps; CEFR as printed on the score report.
@@ -27,5 +27,13 @@ describe("TOEFL 2026 score scale", () => {
     const base = { level: "intermediate", testDate: null, dailyMinutes: 30, studyDays: ["mon"], weakAreas: [], emphasis: "balanced", accents: ["en-US"], goals: "" };
     expect(studyPlanInputSchema.safeParse({ ...base, targetScore: 4.5 }).success).toBe(true);
     expect(studyPlanInputSchema.safeParse({ ...base, targetScore: 90 }).success).toBe(false);
+  });
+
+  it("turns section accuracy into a rough practice band", () => {
+    expect(estimateBandFromAccuracy(5, 5)).toBe(6);
+    expect(estimateBandFromAccuracy(4, 5)).toBe(5);
+    expect(estimateBandFromAccuracy(3, 5)).toBe(3.5);
+    expect(estimateBandFromAccuracy(0, 6)).toBe(1);
+    expect(estimateBandFromAccuracy(0, 0)).toBeNull();
   });
 });

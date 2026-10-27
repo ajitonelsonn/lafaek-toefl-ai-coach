@@ -22,7 +22,6 @@ const schema = z.object({
   OTP_MAX_ATTEMPTS: int(5),
   OTP_RESEND_COOLDOWN_SECONDS: int(60),
   SESSION_TTL_DAYS: int(30),
-  STUDY_PLAN_COOLDOWN_DAYS: int(30),
   SMTP_HOST: optional,
   SMTP_PORT: int(587),
   SMTP_SECURE: bool.default(false),

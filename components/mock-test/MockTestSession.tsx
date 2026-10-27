@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Bookmark, BookmarkCheck, Send } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, BookmarkCheck, Check, Send } from "lucide-react";
 import { getSkill, type SkillId } from "@/lib/config/practice-types";
 import { MOCK_DEMO_MINUTES } from "@/lib/config/mock-test";
 import type { AudioDTO, ChoiceQuestionDTO, PracticeView } from "@/lib/practice/dto";
@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils/cn";
 
 export interface MockFormItemDTO {
   skill: SkillId;
+  slug?: string;
   units: string[];
   view: PracticeView;
 }
@@ -88,17 +89,18 @@ function toUnits(form: MockFormItemDTO[]): Unit[] {
   return out;
 }
 
-export function MockTestSession({ form, sections }: { form: MockFormItemDTO[]; sections: SkillId[] }) {
+export function MockTestSession({ form, token, sections }: { form: MockFormItemDTO[]; token: string; sections: SkillId[] }) {
   const router = useRouter();
   const toast = useToast();
   const units = useMemo(() => toUnits(form), [form]);
-  const totalSeconds = sections.reduce((n, s) => n + MOCK_DEMO_MINUTES[s], 0) * 60;
+  // One section at a time, each with its own timer (like the real test). Finished sections are closed.
+  const order = useMemo(() => sections.filter((s) => units.some((u) => u.skill === s)), [sections, units]);
 
+  const [sectionIdx, setSectionIdx] = useState(0);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [flagged, setFlagged] = useState<Record<string, boolean>>({});
   const [confirm, setConfirm] = useState(false);
-  const [timeUp, setTimeUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const startedAt = useRef(Date.now());
   const submitted = useRef(false);
@@ -125,14 +127,18 @@ export function MockTestSession({ form, sections }: { form: MockFormItemDTO[]; s
     );
   }
 
-  const unit = units[index];
+  const section = order[sectionIdx];
+  const sectionUnits = units.filter((u) => u.skill === section);
+  const unit = sectionUnits[Math.min(index, sectionUnits.length - 1)];
+  const isLastSection = sectionIdx === order.length - 1;
   const isAnswered = (u: Unit) => {
     const a = answers[u.key];
     if (a === undefined) return false;
     if (u.kind === "writing") return typeof (a as { body?: string }).body === "string" && (a as { body: string }).body.trim().length > 0;
     return true;
   };
-  const unanswered = units.filter((u) => !isAnswered(u)).length;
+  const unansweredHere = sectionUnits.filter((u) => !isAnswered(u)).length;
+  const personalised = form.filter((f) => f.view.items[0]?.source === "generated").length;
   const set = (value: unknown) =>
     setAnswers((a) => {
       const next = { ...a };
@@ -142,56 +148,67 @@ export function MockTestSession({ form, sections }: { form: MockFormItemDTO[]; s
     });
 
   const submit = async () => {
+    if (submitted.current) return;
+    submitted.current = true;
     setSubmitting(true);
     try {
-      // Speaking is not uploaded in the mock test; only objective answers and writing are sent.
-      const payload = units.filter((u) => u.kind !== "speaking" && isAnswered(u)).map((u) => ({ itemId: u.itemId, unitId: u.unitId, response: answers[u.key] }));
-      const speakingDone = units.filter((u) => u.kind === "speaking" && isAnswered(u)).map((u) => ({ itemId: u.itemId, unitId: u.unitId, response: null }));
-      await api("/api/mock-test/submit", {
-        body: { sections, durationSeconds: Math.round((Date.now() - startedAt.current) / 1000), answers: [...payload, ...speakingDone] },
-      });
-      submitted.current = true;
+      // Speaking is not uploaded in the mock test; it is marked as answered only.
+      const payload = units
+        .filter((u) => isAnswered(u))
+        .map((u) => ({ itemId: u.itemId, unitId: u.unitId, response: u.kind === "speaking" ? null : answers[u.key] }));
+      await api("/api/mock-test/submit", { body: { token, durationSeconds: Math.round((Date.now() - startedAt.current) / 1000), answers: payload } });
       router.push("/mock-test/results");
       router.refresh();
     } catch (e) {
+      submitted.current = false;
       toast(errorMessage(e), "warning");
       setSubmitting(false);
       setConfirm(false);
     }
   };
 
-  const sectionStart = (skill: SkillId) => units.findIndex((u) => u.skill === skill);
+  /** Ends the current section (early by choice, or when its time is up) and opens the next one. */
+  const endSection = (timeUp: boolean) => {
+    setConfirm(false);
+    if (isLastSection) {
+      if (timeUp) toast("Time is up. Submitting your test.", "info");
+      void submit();
+      return;
+    }
+    const next = order[sectionIdx + 1];
+    toast(timeUp ? `Time is up for ${getSkill(section).title}. Starting ${getSkill(next).title}.` : `Starting ${getSkill(next).title}.`, "info");
+    setSectionIdx((i) => i + 1);
+    setIndex(0);
+  };
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-extrabold text-ink sm:text-3xl">Mock Test</h1>
-          <StatusBadge tone="warning">Practice test · starter questions</StatusBadge>
+          <StatusBadge tone={personalised ? "primary" : "warning"}>{personalised ? "Practice test · from your personalised questions" : "Practice test · starter questions"}</StatusBadge>
         </div>
-        <nav aria-label="Test sections" className="flex flex-wrap gap-2">
-          {sections.map((skill) => {
-            const active = unit.skill === skill;
-            const start = sectionStart(skill);
-            if (start < 0) return null;
-            return (
-              <button
-                key={skill}
-                type="button"
-                onClick={() => setIndex(start)}
-                aria-current={active ? "step" : undefined}
-                className={cn("rounded-full px-4 py-2 text-sm font-semibold", active ? "bg-primary text-on-primary" : "bg-surface text-body ring-1 ring-line hover:ring-primary")}
-              >
-                {getSkill(skill).title}
-              </button>
-            );
-          })}
-        </nav>
+        <ol aria-label="Test sections" className="flex flex-wrap gap-2">
+          {order.map((skill, i) => (
+            <li
+              key={skill}
+              aria-current={i === sectionIdx ? "step" : undefined}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold",
+                i === sectionIdx ? "bg-primary text-on-primary" : i < sectionIdx ? "bg-success-soft text-success" : "bg-surface text-muted ring-1 ring-line",
+              )}
+            >
+              {i < sectionIdx && <Check className="size-4" aria-hidden />}
+              {getSkill(skill).title}
+              <span className="sr-only">{i < sectionIdx ? "(finished)" : i === sectionIdx ? "(current)" : "(next)"}</span>
+            </li>
+          ))}
+        </ol>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:grid-rows-[auto_1fr]">
         <div className="order-1 xl:col-start-2 xl:row-start-1">
-          <CountdownTimer totalSeconds={totalSeconds} title="Test Time" onExpire={() => setTimeUp(true)} />
+          <CountdownTimer key={section} totalSeconds={MOCK_DEMO_MINUTES[section] * 60} title={`${getSkill(section).title} time`} stopped={submitting} onExpire={() => endSection(true)} />
         </div>
 
         <section aria-label={`Question ${index + 1}`} className="order-2 min-w-0 xl:col-start-1 xl:row-span-2 xl:row-start-1">
@@ -202,15 +219,10 @@ export function MockTestSession({ form, sections }: { form: MockFormItemDTO[]; s
                 <h2 className="text-xl font-bold text-ink">{unit.title}</h2>
               </div>
               <span className="rounded-lg bg-surface-muted px-3 py-1.5 text-sm font-semibold text-ink tabular-nums">
-                Question {index + 1} of {units.length}
+                Question {index + 1} of {sectionUnits.length}
               </span>
             </header>
             <div className="flex flex-col gap-5 p-5">
-              {timeUp && (
-                <p className="rounded-xl bg-danger-soft p-3 text-sm font-semibold text-danger" role="alert">
-                  Time is up. Please submit your test.
-                </p>
-              )}
               <UnitView key={unit.key} unit={unit} answer={answers[unit.key]} onAnswer={set} />
             </div>
           </div>
@@ -228,13 +240,13 @@ export function MockTestSession({ form, sections }: { form: MockFormItemDTO[]; s
               >
                 {flagged[unit.key] ? "Marked" : "Mark for Review"}
               </Button>
-              {index < units.length - 1 ? (
+              {index < sectionUnits.length - 1 ? (
                 <Button size="lg" rightIcon={<ArrowRight className="size-4" />} onClick={() => setIndex(index + 1)}>
                   Next
                 </Button>
               ) : (
-                <Button size="lg" rightIcon={<Send className="size-4" />} onClick={() => setConfirm(true)}>
-                  Submit Test
+                <Button size="lg" rightIcon={isLastSection ? <Send className="size-4" /> : <ArrowRight className="size-4" />} onClick={() => setConfirm(true)} loading={submitting}>
+                  {isLastSection ? "Submit Test" : "Finish Section"}
                 </Button>
               )}
             </div>
@@ -242,21 +254,25 @@ export function MockTestSession({ form, sections }: { form: MockFormItemDTO[]; s
         </section>
 
         <div className="order-3 flex flex-col gap-5 xl:col-start-2 xl:row-start-2">
-          <QuestionNavigation items={units.map((u) => ({ id: u.key, status: isAnswered(u) ? "answered" : "unanswered", flagged: flagged[u.key] }))} current={index} onSelect={setIndex} />
-          <Button variant="secondary" fullWidth leftIcon={<Send className="size-4" />} onClick={() => setConfirm(true)}>
-            Submit Test
+          <QuestionNavigation items={sectionUnits.map((u) => ({ id: u.key, status: isAnswered(u) ? "answered" : "unanswered", flagged: flagged[u.key] }))} current={index} onSelect={setIndex} />
+          <Button variant="secondary" fullWidth leftIcon={isLastSection ? <Send className="size-4" /> : <ArrowRight className="size-4" />} onClick={() => setConfirm(true)} loading={submitting}>
+            {isLastSection ? "Submit Test" : `Finish ${getSkill(section).title}`}
           </Button>
+          <p className="text-xs text-muted">Each section has its own time. When it ends, the next section starts and you cannot go back.</p>
         </div>
       </div>
 
       <ConfirmDialog
         open={confirm}
-        title="Submit your test?"
-        description={unanswered ? `You have ${unanswered} unanswered question${unanswered === 1 ? "" : "s"}. You cannot change answers after submitting.` : "You answered every question. You cannot change answers after submitting."}
-        confirmLabel={submitting ? "Submitting…" : "Submit"}
+        title={isLastSection ? "Submit your test?" : `Finish ${getSkill(section).title}?`}
+        description={
+          (unansweredHere ? `You have ${unansweredHere} unanswered question${unansweredHere === 1 ? "" : "s"} in this section. ` : "") +
+          (isLastSection ? "You cannot change answers after submitting." : "You cannot come back to this section.")
+        }
+        confirmLabel={submitting ? "Submitting…" : isLastSection ? "Submit" : "Next section"}
         cancelLabel="Keep working"
         onCancel={() => setConfirm(false)}
-        onConfirm={() => void submit()}
+        onConfirm={() => endSection(false)}
       />
     </div>
   );

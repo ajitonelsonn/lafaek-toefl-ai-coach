@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { JobType } from "@prisma/client";
 import type { PracticeSlug } from "@/lib/config/practice-types";
 import { starterEntries } from "@/prisma/starter/convert";
 import type { StudyPlanInputBody } from "@/lib/validation/schemas";
@@ -38,19 +39,23 @@ vi.mock("@/lib/server/providers/meta", async () => {
 
 import { db } from "@/lib/server/db";
 import { savePlan } from "@/lib/server/study-plan";
-import { claimJobs, recoverExpiredLeases, startInitialBatch } from "@/lib/server/generation/queue";
+import { ALL_JOB_TYPES, claimJobs, recoverExpiredLeases, startInitialBatch } from "@/lib/server/generation/queue";
 import { tick } from "@/lib/server/generation/worker";
 import { queueStudySchedule } from "@/lib/server/generation/study-schedule";
 import { getActivePlan } from "@/lib/server/study-plan";
+import { getCredits, grantBoostPacks } from "@/lib/server/credits";
 import { getBatchStatus } from "@/lib/server/generation/status";
 import { getOwnedItem, getPracticeSet } from "@/lib/server/practice";
 import { createUser, resetTestDb } from "../support/db";
 
 const INPUT: StudyPlanInputBody = { level: "intermediate", targetScore: 4.5, testDate: null, dailyMinutes: 30, studyDays: ["mon"], weakAreas: [], emphasis: "balanced", accents: ["en-US"], goals: "" };
 
-async function drain(owner = "test-worker") {
+// Vocabulary jobs double the work per plan; only the full-generation test needs them, so other
+// tests drain without them to stay fast against the remote test database.
+const WITHOUT_VOCABULARY = ALL_JOB_TYPES.filter((t) => t !== "vocabulary_pack");
+async function drain(owner = "test-worker", jobTypes: JobType[] = WITHOUT_VOCABULARY) {
   for (let i = 0; i < 100; i++) {
-    const n = await tick(owner, 3);
+    const n = await tick(owner, 3, jobTypes);
     if (n === 0) break;
   }
 }
@@ -99,28 +104,31 @@ describe("generation batches", () => {
     expect(plan.schedule!.filter((d) => d.week === 1 && d.type === "study").every((d) => d.tasks.some((t) => t.slug === "take-interview" || t.slug === "listen-repeat"))).toBe(true);
   });
 
-  it("allows one study plan per 30 days; a later plan gets its own batch", async () => {
+  it("gives one free study plan for life; a Boost Pack adds one more with its own batch", async () => {
     const u = await createUser("a@example.com");
-    const first = await savePlan(u.id, { ...INPUT }, false);
-    expect(first.nextPlanAt).not.toBeNull();
+    await savePlan(u.id, { ...INPUT }, false);
     const firstBatch = await startInitialBatch(u.id, randomUUID());
-    await expect(savePlan(u.id, { ...INPUT, targetScore: 5 }, true)).rejects.toMatchObject({ code: "PLAN_LIMIT" });
+    expect(await getCredits(u.id)).toMatchObject({ planCredits: 0 });
+    // No credit left: editing or replacing the plan needs an upgrade (402), and nothing changes.
+    await expect(savePlan(u.id, { ...INPUT, targetScore: 5 }, true)).rejects.toMatchObject({ status: 402, code: "UPGRADE_REQUIRED" });
     expect(await db.studyPlan.count({ where: { userId: u.id } })).toBe(1);
 
-    // 31 days later a new plan is allowed and starts a new batch.
-    await db.studyPlan.updateMany({ where: { userId: u.id }, data: { createdAt: new Date(Date.now() - 31 * 86_400_000) } });
+    const grant = await grantBoostPacks({ email: "a@example.com", packs: 1, grantedBy: "test-admin" });
+    expect(grant.added).toEqual({ planCredits: 1, mockCredits: 2 });
+    expect(await db.creditGrant.count({ where: { userId: u.id } })).toBe(1);
     const second = await savePlan(u.id, { ...INPUT, targetScore: 5 }, true);
     expect(second.version).toBe(2);
     const secondBatch = await startInitialBatch(u.id, randomUUID());
     expect(secondBatch.id).not.toBe(firstBatch.id);
     expect(secondBatch.planVersion).toBe(2);
+    expect(await getCredits(u.id)).toMatchObject({ planCredits: 0, mockCredits: 3 });
   });
 
   it("generates, validates and stores every task type; re-running creates no duplicates", async () => {
     const u = await createUser("a@example.com");
     await savePlan(u.id, { ...INPUT }, false);
     const batch = await startInitialBatch(u.id, randomUUID());
-    await drain();
+    await drain("test-worker", ALL_JOB_TYPES); // includes vocabulary, checked below
     const status = await getBatchStatus(u.id, batch.id);
     expect(status?.status).toBe("completed");
     const perTask = Number(process.env.GENERATION_ITEMS_PER_TASK ?? 2);
@@ -130,7 +138,7 @@ describe("generation batches", () => {
     // Re-queue everything and process again: completed items are checkpointed, not regenerated.
     const callsBefore = control.calls;
     await db.generationJob.updateMany({ where: { jobType: "task_pack" }, data: { status: "queued", attemptCount: 0 } });
-    await drain();
+    await drain("test-worker", ALL_JOB_TYPES);
     expect(await db.practiceItem.count({ where: { userId: u.id } })).toBe(items);
     expect(control.calls).toBe(callsBefore);
     // Asset jobs wait for storage configuration rather than failing silently.
