@@ -8,6 +8,7 @@ import { pruneRateLimits } from "../rate-limit";
 import { claimJobs, completeJob, failJob, heartbeat, recoverExpiredLeases, unblockJobs } from "./queue";
 import { JobFailure, reconcileMedia, runAudioAsset, runDeleteUserAssets, runImageAsset, runTaskPack, toJobFailure } from "./handlers";
 import { backfillVocabularyJobs, queueVocabularyFor, runVocabularyPack } from "./vocabulary";
+import { runStudySchedule } from "./study-schedule";
 
 export const workerId = () => `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
 
@@ -34,6 +35,9 @@ export async function processJob(job: GenerationJob, owner: string): Promise<voi
         break;
       case "vocabulary_pack":
         await runVocabularyPack(job);
+        break;
+      case "study_schedule":
+        await runStudySchedule(job);
         break;
     }
     await completeJob(job, owner, job.jobType === "task_pack" ? { provider: "meta" } : {});

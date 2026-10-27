@@ -14,6 +14,9 @@ vi.mock("@/lib/server/providers/meta", async () => {
       const requestId = `req-${control.calls}`;
       const usage = { inputTokens: 100, outputTokens: 200 };
       if (task === "verify:build-sentence") return { data: { grammatical: true, uniqueOrder: true, issue: "" }, usage, model: "muse-spark-1.3", requestId };
+      if (task === "generate:study-schedule") {
+        return { data: { weeks: [{ week: 1, theme: "AI warm-up week", focusSkills: ["speaking"], priorityTasks: ["take-interview", "listen-repeat"], mockTestDate: null, tip: "Speak for one full minute every day." }] }, usage, model: "muse-spark-1.3", requestId };
+      }
       if (task.startsWith("generate:vocabulary-")) {
         // Two long words from the given texts, plus one that is not in them (must be dropped).
         const text = user.split("<<<")[1]?.split(">>>")[0] ?? "";
@@ -37,6 +40,8 @@ import { db } from "@/lib/server/db";
 import { savePlan } from "@/lib/server/study-plan";
 import { claimJobs, recoverExpiredLeases, startInitialBatch } from "@/lib/server/generation/queue";
 import { tick } from "@/lib/server/generation/worker";
+import { queueStudySchedule } from "@/lib/server/generation/study-schedule";
+import { getActivePlan } from "@/lib/server/study-plan";
 import { getBatchStatus } from "@/lib/server/generation/status";
 import { getOwnedItem, getPracticeSet } from "@/lib/server/practice";
 import { createUser, resetTestDb } from "../support/db";
@@ -72,6 +77,26 @@ describe("generation batches", () => {
     await startInitialBatch(u.id, randomUUID());
     expect(await claimJobs("audio-only", 5, ["asset_audio", "delete_user_assets"])).toHaveLength(0);
     expect(await claimJobs("full", 5)).toHaveLength(1);
+  });
+
+  it("personalises the dated schedule with AI in the worker, within the learner's calendar", async () => {
+    const u = await createUser("a@example.com");
+    const start = new Date().toISOString().slice(0, 10);
+    const test = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
+    const saved = await savePlan(u.id, { ...INPUT, testDate: test, studyDays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], startDate: start }, false);
+    expect(saved.scheduleSource).toBe("rules");
+    expect(saved.schedule!.at(-1)).toMatchObject({ date: test, type: "test" });
+    await queueStudySchedule(u.id, saved.id);
+    expect((await getActivePlan(u.id))!.schedulePending).toBe(true);
+    await tick("w", 1, ["study_schedule"]);
+    const plan = (await getActivePlan(u.id))!;
+    expect(plan.schedulePending).toBe(false);
+    expect(plan.scheduleSource).toBe("ai");
+    expect(plan.weeks![0]).toMatchObject({ theme: "AI warm-up week", priorityTasks: ["take-interview", "listen-repeat"] });
+    // Weeks the AI did not return keep the rule outline; the dates are unchanged.
+    expect(plan.weeks!.length).toBe(saved.weeks!.length);
+    expect(plan.schedule!.map((d) => d.date)).toEqual(saved.schedule!.map((d) => d.date));
+    expect(plan.schedule!.filter((d) => d.week === 1 && d.type === "study").every((d) => d.tasks.some((t) => t.slug === "take-interview" || t.slug === "listen-repeat"))).toBe(true);
   });
 
   it("allows one study plan per 30 days; a later plan gets its own batch", async () => {

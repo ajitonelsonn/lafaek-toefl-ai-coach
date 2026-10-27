@@ -11,7 +11,7 @@ import { todayKey } from "@/lib/utils/dates";
 import { formatRelative, percent } from "@/lib/utils/format";
 import type { ProgressDTO } from "@/lib/practice/insights-dto";
 import type { GenerationBatchDTO } from "@/lib/practice/generation-dto";
-import type { StudyPlanDTO } from "@/lib/practice/plan-dto";
+import { planToday, shortDay, type StudyPlanDTO } from "@/lib/practice/plan-dto";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -55,13 +55,15 @@ export function Dashboard({ userName, plan, progress, batch }: DashboardProps) {
   const week = weekDates();
   const today = todayKey();
   const practisedDays = new Set(progress.practisedDates);
-  const dailyTotal = studyPlan?.dailyTasks.length ?? 0;
+  const todayPlan = studyPlan ? planToday(studyPlan, today) : null;
+  const todayTasks = todayPlan?.isToday ? todayPlan.tasks : [];
+  const dailyTotal = todayTasks.length;
   const dailyCount =
-    studyPlan?.dailyTasks.filter((t) => {
+    todayTasks.filter((t) => {
       const slug = t.href.startsWith("/practice/") ? t.href.split("/")[2] : null;
       const last = slug ? byTask.get(slug as PracticeType["slug"])?.lastPractisedAt : null;
       return last ? todayKey(new Date(last)) === today : false;
-    }).length ?? 0;
+    }).length;
   const attempts = progress.recent;
 
   const totals = SKILLS.map((skill) => {
@@ -121,10 +123,17 @@ export function Dashboard({ userName, plan, progress, batch }: DashboardProps) {
                 <Target className="size-4 text-success" aria-hidden /> Current goal
               </p>
               <p className="font-bold text-ink">
-                Score {formatBand(studyPlan.input.targetScore)} of 6 in {studyPlan.totalWeeks} weeks
+                Score {formatBand(studyPlan.input.targetScore)} of 6{" "}
+                {studyPlan.daysUntilTest != null && studyPlan.input.testDate ? `by ${shortDay(studyPlan.input.testDate)}` : `in ${studyPlan.totalWeeks} weeks`}
               </p>
               <p className="mt-1 text-sm text-body">
-                Today: {dailyCount} of {dailyTotal} tasks done · {studyPlan.input.dailyMinutes} min a day
+                {todayPlan?.day?.type === "test" && todayPlan.isToday
+                  ? "Today is your test day. Good luck!"
+                  : todayPlan?.isToday
+                    ? `Today: ${dailyCount} of ${dailyTotal} tasks done · ${studyPlan.input.dailyMinutes} min a day`
+                    : todayPlan?.day
+                      ? `No study planned today · next: ${shortDay(todayPlan.day.date)}`
+                      : `${studyPlan.input.dailyMinutes} min a day`}
               </p>
             </div>
           ) : (

@@ -60,6 +60,7 @@ enum JobType {
   reconcile_media
   delete_user_assets
   vocabulary_pack
+  study_schedule
 }
 
 enum ItemSource {

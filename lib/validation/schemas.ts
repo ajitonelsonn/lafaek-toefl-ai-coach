@@ -41,6 +41,11 @@ export const studyPlanInputSchema = z.object({
   emphasis: z.enum(["balanced", "weak-areas", "test-strategy", "vocabulary"]),
   accents: z.array(accentSchema).max(4).default(["en-US", "en-GB"]),
   goals: z.string().trim().max(300).default(""),
+  /** The learner's local "today" (YYYY-MM-DD); the server accepts it only within a day of its own date. */
+  startDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
 });
 
 export type StudyPlanInputBody = z.infer<typeof studyPlanInputSchema>;

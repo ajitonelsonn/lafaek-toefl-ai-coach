@@ -10,7 +10,7 @@ import { SCORING_VERSION, isValidResponse, scoreUnit } from "./content/scoring";
 const MAX_ITEMS_PER_PAGE = 30;
 
 /** Items a user may see: the shared starter set plus their own validated generated items. */
-function visibleTo(userId: string): Prisma.PracticeItemWhereInput {
+export function visibleTo(userId: string): Prisma.PracticeItemWhereInput {
   return {
     archivedAt: null,
     validationStatus: "valid",

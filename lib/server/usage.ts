@@ -8,7 +8,7 @@ import { db } from "./db";
 export interface UsageInput {
   idempotencyKey: string;
   userId: string | null;
-  eventType: "text_generation" | "text_feedback" | "image_generation" | "speech_synthesis" | "transcription" | "content_validation" | "vocabulary_generation";
+  eventType: "text_generation" | "text_feedback" | "image_generation" | "speech_synthesis" | "transcription" | "content_validation" | "vocabulary_generation" | "plan_generation";
   provider: "meta" | "elevenlabs";
   modelId: string;
   inputUnits?: number | null;

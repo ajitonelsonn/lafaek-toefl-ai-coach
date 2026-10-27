@@ -5,7 +5,8 @@ import type { StudyPlanInputBody } from "@/lib/validation/schemas";
 import type { StudyPlanDTO } from "@/lib/practice/plan-dto";
 import { normaliseTarget } from "@/lib/config/toefl-scale";
 import { db } from "./db";
-import { env } from "./env";
+import { env, features } from "./env";
+import { queueStudySchedule } from "./generation/study-schedule";
 import { ApiError } from "./http";
 import { buildStudyPlan } from "./study-plan-builder";
 
@@ -20,16 +21,23 @@ function nextPlanAt(lastCreatedAt: Date): Date | null {
   return next > new Date() ? next : null;
 }
 
-function toDTO(row: { id: string; version: number; answersJson: Prisma.JsonValue; createdAt: Date }): StudyPlanDTO {
+function toDTO(row: { id: string; version: number; answersJson: Prisma.JsonValue; createdAt: Date }, schedulePending = false): StudyPlanDTO {
   const a = row.answersJson as unknown as { input: StudyPlanInputBody; plan: StudyPlan };
   // Plans saved before the 2026 scale stored a 0–120 target; read them as the nearest 1–6 band.
   const input = { ...a.input, targetScore: normaliseTarget(a.input.targetScore) };
-  return { ...a.plan, input, id: row.id, createdAt: row.createdAt.toISOString(), version: row.version, nextPlanAt: nextPlanAt(row.createdAt)?.toISOString() ?? null };
+  return { ...a.plan, input, id: row.id, createdAt: row.createdAt.toISOString(), version: row.version, nextPlanAt: nextPlanAt(row.createdAt)?.toISOString() ?? null, schedulePending };
 }
 
 export async function getActivePlan(userId: string): Promise<StudyPlanDTO | null> {
   const row = await db.studyPlan.findFirst({ where: { userId, status: "active" } });
-  return row ? toDTO(row) : null;
+  if (!row) return null;
+  return toDTO(row, await schedulePending(row.id));
+}
+
+/** The AI schedule job for this plan is still waiting or running. */
+async function schedulePending(studyPlanId: string): Promise<boolean> {
+  const n = await db.generationJob.count({ where: { idempotencyKey: `${studyPlanId}:study_schedule`, status: { in: ["queued", "retry_wait", "running", "validating", "storing"] } } });
+  return n > 0;
 }
 
 /**
@@ -64,5 +72,7 @@ export async function savePlan(userId: string, input: StudyPlanInputBody, confir
     if (current) await tx.studyPlan.update({ where: { id: current.id }, data: { status: "superseded" } });
     return tx.studyPlan.create({ data: { userId, version: (current?.version ?? 0) + 1, status: "active", ...data } });
   }, { maxWait: 10_000, timeout: 20_000 });
-  return toDTO(row);
+  // The worker personalises the dated schedule with AI; until then the rule-based schedule is shown.
+  if (features.metaText()) await queueStudySchedule(userId, row.id).catch(() => undefined);
+  return toDTO(row, features.metaText());
 }

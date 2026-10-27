@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, CalendarRange, CheckCircle2, Circle, Pencil, RefreshCw, Trophy } from "lucide-react";
 import { getPracticeType, practiceHref, type PracticeSlug } from "@/lib/config/practice-types";
 import { cefrForBand, formatBand } from "@/lib/config/toefl-scale";
 import type { StudyPlanInputBody } from "@/lib/validation/schemas";
 import type { GenerationBatchDTO } from "@/lib/practice/generation-dto";
 import type { ProgressDTO } from "@/lib/practice/insights-dto";
-import type { StudyPlanDTO } from "@/lib/practice/plan-dto";
+import { planToday, shortDay, type StudyPlanDTO } from "@/lib/practice/plan-dto";
 import { api, ApiClientError, errorMessage } from "@/lib/client/api";
 import { todayKey } from "@/lib/utils/dates";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -21,6 +21,7 @@ import { useToast } from "@/components/ui/Toast";
 import { GenerationProgress } from "@/components/generation/GenerationProgress";
 import { SkillIconTile } from "@/components/practice/icons";
 import { StudyPlanWizard } from "./StudyPlanWizard";
+import { ScheduleCalendar } from "./ScheduleCalendar";
 import { cn } from "@/lib/utils/cn";
 
 type PlanDTO = StudyPlanDTO;
@@ -63,7 +64,8 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
   const finish = async (input: StudyPlanInputBody) => {
     setSaving(true);
     try {
-      const { plan } = await api<{ plan: PlanDTO }>("/api/study-plan", { body: { input, confirmNewVersion: Boolean(studyPlan) } });
+      // The learner's local date is the first day of the schedule.
+      const { plan } = await api<{ plan: PlanDTO }>("/api/study-plan", { body: { input: { ...input, startDate: todayKey() }, confirmNewVersion: Boolean(studyPlan) } });
       setStudyPlan(plan);
       try {
         const r = await api<{ batch: GenerationBatchDTO }>("/api/generation/start", { body: { idempotencyKey: generationKey(plan.id) } });
@@ -83,6 +85,24 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
       setSaving(false);
     }
   };
+
+  // While the worker personalises the schedule with AI, check back every few seconds.
+  const pending = Boolean(studyPlan?.schedulePending);
+  useEffect(() => {
+    if (!pending) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const { plan } = await api<{ plan: PlanDTO | null }>("/api/study-plan");
+        if (plan && !plan.schedulePending) {
+          setStudyPlan(plan);
+          if (plan.scheduleSource === "ai") toast("Your schedule has been personalised by AI.", "success");
+        }
+      } catch {
+        /* keep the current schedule; try again on the next tick */
+      }
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [pending, toast]);
 
   const lockedUntil = studyPlan?.nextPlanAt ?? null;
   const lockNote = lockedUntil ? `You can make a new plan from ${formatDay(lockedUntil)}.` : null;
@@ -112,7 +132,14 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
   const done = progress.byTask.reduce((n, t) => n + Math.min(t.availableUnits, t.attemptedUnits), 0);
   const pct = total ? Math.round((done / total) * 100) : 0;
   const { input } = studyPlan;
-  const doneToday = studyPlan.dailyTasks.filter((t) => practisedToday(t.href)).map((t) => t.id);
+  const todayPlan = planToday(studyPlan, today);
+  const doneToday = todayPlan.isToday ? todayPlan.tasks.filter((t) => practisedToday(t.href)).map((t) => t.id) : [];
+  const length =
+    studyPlan.daysUntilTest != null
+      ? studyPlan.daysUntilTest === 0
+        ? "Test today"
+        : `${studyPlan.daysUntilTest} ${studyPlan.daysUntilTest === 1 ? "day" : "days"} to your test`
+      : `${studyPlan.totalWeeks} weeks`;
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -159,14 +186,14 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
             <div className="flex items-center gap-3 rounded-xl border border-line p-4">
               <CalendarRange className="size-8 text-listening" aria-hidden />
               <div>
-                <p className="text-sm text-muted">Plan length</p>
-                <p className="text-2xl font-bold text-ink">{studyPlan.totalWeeks} weeks</p>
+                <p className="text-sm text-muted">{studyPlan.daysUntilTest != null && input.testDate ? `Test on ${shortDay(input.testDate)}` : "Plan length"}</p>
+                <p className="text-2xl font-bold text-ink">{length}</p>
               </div>
             </div>
             <div className="rounded-xl border border-success/30 bg-success-soft p-4">
               <p className="font-bold text-success">Your goal</p>
               <p className="text-sm text-body">
-                Score <span className="font-bold text-primary">{formatBand(input.targetScore)} of 6</span> in {studyPlan.totalWeeks} weeks · {input.dailyMinutes} min a day ·{" "}
+                Score <span className="font-bold text-primary">{formatBand(input.targetScore)} of 6</span> {studyPlan.daysUntilTest != null ? `by ${input.testDate ? shortDay(input.testDate) : "your test"}` : `in ${studyPlan.totalWeeks} weeks`} · {input.dailyMinutes} min a day ·{" "}
                 {input.studyDays.length} days a week
               </p>
             </div>
@@ -180,13 +207,16 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
                 <StepNumber n={2} /> Weekly Study Plan
               </span>
             }
-            description="Based on your goal and level. Ticks show practice types you have tried."
+            description={studyPlan.schedule?.length ? "Every study day until your test, on the days you chose. Open a week to see each day." : "Based on your goal and level. Ticks show practice types you have tried."}
             action={
               <Button variant="secondary" size="sm" leftIcon={<RefreshCw className="size-4" />} onClick={() => setConfirmReset(true)} disabled={Boolean(lockedUntil)} title={lockNote ?? undefined}>
                 Make a new plan
               </Button>
             }
           />
+          {studyPlan.schedule?.length && studyPlan.weeks?.length ? (
+            <ScheduleCalendar weeks={studyPlan.weeks} schedule={studyPlan.schedule} today={today} source={studyPlan.scheduleSource} pending={pending} />
+          ) : (
           <ol className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
             {studyPlan.phases.map((phase, i) => (
               <li key={phase.title} className={cn("flex flex-col rounded-xl border", PHASE_TONES[i].box)}>
@@ -215,6 +245,7 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
               </li>
             ))}
           </ol>
+          )}
         </Card>
 
         <Card as="section" aria-labelledby="today-title">
@@ -224,10 +255,18 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
                 <StepNumber n={3} /> Today&apos;s Recommended Practice
               </span>
             }
-            description="Your tasks for today."
+            description={
+              todayPlan.isToday
+                ? todayPlan.day?.type === "test"
+                  ? "It's test day. Good luck!"
+                  : "Your tasks for today."
+                : todayPlan.day
+                  ? `No study planned today. Next study day: ${shortDay(todayPlan.day.date)}.`
+                  : "Your plan has finished. Make a new plan to keep going."
+            }
           />
           <ul className="grid gap-3 md:grid-cols-2">
-            {studyPlan.dailyTasks.map((task) => {
+            {todayPlan.tasks.map((task) => {
               const slug = task.href.startsWith("/practice/") ? task.href.split("/")[2] : null;
               const type = slug ? getPracticeType(slug) : undefined;
               return (
@@ -270,11 +309,11 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
               Today&apos;s Study
             </h2>
             <span className="text-sm font-semibold text-ink tabular-nums">
-              {doneToday.length} / {studyPlan.dailyTasks.length}
+              {doneToday.length} / {todayPlan.isToday ? todayPlan.tasks.length : 0}
             </span>
           </div>
           <ul className="space-y-1">
-            {studyPlan.dailyTasks.map((t) => {
+            {(todayPlan.isToday ? todayPlan.tasks : []).map((t) => {
               const isDone = doneToday.includes(t.id);
               return (
                 <li key={t.id}>
@@ -291,7 +330,7 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
         <TipCard title="Study Tip">
           <p>Try to practise a little every day. Consistent study is the best way to improve your TOEFL score.</p>
         </TipCard>
-        <p className="text-xs text-muted">The weekly schedule follows simple, transparent rules based on your answers. The practice questions themselves are generated by AI.</p>
+        <p className="text-xs text-muted">Your schedule is planned from your answers and your test date, then personalised by AI. Every day stays within your chosen study days and time.</p>
       </div>
 
       <ConfirmDialog

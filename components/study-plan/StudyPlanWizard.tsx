@@ -9,6 +9,15 @@ import type { StudyPlanInputBody as StudyPlanInput } from "@/lib/validation/sche
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Field";
 import { cn } from "@/lib/utils/cn";
+import { todayKey } from "@/lib/utils/dates";
+
+/** Local YYYY-MM-DD `n` days from today. */
+const localDay = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return todayKey(d);
+};
+const daysUntil = (date: string) => Math.round((Date.parse(`${date}T12:00:00Z`) - Date.parse(`${todayKey()}T12:00:00Z`)) / 86_400_000);
 
 export const LEVEL_OPTIONS: { value: EnglishLevel; label: string; hint: string }[] = [
   { value: "beginner", label: "Beginner", hint: "I understand simple, everyday English." },
@@ -62,10 +71,8 @@ function validateStep(step: number, v: StudyPlanInput): Errors {
   if (step === 0) {
     if (!isScoreBand(v.targetScore)) e.targetScore = "Choose a target score from 1 to 6.";
     if (v.testDate) {
-      const d = new Date(v.testDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (Number.isNaN(d.getTime()) || d < today) e.testDate = "Choose a date in the future, or leave it empty.";
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v.testDate) || v.testDate < todayKey()) e.testDate = "Choose today or a later date, or leave it empty.";
+      else if (v.testDate > localDay(366)) e.testDate = "Choose a test date within one year.";
     }
   }
   if (step === 1 && v.studyDays.length === 0) e.studyDays = "Choose at least one study day.";
@@ -158,10 +165,16 @@ export function StudyPlanWizard({ initial = DEFAULT_INPUT, onFinish, onCancel, s
               <Input
                 label="Test date (optional)"
                 type="date"
+                min={localDay(0)}
+                max={localDay(366)}
                 value={v.testDate ?? ""}
                 onChange={(e) => set("testDate", e.target.value || null)}
                 error={errors.testDate}
-                hint="Leave empty if you have not booked a test."
+                hint={
+                  v.testDate && !errors.testDate && /^\d{4}-\d{2}-\d{2}$/.test(v.testDate)
+                    ? `${daysUntil(v.testDate)} days from today. We will plan every study day until then.`
+                    : "We count the days and plan every study day until your test. Leave empty if it is not booked yet."
+                }
               />
             </div>
           </div>
@@ -240,7 +253,7 @@ export function StudyPlanWizard({ initial = DEFAULT_INPUT, onFinish, onCancel, s
               {[
                 ["English level", LEVEL_OPTIONS.find((o) => o.value === v.level)?.label, 0],
                 ["Target score", `${formatBand(v.targetScore)} of 6 (CEFR ${cefrForBand(v.targetScore)})`, 0],
-                ["Test date", v.testDate ? new Date(v.testDate).toLocaleDateString("en-US", { dateStyle: "medium" }) : "Not set", 0],
+                ["Test date", v.testDate ? `${new Date(`${v.testDate}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })} · ${daysUntil(v.testDate)} days away` : "Not set", 0],
                 ["Daily study time", `${v.dailyMinutes} minutes`, 1],
                 ["Study days", v.studyDays.map((d) => WEEKDAY_OPTIONS.find((w) => w.value === d)?.label).join(", "), 1],
                 ["Weakest areas", v.weakAreas.length ? v.weakAreas.map((w) => SKILLS.find((s) => s.id === w)?.title).join(", ") : "Not sure", 2],

@@ -39,3 +39,14 @@ export function legacyTotalToBand(total: number): number {
 
 /** Target scores read from storage: bands pass through, old 0–120 totals are converted. */
 export const normaliseTarget = (v: number) => (isScoreBand(v) ? v : legacyTotalToBand(v));
+
+/**
+ * Rough practice band (1–6) from the share of correct answers in a short section. It is a
+ * practice estimate only: ETS scores use different tasks, statistics and scaling.
+ */
+export function estimateBandFromAccuracy(correct: number, total: number): number | null {
+  if (total <= 0) return null;
+  const p = (correct / total) * 100;
+  const cuts: [number, number][] = [[95, 6], [88, 5.5], [80, 5], [72, 4.5], [63, 4], [54, 3.5], [45, 3], [35, 2.5], [25, 2], [15, 1.5]];
+  return cuts.find(([min]) => p >= min)?.[1] ?? 1;
+}

@@ -176,13 +176,53 @@ export interface StudyPlanPhase {
   tasks: { slug: PracticeSlug | null; label: string }[];
 }
 
+export interface ScheduleTask {
+  kind: "practice" | "vocabulary" | "mock-test" | "review";
+  slug: PracticeSlug | null;
+  label: string;
+  href: string;
+  minutes: number;
+}
+
+/** One dated study day (only the learner's chosen weekdays), or the test day itself. */
+export interface ScheduleDay {
+  date: string; // YYYY-MM-DD
+  weekday: Weekday;
+  week: number; // 1-based
+  type: "study" | "mock-test" | "final-review" | "test";
+  focus: string;
+  tasks: ScheduleTask[];
+  minutes: number;
+}
+
+export interface ScheduleWeek {
+  week: number;
+  start: string;
+  end: string;
+  theme: string;
+  focusSkills: SkillId[];
+  priorityTasks: PracticeSlug[];
+  mockTestDate: string | null;
+  tip: string;
+}
+
 export interface StudyPlan {
   id: string;
   input: StudyPlanInput;
   createdAt: string;
   totalWeeks: number;
   phases: StudyPlanPhase[];
+  /** Template for one study day; kept for plans saved before dated schedules. */
   dailyTasks: { id: string; label: string; href: string; minutes: number }[];
+  /** First and last calendar day of the plan (the last is the test day when one is set). */
+  startDate?: string;
+  endDate?: string;
+  /** Calendar days from the start to the test, or null without a test date. */
+  daysUntilTest?: number | null;
+  weeks?: ScheduleWeek[];
+  schedule?: ScheduleDay[];
+  /** "rules" until the worker's AI pass personalises the weeks ("ai"). */
+  scheduleSource?: "rules" | "ai";
 }
 
 
