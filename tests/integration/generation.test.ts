@@ -43,7 +43,7 @@ import { ALL_JOB_TYPES, claimJobs, recoverExpiredLeases, startInitialBatch } fro
 import { tick } from "@/lib/server/generation/worker";
 import { queueStudySchedule } from "@/lib/server/generation/study-schedule";
 import { getActivePlan } from "@/lib/server/study-plan";
-import { getCredits, grantBoostPacks } from "@/lib/server/credits";
+import { getAccountPlan, getCredits, grantBoostPacks } from "@/lib/server/credits";
 import { getBatchStatus } from "@/lib/server/generation/status";
 import { getOwnedItem, getPracticeSet } from "@/lib/server/practice";
 import { createUser, resetTestDb } from "../support/db";
@@ -122,6 +122,8 @@ describe("generation batches", () => {
     expect(secondBatch.id).not.toBe(firstBatch.id);
     expect(secondBatch.planVersion).toBe(2);
     expect(await getCredits(u.id)).toMatchObject({ planCredits: 0, mockCredits: 3 });
+    // The Usage page summary: plan name source, used counts and upgrade history.
+    expect(await getAccountPlan(u.id)).toMatchObject({ packs: 1, planCredits: 0, mockCredits: 3, used: { studyPlans: 2, mockTests: 0 }, grants: [{ packs: 1, planCredits: 1, mockCredits: 2 }] });
   });
 
   it("generates, validates and stores every task type; re-running creates no duplicates", async () => {

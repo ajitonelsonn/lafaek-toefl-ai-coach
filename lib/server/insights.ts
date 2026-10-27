@@ -87,15 +87,18 @@ export async function getProgress(userId: string): Promise<ProgressDTO> {
 export async function getUsage(userId: string, range: UsageDTO["range"]): Promise<UsageDTO> {
   const since = range === "all" ? undefined : new Date(Date.now() - (range === "7d" ? 7 : 30) * 86_400_000);
   const createdAt = since ? { gte: since } : undefined;
-  const [events, jobs, items, media, attempts] = await Promise.all([
+  const [events, jobs, items, media, attempts, mockTests, words] = await Promise.all([
     db.usageEvent.findMany({ where: { userId, createdAt }, select: { eventType: true, inputUnits: true, outputUnits: true, audioSeconds: true, imageCount: true, characterCount: true, createdAt: true } }),
     db.generationJob.groupBy({ by: ["status"], where: { userId, createdAt }, _count: { _all: true } }),
     db.practiceItem.count({ where: { userId, source: "generated", createdAt } }),
     db.mediaAsset.aggregate({ where: { userId, status: "ready", deletedAt: null, createdAt }, _count: { _all: true }, _sum: { byteSize: true } }),
     db.practiceAttempt.count({ where: { userId, submittedAt: createdAt } }),
+    db.mockTestResult.count({ where: { userId, status: "completed", completedAt: createdAt } }),
+    db.vocabularyWord.count({ where: { userId, createdAt } }),
   ]);
   const of = (t: string) => events.filter((e) => e.eventType === t);
-  const textEvents = [...of("text_generation"), ...of("content_validation"), ...of("text_feedback")];
+  // All Meta text calls: questions, checks, coaching, vocabulary and study schedules.
+  const textEvents = [...of("text_generation"), ...of("content_validation"), ...of("text_feedback"), ...of("vocabulary_generation"), ...of("plan_generation")];
   const tokensReported = textEvents.some((e) => e.inputUnits !== null);
   const sum = (list: typeof events, k: "inputUnits" | "outputUnits" | "audioSeconds" | "imageCount" | "characterCount") => list.reduce((n, e) => n + (e[k] ?? 0), 0);
   const count = (s: string[]) => jobs.filter((j) => s.includes(j.status)).reduce((n, j) => n + j._count._all, 0);
@@ -116,7 +119,8 @@ export async function getUsage(userId: string, range: UsageDTO["range"]): Promis
     feedback: { requests: of("text_feedback").length },
     generation: { itemsGenerated: items, jobsCompleted: count(["completed"]), jobsFailed: count(["failed", "cancelled"]), jobsPending: count(["queued", "retry_wait", "running", "validating", "storing", "blocked_configuration"]) },
     storage: { assets: media._count._all, bytes: media._sum.byteSize ?? 0 },
-    practice: { attempts },
+    practice: { attempts, mockTests },
+    vocabulary: { words },
     cost: { estimated: null, note: "Cost estimates are not shown: provider prices are not configured in this app." },
     daily,
     dailyItemLimit: env().GENERATION_DAILY_USER_LIMIT ?? null,

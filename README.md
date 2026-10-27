@@ -159,6 +159,9 @@ usually cannot create the shadow database that `migrate dev` needs) and apply it
   - Set the variables from `.env.example` per environment (Development, Preview, Production) in Vercel's settings.
   - Use Render's _external_ database URL with `sslmode=require`.
   - Run `prisma migrate deploy` once per release, not from every instance.
+  - **Custom domain:** add it under Vercel → *Settings → Domains* and create the DNS records Vercel shows (usually
+    `A @ → 76.76.21.21` and `CNAME www → cname.vercel-dns.com`). Set `APP_URL` to the domain on Vercel and the
+    worker. It is used for links in emails; the origin check accepts `APP_URL` and the request's own domain.
 - **Worker (Render Background Worker).** Vercel cannot host it, because Vercel only runs short request handlers.
   Without the worker, generation jobs stay queued.
   - **Region: Singapore.** Meta's API lists no models to Render's Ohio (US, Amazon) network, but works from
@@ -168,7 +171,8 @@ usually cannot create the shadow database that `migrate dev` needs) and apply it
   - Environment: the same variables as Vercel, with `NODE_ENV=production`.
   - Alternative or supplement: a cron job can `POST /api/internal/worker/tick` with
     `Authorization: Bearer $WORKER_TICK_SECRET`. It processes one job per call, and the queue itself stays in PostgreSQL.
-- **Live deployment.** The web app runs at `https://lafaek-toefl-ai-coach.vercel.app`, and the worker runs on Render
+- **Live deployment.** The web app runs at **`https://www.lafaektoefl.tech`** (custom domain on Vercel; the old
+  `https://lafaek-toefl-ai-coach.vercel.app` still works), and the worker runs on Render
   in Singapore. See `BACKEND_PROGRESS.md` → _Production deployment_.
 - **S3.** Use a private bucket with Block Public Access and SSE. Give the IAM user least privilege for that one bucket
   (`s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`, `s3:ListBucket`). Add a lifecycle rule for expired recordings.

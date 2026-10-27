@@ -53,3 +53,26 @@ export async function grantBoostPacks(input: { email?: string; userId?: string; 
   ]);
   return { userId: user.id, email: user.emailNormalized, added: { planCredits, mockCredits }, credits: updated };
 }
+
+export interface AccountPlan extends Credits {
+  /** Boost Packs added so far (0 = Starter only). */
+  packs: number;
+  used: { studyPlans: number; mockTests: number };
+  grants: { date: string; packs: number; planCredits: number; mockCredits: number }[];
+}
+
+/** The learner's plan for the Usage page: credits left, what was used, and upgrade history. */
+export async function getAccountPlan(userId: string): Promise<AccountPlan> {
+  const [credits, grants, studyPlans, mockTests] = await Promise.all([
+    getCredits(userId),
+    db.creditGrant.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, select: { createdAt: true, packs: true, planCredits: true, mockCredits: true } }),
+    db.studyPlan.count({ where: { userId } }),
+    db.mockTestResult.count({ where: { userId } }),
+  ]);
+  return {
+    ...credits,
+    packs: grants.reduce((n, g) => n + g.packs, 0),
+    used: { studyPlans, mockTests },
+    grants: grants.slice(0, 10).map((g) => ({ date: g.createdAt.toISOString(), packs: g.packs, planCredits: g.planCredits, mockCredits: g.mockCredits })),
+  };
+}

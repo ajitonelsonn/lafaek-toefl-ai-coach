@@ -12,6 +12,7 @@ import { TipCard } from "@/components/ui/Callouts";
 import { Icon3D } from "@/components/ui/Icon3D";
 import { ColumnChart } from "@/components/charts/Charts";
 import { UsageMetricCard, type UsageMetricView } from "./UsageMetricCard";
+import { PlanCard, planName, type AccountPlanDTO } from "./PlanCard";
 
 type Range = UsageDTO["range"];
 const RANGE_LABEL: Record<Range, string> = { "7d": "Last 7 days", "30d": "Last 30 days", all: "All time" };
@@ -32,7 +33,7 @@ function metricsOf(u: UsageDTO): UsageMetricView[] {
       value: u.text.tokensReported ? formatNumber((u.text.inputTokens ?? 0) + (u.text.outputTokens ?? 0)) : "Not reported",
       note: u.text.tokensReported ? `${formatNumber(u.text.inputTokens ?? 0)} in · ${formatNumber(u.text.outputTokens ?? 0)} out (reported by Meta)` : "No AI text requests in this period.",
     },
-    { id: "requests", label: "AI text requests", icon: "message", value: formatNumber(u.text.requests), note: `${u.feedback.requests} of them for coaching feedback.` },
+    { id: "requests", label: "AI text requests", icon: "message", value: formatNumber(u.text.requests), note: `Questions, vocabulary and study schedules; ${u.feedback.requests} for coaching feedback.` },
     { id: "items", label: "Questions generated", icon: "quiz", value: formatNumber(u.generation.itemsGenerated), note: `${u.generation.jobsCompleted} jobs done · ${u.generation.jobsFailed} failed · ${u.generation.jobsPending} waiting` },
     { id: "images", label: "Images generated", icon: "image", value: formatNumber(u.images.generated), note: "Illustrations made for your practice." },
     {
@@ -46,10 +47,12 @@ function metricsOf(u: UsageDTO): UsageMetricView[] {
     { id: "asr", label: "Speech transcribed", icon: "voice", value: `${formatNumber(Math.round(u.transcription.audioSeconds))} s`, note: `${u.transcription.requests} recordings transcribed (Meta).` },
     { id: "storage", label: "Media stored", icon: "document", value: bytes(u.storage.bytes), note: `${u.storage.assets} private files.` },
     { id: "attempts", label: "Practice answers", icon: "practice-test", value: formatNumber(u.practice.attempts), note: "Answers you submitted." },
+    { id: "mock", label: "Mock tests taken", icon: "score", value: formatNumber(u.practice.mockTests), note: "Completed mock tests (each uses 1 mock test credit)." },
+    { id: "vocab", label: "Vocabulary words", icon: "reading", value: formatNumber(u.vocabulary.words), note: "Words picked by AI from your own questions." },
   ];
 }
 
-export function UsagePage({ usage }: { usage: Record<Range, UsageDTO> }) {
+export function UsagePage({ usage, plan }: { usage: Record<Range, UsageDTO>; plan: AccountPlanDTO }) {
   const { user } = useSession();
   const [range, setRange] = useState<Range>("30d");
   const u = usage[range];
@@ -58,6 +61,8 @@ export function UsagePage({ usage }: { usage: Record<Range, UsageDTO> }) {
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="flex min-w-0 flex-col gap-6">
+        <PlanCard plan={plan} />
+
         <div className="flex flex-wrap items-end justify-between gap-3">
           <p className="flex max-w-2xl items-start gap-2 text-sm text-body">
             <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
@@ -108,8 +113,8 @@ export function UsagePage({ usage }: { usage: Record<Range, UsageDTO> }) {
               <dd className="font-semibold text-ink">{formatDate(user.createdAt)}</dd>
             </div>
             <div className="flex justify-between gap-2">
-              <dt className="text-muted">Access</dt>
-              <dd className="font-semibold text-ink">Free & open source</dd>
+              <dt className="text-muted">Plan</dt>
+              <dd className="text-right font-semibold text-ink">{planName(plan)}</dd>
             </div>
             <div className="flex justify-between gap-2">
               <dt className="text-muted">Status</dt>
@@ -123,13 +128,19 @@ export function UsagePage({ usage }: { usage: Record<Range, UsageDTO> }) {
           <h2 id="limits-title" className="mb-2 text-base font-bold text-ink">
             Limits
           </h2>
-          <p className="text-sm text-body">
-            {u.dailyItemLimit ? `Up to ${u.dailyItemLimit} new questions can be generated for you per day.` : "No usage limits are configured for this account."} AI coaching is limited to 10 requests per hour.
-          </p>
+          <ul className="list-disc space-y-1.5 pl-4 text-sm text-body">
+            <li>
+              Study plans and mock tests use lifetime credits: you have {plan.planCredits} study plan{plan.planCredits === 1 ? "" : "s"} and {plan.mockCredits} mock test
+              {plan.mockCredits === 1 ? "" : "s"} left.
+            </li>
+            <li>Each study plan creates about 208 personalised questions, plus vocabulary and an AI schedule.</li>
+            {u.dailyItemLimit ? <li>Up to {u.dailyItemLimit} new questions can be generated for you per day.</li> : null}
+            <li>AI coaching: up to 10 requests per hour. New word pronunciations: up to 120 per hour.</li>
+          </ul>
           <p className="mt-2 text-xs text-muted">{u.cost.note}</p>
         </Card>
         <TipCard>
-          <p>Practising with existing questions does not use AI. Only new content generation, coaching feedback and speech transcription do.</p>
+          <p>Practising your questions, reviewing vocabulary and viewing results are unlimited. Only a new study plan and a mock test use credits.</p>
         </TipCard>
       </aside>
     </div>

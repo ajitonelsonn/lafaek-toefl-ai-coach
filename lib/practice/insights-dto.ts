@@ -24,7 +24,8 @@ export interface UsageDTO {
   feedback: { requests: number };
   generation: { itemsGenerated: number; jobsCompleted: number; jobsFailed: number; jobsPending: number };
   storage: { assets: number; bytes: number };
-  practice: { attempts: number };
+  practice: { attempts: number; mockTests: number };
+  vocabulary: { words: number };
   cost: { estimated: null; note: string };
   daily: { date: string; requests: number }[];
   dailyItemLimit: number | null;
