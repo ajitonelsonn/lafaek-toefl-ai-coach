@@ -32,6 +32,9 @@ export function toJobFailure(err: unknown): JobFailure {
   if (err instanceof JobFailure) return err;
   if (err instanceof ProviderError) {
     if (err.kind === "not_configured") return new JobFailure("PROVIDER_NOT_CONFIGURED", err.message, false, true);
+    // A rejected key or unknown model is a deployment setting, not bad content: wait for the
+    // fix (re-queued when the worker restarts) instead of failing and using learner retries.
+    if (err.kind === "auth" || err.code === "model_not_found") return new JobFailure("PROVIDER_CONFIG", err.message, false, true);
     return new JobFailure(`PROVIDER_${err.kind.toUpperCase()}`, err.message, err.retryable);
   }
   if (err instanceof Error && "code" in err && (err as { code: string }).code === "CONFIGURATION_MISSING") return new JobFailure("CONFIGURATION_MISSING", err.message, false, true);

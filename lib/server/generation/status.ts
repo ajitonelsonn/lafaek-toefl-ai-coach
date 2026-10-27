@@ -20,7 +20,7 @@ const STATE: Record<JobStatus, GenerationStateDTO> = {
 function messageFor(status: JobStatus, code: string | null): string | null {
   if (status === "retry_wait") return code === "DAILY_LIMIT" ? "Daily limit reached — continues tomorrow." : "Retrying shortly.";
   if (status === "failed") return "Some content could not be generated.";
-  if (status === "blocked_configuration") return "Waiting for storage setup.";
+  if (status === "blocked_configuration") return code === "PROVIDER_CONFIG" ? "Waiting for AI service setup." : "Waiting for storage setup.";
   return null;
 }
 

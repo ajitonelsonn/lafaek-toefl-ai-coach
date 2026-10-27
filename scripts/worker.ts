@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { log } from "../lib/server/log";
 import { env } from "../lib/server/env";
 import { housekeeping, tick, workerId } from "../lib/server/generation/worker";
+import { unblockJobs } from "../lib/server/generation/queue";
 
 const owner = workerId();
 const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 3);
@@ -35,6 +36,9 @@ async function metaConfigCheck() {
 async function main() {
   log.info("worker started", { owner, concurrency });
   await metaConfigCheck().catch(() => log.warn("meta config check failed"));
+  // Settings changes restart the worker, so retry jobs that were waiting on provider setup once.
+  const requeued = await unblockJobs(["task_pack", "asset_audio", "asset_image"], "PROVIDER_CONFIG").catch(() => 0);
+  if (requeued) log.info("requeued jobs waiting on provider setup", { count: requeued });
   let lastHousekeeping = 0;
   const once = process.argv.includes("--once");
   while (!stopping) {

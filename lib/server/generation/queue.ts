@@ -187,12 +187,14 @@ export async function recoverExpiredLeases(): Promise<number> {
   return expired.length;
 }
 
-/** Re-queues jobs that were blocked on configuration once the configuration exists. */
-export async function unblockJobs(jobTypes: JobType[]): Promise<number> {
+/**
+ * Re-queues jobs blocked with `errorCode`. Housekeeping does this for missing storage once it
+ * exists; PROVIDER_CONFIG jobs are re-queued only at worker start (settings change → restart),
+ * so a still-wrong setting blocks them again once instead of looping.
+ */
+export async function unblockJobs(jobTypes: JobType[], errorCode = "CONFIGURATION_MISSING"): Promise<number> {
   const r = await db.generationJob.updateMany({
-    // Only jobs blocked on missing storage; other configuration problems (e.g. a provider
-    // permission) stay blocked until fixed, so they cannot loop.
-    where: { status: "blocked_configuration", jobType: { in: jobTypes }, errorCode: "CONFIGURATION_MISSING" },
+    where: { status: "blocked_configuration", jobType: { in: jobTypes }, errorCode },
     data: { status: "queued", nextAttemptAt: new Date(), errorCode: null, errorSummary: null, attemptCount: 0 },
   });
   return r.count;

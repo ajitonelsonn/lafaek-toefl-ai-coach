@@ -13,6 +13,8 @@ export class ProviderError extends Error {
     message: string,
     readonly status?: number,
     readonly requestId?: string,
+    /** Provider's short error code, e.g. "model_not_found". */
+    readonly code?: string,
   ) {
     super(message);
   }
@@ -57,15 +59,19 @@ export async function providerFetch(url: string, init: RequestInit, opts: FetchO
 
 async function toProviderError(provider: string, res: Response): Promise<ProviderError> {
   const requestId = res.headers.get("x-request-id") ?? res.headers.get("request-id") ?? undefined;
-  let detail = "";
+  const safe = (v: unknown) => (typeof v === "string" && /^[\w.-]{1,64}$/.test(v) ? v : undefined);
+  let type: string | undefined;
+  let code: string | undefined;
   try {
     const body = (await res.json()) as { error?: { message?: string; type?: string; code?: string }; detail?: unknown };
     // Type and code are short enums (e.g. "invalid_request_error, model_not_found"); messages are not echoed.
-    detail = [body.error?.type, body.error?.code].filter((v) => typeof v === "string" && /^[\w.-]{1,64}$/.test(v)).join(", ");
+    type = safe(body.error?.type);
+    code = safe(body.error?.code);
   } catch {
     /* non-JSON body: ignore, never echo raw provider payloads */
   }
+  const detail = [type, code].filter(Boolean).join(", ");
   const kind: ProviderErrorKind =
     res.status === 401 || res.status === 403 ? "auth" : res.status === 429 ? "rate_limited" : res.status >= 500 ? "server" : "bad_request";
-  return new ProviderError(provider, kind, `${provider} request failed (${res.status}${detail ? `, ${detail}` : ""}).`, res.status, requestId);
+  return new ProviderError(provider, kind, `${provider} request failed (${res.status}${detail ? `, ${detail}` : ""}).`, res.status, requestId, code);
 }
