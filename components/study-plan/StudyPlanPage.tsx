@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowRight, CalendarRange, CheckCircle2, Circle, Pencil, RefreshCw, Trophy } from "lucide-react";
 import { getPracticeType, practiceHref, type PracticeSlug } from "@/lib/config/practice-types";
+import { cefrForBand, formatBand } from "@/lib/config/toefl-scale";
 import type { StudyPlanInputBody } from "@/lib/validation/schemas";
 import type { GenerationBatchDTO } from "@/lib/practice/generation-dto";
 import type { ProgressDTO } from "@/lib/practice/insights-dto";
@@ -150,7 +151,9 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
               <Trophy className="size-8 text-warning" aria-hidden />
               <div>
                 <p className="text-sm text-muted">Target TOEFL score</p>
-                <p className="text-2xl font-bold text-ink">{input.targetScore}</p>
+                <p className="text-2xl font-bold text-ink">
+                  {formatBand(input.targetScore)} <span className="text-sm font-semibold text-muted">of 6 · {cefrForBand(input.targetScore)}</span>
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-line p-4">
@@ -163,7 +166,7 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
             <div className="rounded-xl border border-success/30 bg-success-soft p-4">
               <p className="font-bold text-success">Your goal</p>
               <p className="text-sm text-body">
-                Score <span className="font-bold text-primary">{input.targetScore}</span> in {studyPlan.totalWeeks} weeks · {input.dailyMinutes} min a day ·{" "}
+                Score <span className="font-bold text-primary">{formatBand(input.targetScore)} of 6</span> in {studyPlan.totalWeeks} weeks · {input.dailyMinutes} min a day ·{" "}
                 {input.studyDays.length} days a week
               </p>
             </div>

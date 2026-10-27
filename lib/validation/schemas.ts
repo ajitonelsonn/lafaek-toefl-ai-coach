@@ -1,5 +1,6 @@
 // Request schemas shared by API routes and forms. No secrets here.
 import { z } from "zod";
+import { isScoreBand } from "@/lib/config/toefl-scale";
 
 export const emailSchema = z
   .string()
@@ -28,7 +29,8 @@ export const accentSchema = z.enum(["en-US", "en-GB", "en-AU", "en-IN"]);
 
 export const studyPlanInputSchema = z.object({
   level: z.enum(["beginner", "intermediate", "upper-intermediate", "advanced"]),
-  targetScore: z.number().int().min(1).max(120),
+  // TOEFL 2026 scale: a band from 1 to 6 in steps of 0.5 (see lib/config/toefl-scale.ts).
+  targetScore: z.number().refine(isScoreBand, "Choose a target score from 1 to 6."),
   testDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)

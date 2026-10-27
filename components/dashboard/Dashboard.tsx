@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { ArrowRight, CalendarDays, Check, Clock, History, Sparkles, Target } from "lucide-react";
 import { PRACTICE_TYPES, SKILLS, getPracticeType, practiceHref, type PracticeType } from "@/lib/config/practice-types";
 import { BRAND } from "@/lib/config/assets";
+import { formatBand } from "@/lib/config/toefl-scale";
 import { todayKey } from "@/lib/utils/dates";
 import { formatRelative, percent } from "@/lib/utils/format";
 import type { ProgressDTO } from "@/lib/practice/insights-dto";
@@ -120,7 +121,7 @@ export function Dashboard({ userName, plan, progress, batch }: DashboardProps) {
                 <Target className="size-4 text-success" aria-hidden /> Current goal
               </p>
               <p className="font-bold text-ink">
-                Score {studyPlan.input.targetScore} in {studyPlan.totalWeeks} weeks
+                Score {formatBand(studyPlan.input.targetScore)} of 6 in {studyPlan.totalWeeks} weeks
               </p>
               <p className="mt-1 text-sm text-body">
                 Today: {dailyCount} of {dailyTotal} tasks done · {studyPlan.input.dailyMinutes} min a day

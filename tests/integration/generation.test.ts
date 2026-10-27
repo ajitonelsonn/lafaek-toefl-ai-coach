@@ -34,7 +34,7 @@ import { getBatchStatus } from "@/lib/server/generation/status";
 import { getOwnedItem, getPracticeSet } from "@/lib/server/practice";
 import { createUser, resetTestDb } from "../support/db";
 
-const INPUT: StudyPlanInputBody = { level: "intermediate", targetScore: 90, testDate: null, dailyMinutes: 30, studyDays: ["mon"], weakAreas: [], emphasis: "balanced", accents: ["en-US"], goals: "" };
+const INPUT: StudyPlanInputBody = { level: "intermediate", targetScore: 4.5, testDate: null, dailyMinutes: 30, studyDays: ["mon"], weakAreas: [], emphasis: "balanced", accents: ["en-US"], goals: "" };
 
 async function drain(owner = "test-worker") {
   for (let i = 0; i < 100; i++) {
@@ -72,12 +72,12 @@ describe("generation batches", () => {
     const first = await savePlan(u.id, { ...INPUT }, false);
     expect(first.nextPlanAt).not.toBeNull();
     const firstBatch = await startInitialBatch(u.id, randomUUID());
-    await expect(savePlan(u.id, { ...INPUT, targetScore: 100 }, true)).rejects.toMatchObject({ code: "PLAN_LIMIT" });
+    await expect(savePlan(u.id, { ...INPUT, targetScore: 5 }, true)).rejects.toMatchObject({ code: "PLAN_LIMIT" });
     expect(await db.studyPlan.count({ where: { userId: u.id } })).toBe(1);
 
     // 31 days later a new plan is allowed and starts a new batch.
     await db.studyPlan.updateMany({ where: { userId: u.id }, data: { createdAt: new Date(Date.now() - 31 * 86_400_000) } });
-    const second = await savePlan(u.id, { ...INPUT, targetScore: 100 }, true);
+    const second = await savePlan(u.id, { ...INPUT, targetScore: 5 }, true);
     expect(second.version).toBe(2);
     const secondBatch = await startInitialBatch(u.id, randomUUID());
     expect(secondBatch.id).not.toBe(firstBatch.id);

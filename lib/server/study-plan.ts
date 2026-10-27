@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { StudyPlan } from "@/lib/services/types";
 import type { StudyPlanInputBody } from "@/lib/validation/schemas";
 import type { StudyPlanDTO } from "@/lib/practice/plan-dto";
+import { normaliseTarget } from "@/lib/config/toefl-scale";
 import { db } from "./db";
 import { env } from "./env";
 import { ApiError } from "./http";
@@ -21,7 +22,9 @@ function nextPlanAt(lastCreatedAt: Date): Date | null {
 
 function toDTO(row: { id: string; version: number; answersJson: Prisma.JsonValue; createdAt: Date }): StudyPlanDTO {
   const a = row.answersJson as unknown as { input: StudyPlanInputBody; plan: StudyPlan };
-  return { ...a.plan, input: a.input, id: row.id, createdAt: row.createdAt.toISOString(), version: row.version, nextPlanAt: nextPlanAt(row.createdAt)?.toISOString() ?? null };
+  // Plans saved before the 2026 scale stored a 0–120 target; read them as the nearest 1–6 band.
+  const input = { ...a.input, targetScore: normaliseTarget(a.input.targetScore) };
+  return { ...a.plan, input, id: row.id, createdAt: row.createdAt.toISOString(), version: row.version, nextPlanAt: nextPlanAt(row.createdAt)?.toISOString() ?? null };
 }
 
 export async function getActivePlan(userId: string): Promise<StudyPlanDTO | null> {

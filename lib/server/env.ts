@@ -45,7 +45,8 @@ const schema = z.object({
   GENERATION_MAX_CONCURRENCY_PER_USER: int(1),
   GENERATION_MAX_RETRIES: int(3),
   GENERATION_TIMEOUT_SECONDS: int(120),
-  GENERATION_ITEMS_PER_TASK: int(2),
+  // Optional cap. Unset: each task type gets its full planned count (PRACTICE_TYPES referenceCount, 390 in total).
+  GENERATION_ITEMS_PER_TASK: z.coerce.number().int().positive().optional().or(z.literal("").transform(() => undefined)),
   GENERATION_DAILY_USER_LIMIT: z.coerce.number().int().positive().optional().or(z.literal("").transform(() => undefined)),
   WORKER_TICK_SECRET: optional,
 });

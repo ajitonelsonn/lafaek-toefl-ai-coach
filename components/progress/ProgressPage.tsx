@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight, ChartLine, ListChecks, Target } from "lucide-react";
 import { PRACTICE_TYPES, getPracticeType, getSkill, practiceHref } from "@/lib/config/practice-types";
 import { BACKGROUNDS } from "@/lib/config/assets";
+import { cefrForBand, formatBand } from "@/lib/config/toefl-scale";
 import type { ProgressDTO } from "@/lib/practice/insights-dto";
 import { formatDate, formatMinutes } from "@/lib/utils/format";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -144,8 +145,10 @@ export function ProgressPage({ progress, targetScore }: { progress: ProgressDTO;
           </h2>
           {targetScore !== null ? (
             <>
-              <p className="text-3xl font-extrabold text-ink">{targetScore}</p>
-              <p className="text-sm text-muted">Goal from your study plan (0–120 scale). Practice accuracy is not converted into a TOEFL score.</p>
+              <p className="text-3xl font-extrabold text-ink">
+                {formatBand(targetScore)} <span className="text-base font-semibold text-muted">of 6 · CEFR {cefrForBand(targetScore)}</span>
+              </p>
+              <p className="text-sm text-muted">Goal from your study plan (TOEFL iBT 2026 scale, 1–6). Practice accuracy is not converted into a TOEFL score.</p>
             </>
           ) : (
             <p className="text-sm text-body">

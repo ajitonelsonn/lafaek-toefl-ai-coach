@@ -118,8 +118,11 @@ usually cannot create the shadow database that `migrate dev` needs) and apply it
 
 - **Costs.** Meta text calls return token usage (stored as actual units). The model's reasoning makes output tokens
   large: about 6,000 per item in testing. ElevenLabs returns no usage data, so characters and seconds are stored as
-  _estimates_. No prices are configured, so the app shows no cost figures. `GENERATION_ITEMS_PER_TASK` (default 2) and
+  _estimates_. No prices are configured, so the app shows no cost figures. `GENERATION_ITEMS_PER_TASK` (optional cap; unset = each task type's full planned count, 390 per plan) and
   `GENERATION_DAILY_USER_LIMIT` are the hard limits.
+- **Score scale.** The app uses the TOEFL iBT 2026 scale: bands from 1 to 6 in 0.5 steps, with CEFR (6 C2,
+  5–5.5 C1, 4–4.5 B2, 3–3.5 B1, 2–2.5 A2, 1–1.5 A1). See `lib/config/toefl-scale.ts`. Study-plan targets use it, and
+  old 0–120 targets are read as the nearest band.
 - **Scores.** All scores and feedback are **practice estimates, never official ETS/TOEFL scores**. The 100-word
   discussion length is shown as a practice guideline. Speaking similarity compares transcripts and is not a
   pronunciation analysis.

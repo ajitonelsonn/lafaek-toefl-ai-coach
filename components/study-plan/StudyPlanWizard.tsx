@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Info } from "lucide-react";
 import { SKILLS, type SkillId } from "@/lib/config/practice-types";
+import { SCORE_BANDS, cefrForBand, formatBand, isScoreBand } from "@/lib/config/toefl-scale";
 import type { EnglishLevel, StudyEmphasis, Weekday } from "@/lib/services/types";
 import type { StudyPlanInputBody as StudyPlanInput } from "@/lib/validation/schemas";
 import { Button } from "@/components/ui/Button";
@@ -37,7 +38,7 @@ const STEPS = ["Your goal", "Your schedule", "Your focus", "Review"];
 
 export const DEFAULT_INPUT: StudyPlanInput = {
   level: "intermediate",
-  targetScore: 80,
+  targetScore: 4,
   testDate: null,
   dailyMinutes: 30,
   studyDays: ["mon", "tue", "wed", "thu", "fri"],
@@ -59,7 +60,7 @@ type Errors = Partial<Record<"targetScore" | "testDate" | "studyDays", string>>;
 function validateStep(step: number, v: StudyPlanInput): Errors {
   const e: Errors = {};
   if (step === 0) {
-    if (!Number.isInteger(v.targetScore) || v.targetScore < 1 || v.targetScore > 120) e.targetScore = "Enter a whole number from 1 to 120.";
+    if (!isScoreBand(v.targetScore)) e.targetScore = "Choose a target score from 1 to 6.";
     if (v.testDate) {
       const d = new Date(v.testDate);
       const today = new Date();
@@ -138,21 +139,18 @@ export function StudyPlanWizard({ initial = DEFAULT_INPUT, onFinish, onCancel, s
             </fieldset>
             <div className="grid gap-5 sm:grid-cols-2">
               <div>
-                <Input
-                  label="Target TOEFL score (0–120)"
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={120}
-                  value={Number.isNaN(v.targetScore) ? "" : v.targetScore}
-                  onChange={(e) => set("targetScore", e.target.value === "" ? Number.NaN : Number(e.target.value))}
+                <Select
+                  label="Target TOEFL score (1–6)"
+                  value={String(v.targetScore)}
+                  onChange={(e) => set("targetScore", Number(e.target.value))}
+                  options={[...SCORE_BANDS].reverse().map((b) => ({ value: String(b), label: `${formatBand(b)} of 6 · CEFR ${cefrForBand(b)}` }))}
                   error={errors.targetScore}
-                  hint="Common goals: 60, 80, 100."
+                  hint="TOEFL iBT 2026 scale. Common goals: 3.5 (B1), 4.5 (B2), 5.0 (C1)."
                 />
                 <div className="mt-2 flex gap-2">
-                  {[60, 80, 100].map((n) => (
+                  {[3.5, 4.5, 5].map((n) => (
                     <button key={n} type="button" onClick={() => set("targetScore", n)} className={cn("rounded-full border px-3 py-1 text-sm font-semibold", v.targetScore === n ? "border-primary bg-primary text-on-primary" : "border-line text-body hover:border-primary")}>
-                      {n}
+                      {formatBand(n)}
                     </button>
                   ))}
                 </div>
@@ -241,7 +239,7 @@ export function StudyPlanWizard({ initial = DEFAULT_INPUT, onFinish, onCancel, s
             <dl className="divide-y divide-line rounded-xl border border-line">
               {[
                 ["English level", LEVEL_OPTIONS.find((o) => o.value === v.level)?.label, 0],
-                ["Target score", `${v.targetScore} / 120`, 0],
+                ["Target score", `${formatBand(v.targetScore)} of 6 (CEFR ${cefrForBand(v.targetScore)})`, 0],
                 ["Test date", v.testDate ? new Date(v.testDate).toLocaleDateString("en-US", { dateStyle: "medium" }) : "Not set", 0],
                 ["Daily study time", `${v.dailyMinutes} minutes`, 1],
                 ["Study days", v.studyDays.map((d) => WEEKDAY_OPTIONS.find((w) => w.value === d)?.label).join(", "), 1],

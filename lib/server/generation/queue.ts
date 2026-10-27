@@ -28,7 +28,7 @@ export async function startInitialBatch(userId: string, idempotencyKey: string) 
   const existing = await db.generationBatch.findFirst({ where: { userId, planVersion: plan.version } });
   if (existing) return existing;
 
-  const perTask = env().GENERATION_ITEMS_PER_TASK;
+  const perTask = env().GENERATION_ITEMS_PER_TASK ?? Number.POSITIVE_INFINITY;
   try {
     return await db.$transaction(async (tx) => {
       const batch = await tx.generationBatch.create({

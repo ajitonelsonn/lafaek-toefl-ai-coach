@@ -16,7 +16,7 @@ async function main() {
   const user = await db.user.create({ data: { emailNormalized: email, displayName: "E2E Test", status: "active", emailVerifiedAt: new Date() } });
   console.log("test user created");
   try {
-    await savePlan(user.id, { level: "intermediate", targetScore: 90, testDate: null, dailyMinutes: 30, studyDays: ["mon", "wed", "fri"], weakAreas: ["listening"], emphasis: "balanced", accents: ["en-US", "en-GB"], goals: "University admission" }, false);
+    await savePlan(user.id, { level: "intermediate", targetScore: 4.5, testDate: null, dailyMinutes: 30, studyDays: ["mon", "wed", "fri"], weakAreas: ["listening"], emphasis: "balanced", accents: ["en-US", "en-GB"], goals: "University admission" }, false);
     const key = randomUUID();
     const b1 = await startInitialBatch(user.id, key);
     const b2 = await startInitialBatch(user.id, key);
