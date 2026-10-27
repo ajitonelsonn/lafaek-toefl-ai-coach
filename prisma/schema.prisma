@@ -1,0 +1,440 @@
+// LafaekTOEFL AI Coach — PostgreSQL schema (source of truth).
+// Changes go through `npm run db:migrate` (versioned migrations), never ad hoc.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+enum UserStatus {
+  pending
+  active
+  disabled
+  deleted
+}
+
+enum OtpPurpose {
+  signup
+  login
+  password_reset
+}
+
+enum PlanStatus {
+  active
+  superseded
+}
+
+enum BatchStatus {
+  queued
+  running
+  completed
+  partial
+  failed
+}
+
+enum JobStatus {
+  queued
+  running
+  validating
+  storing
+  completed
+  retry_wait
+  failed
+  cancelled
+  blocked_configuration
+}
+
+enum JobType {
+  task_pack
+  asset_image
+  asset_audio
+  reconcile_media
+  delete_user_assets
+}
+
+enum ItemSource {
+  starter
+  generated
+}
+
+enum ValidationStatus {
+  pending
+  valid
+  invalid
+  needs_review
+}
+
+enum MediaKind {
+  audio
+  image
+  recording
+  other
+}
+
+enum MediaStatus {
+  pending
+  ready
+  failed
+  deleted
+}
+
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  emailNormalized String     @unique @map("email_normalized")
+  displayName     String     @map("display_name")
+  passwordHash    String?    @map("password_hash")
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  role            UserRole   @default(user)
+  status          UserStatus @default(pending)
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  lastLoginAt     DateTime?  @map("last_login_at")
+
+  otps               AuthOtp[]
+  sessions           Session[]
+  studyPlans         StudyPlan[]
+  batches            GenerationBatch[]
+  jobs               GenerationJob[]
+  items              PracticeItem[]
+  media              MediaAsset[]
+  attempts           PracticeAttempt[]
+  usageEvents        UsageEvent[]
+  preferences        UserPreferences?
+  vocabulary         VocabularyProgress[]
+  drafts             PracticeDraft[]
+  mockResults        MockTestResult[]
+  adminAuditEvents   AdminAuditEvent[]
+
+  @@map("users")
+}
+
+model AuthOtp {
+  id              String     @id @default(uuid()) @db.Uuid
+  userId          String?    @map("user_id") @db.Uuid
+  emailNormalized String     @map("email_normalized")
+  purpose         OtpPurpose
+  otpHash         String     @map("otp_hash")
+  expiresAt       DateTime   @map("expires_at")
+  attemptCount    Int        @default(0) @map("attempt_count")
+  consumedAt      DateTime?  @map("consumed_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  lastSentAt      DateTime   @default(now()) @map("last_sent_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([emailNormalized, purpose, consumedAt])
+  @@map("auth_otps")
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  sessionTokenHash String    @unique @map("session_token_hash")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  lastSeenAt       DateTime  @default(now()) @map("last_seen_at")
+  userAgent        String?   @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model StudyPlan {
+  id                String     @id @default(uuid()) @db.Uuid
+  userId            String     @map("user_id") @db.Uuid
+  version           Int
+  status            PlanStatus @default(active)
+  currentLevel      String     @map("current_level")
+  targetLevel       String?    @map("target_level")
+  targetScoreBand   String     @map("target_score_band")
+  testDate          DateTime?  @map("test_date") @db.Date
+  studyDays         Json       @map("study_days")
+  dailyMinutes      Int        @map("daily_minutes")
+  focusAreas        Json       @map("focus_areas")
+  accentPreferences Json       @map("accent_preferences")
+  answersJson       Json       @map("answers_json")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  completedAt       DateTime?  @map("completed_at")
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  batches GenerationBatch[]
+  items   PracticeItem[]
+
+  @@unique([userId, version])
+  @@map("study_plans")
+}
+
+model GenerationBatch {
+  id             String      @id @default(uuid()) @db.Uuid
+  userId         String      @map("user_id") @db.Uuid
+  studyPlanId    String      @map("study_plan_id") @db.Uuid
+  planVersion    Int         @map("plan_version")
+  idempotencyKey String      @map("idempotency_key")
+  status         BatchStatus @default(queued)
+  totalTasks     Int         @map("total_tasks")
+  completedTasks Int         @default(0) @map("completed_tasks")
+  failedTasks    Int         @default(0) @map("failed_tasks")
+  estimatedCost  Decimal?    @map("estimated_cost") @db.Decimal(12, 4)
+  actualCost     Decimal?    @map("actual_cost") @db.Decimal(12, 4)
+  startedAt      DateTime?   @map("started_at")
+  completedAt    DateTime?   @map("completed_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studyPlan StudyPlan       @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+  jobs      GenerationJob[]
+
+  @@unique([userId, planVersion])
+  @@unique([userId, idempotencyKey])
+  @@map("generation_batches")
+}
+
+model GenerationJob {
+  id                String    @id @default(uuid()) @db.Uuid
+  batchId           String?   @map("batch_id") @db.Uuid
+  userId            String?   @map("user_id") @db.Uuid
+  taskSlug          String?   @map("task_slug")
+  jobType           JobType   @map("job_type")
+  status            JobStatus @default(queued)
+  idempotencyKey    String    @unique @map("idempotency_key")
+  payloadJson       Json      @default("{}") @map("payload_json")
+  attemptCount      Int       @default(0) @map("attempt_count")
+  maxAttempts       Int       @default(3) @map("max_attempts")
+  progressTotal     Int       @default(0) @map("progress_total")
+  progressDone      Int       @default(0) @map("progress_done")
+  nextAttemptAt     DateTime  @default(now()) @map("next_attempt_at")
+  leaseExpiresAt    DateTime? @map("lease_expires_at")
+  leaseOwner        String?   @map("lease_owner")
+  provider          String?
+  modelId           String?   @map("model_id")
+  promptVersion     String?   @map("prompt_version")
+  providerRequestId String?   @map("provider_request_id")
+  usageJson         Json?     @map("usage_json")
+  errorCode         String?   @map("error_code")
+  errorSummary      String?   @map("error_summary")
+  startedAt         DateTime? @map("started_at")
+  finishedAt        DateTime? @map("finished_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  batch GenerationBatch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  user  User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items PracticeItem[]
+  media MediaAsset[]
+
+  @@index([status, nextAttemptAt])
+  @@index([batchId])
+  @@index([userId])
+  @@index([taskSlug])
+  @@map("generation_jobs")
+}
+
+model PracticeItem {
+  id               String           @id @default(uuid()) @db.Uuid
+  contentKey       String           @unique @map("content_key")
+  userId           String?          @map("user_id") @db.Uuid
+  studyPlanId      String?          @map("study_plan_id") @db.Uuid
+  generationJobId  String?          @map("generation_job_id") @db.Uuid
+  source           ItemSource
+  taskSlug         String           @map("task_slug")
+  itemIndex        Int              @map("item_index")
+  difficulty       String
+  cefrLevel        String           @map("cefr_level")
+  topic            String
+  contentJson      Json             @map("content_json")
+  answerKeyJson    Json             @map("answer_key_json")
+  explanationJson  Json             @map("explanation_json")
+  rubricJson       Json?            @map("rubric_json")
+  provenanceJson   Json             @map("provenance_json")
+  validationStatus ValidationStatus @default(pending) @map("validation_status")
+  validationErrors Json?            @map("validation_errors")
+  contentVersion   Int              @default(1) @map("content_version")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  archivedAt       DateTime?        @map("archived_at")
+
+  user          User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studyPlan     StudyPlan?        @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+  generationJob GenerationJob?    @relation(fields: [generationJobId], references: [id], onDelete: SetNull)
+  media         MediaAsset[]
+  attempts      PracticeAttempt[]
+  drafts        PracticeDraft[]
+
+  @@unique([studyPlanId, taskSlug, itemIndex, contentVersion])
+  @@index([userId, taskSlug, validationStatus])
+  @@index([source, taskSlug])
+  @@map("practice_items")
+}
+
+model MediaAsset {
+  id               String      @id @default(uuid()) @db.Uuid
+  userId           String?     @map("user_id") @db.Uuid
+  practiceItemId   String?     @map("practice_item_id") @db.Uuid
+  generationJobId  String?     @map("generation_job_id") @db.Uuid
+  attemptId        String?     @map("attempt_id") @db.Uuid
+  kind             MediaKind
+  role             String      @default("main")
+  bucket           String
+  objectKey        String      @unique @map("object_key")
+  mimeType         String      @map("mime_type")
+  byteSize         Int?        @map("byte_size")
+  checksum         String?
+  durationMs       Int?        @map("duration_ms")
+  width            Int?
+  height           Int?
+  voiceProfileJson Json?       @map("voice_profile_json")
+  provider         String?
+  modelId          String?     @map("model_id")
+  status           MediaStatus @default(pending)
+  createdAt        DateTime    @default(now()) @map("created_at")
+  deletedAt        DateTime?   @map("deleted_at")
+
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  practiceItem  PracticeItem?  @relation(fields: [practiceItemId], references: [id], onDelete: SetNull)
+  generationJob GenerationJob? @relation(fields: [generationJobId], references: [id], onDelete: SetNull)
+
+  @@index([userId, kind])
+  @@index([practiceItemId])
+  @@map("media_assets")
+}
+
+model PracticeAttempt {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  practiceItemId String    @map("practice_item_id") @db.Uuid
+  taskSlug       String    @map("task_slug")
+  unitId         String    @map("unit_id")
+  responseJson   Json      @map("response_json")
+  scoreJson      Json      @map("score_json")
+  feedbackJson   Json?     @map("feedback_json")
+  startedAt      DateTime? @map("started_at")
+  submittedAt    DateTime  @default(now()) @map("submitted_at")
+  durationMs     Int?      @map("duration_ms")
+  scoringVersion String    @map("scoring_version")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  practiceItem PracticeItem @relation(fields: [practiceItemId], references: [id], onDelete: Cascade)
+
+  @@index([userId, submittedAt])
+  @@index([userId, taskSlug])
+  @@map("practice_attempts")
+}
+
+model UsageEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String?  @map("user_id") @db.Uuid
+  eventType       String   @map("event_type")
+  provider        String
+  modelId         String?  @map("model_id")
+  inputUnits      Int?     @map("input_units")
+  outputUnits     Int?     @map("output_units")
+  audioSeconds    Float?   @map("audio_seconds")
+  imageCount      Int?     @map("image_count")
+  characterCount  Int?     @map("character_count")
+  isEstimate      Boolean  @default(false) @map("is_estimate")
+  estimatedCost   Decimal? @map("estimated_cost") @db.Decimal(12, 6)
+  actualCost      Decimal? @map("actual_cost") @db.Decimal(12, 6)
+  currency        String?
+  generationJobId String?  @map("generation_job_id") @db.Uuid
+  idempotencyKey  String   @unique @map("idempotency_key")
+  metadataJson    Json?    @map("metadata_json")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@map("usage_events")
+}
+
+model UserPreferences {
+  userId           String   @id @map("user_id") @db.Uuid
+  theme            String   @default("light")
+  soundEnabled     Boolean  @default(true) @map("sound_enabled")
+  remindersEnabled Boolean  @default(false) @map("reminders_enabled")
+  preferredAccent  String?  @map("preferred_accent")
+  audioSpeed       Float?   @map("audio_speed")
+  recordingConsent Boolean  @default(false) @map("recording_consent")
+  settingsJson     Json     @default("{}") @map("settings_json")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model VocabularyProgress {
+  userId     String   @map("user_id") @db.Uuid
+  wordId     String   @map("word_id")
+  status     String?
+  bookmarked Boolean  @default(false)
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, wordId])
+  @@map("vocabulary_progress")
+}
+
+model PracticeDraft {
+  userId         String   @map("user_id") @db.Uuid
+  practiceItemId String   @map("practice_item_id") @db.Uuid
+  bodyJson       Json     @map("body_json")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  practiceItem PracticeItem @relation(fields: [practiceItemId], references: [id], onDelete: Cascade)
+
+  @@id([userId, practiceItemId])
+  @@map("practice_drafts")
+}
+
+model MockTestResult {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  sectionsJson    Json     @map("sections_json")
+  durationSeconds Int      @map("duration_seconds")
+  scoringVersion  String   @map("scoring_version")
+  completedAt     DateTime @default(now()) @map("completed_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, completedAt])
+  @@map("mock_test_results")
+}
+
+model AdminAuditEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  adminUserId      String   @map("admin_user_id") @db.Uuid
+  action           String
+  targetType       String   @map("target_type")
+  targetId         String   @map("target_id")
+  safeMetadataJson Json?    @map("safe_metadata_json")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  admin User @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@map("admin_audit_events")
+}
+
+model RateLimit {
+  key         String
+  windowStart DateTime @map("window_start")
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@map("rate_limits")
+}
