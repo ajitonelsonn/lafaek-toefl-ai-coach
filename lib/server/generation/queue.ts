@@ -12,19 +12,18 @@ import { ApiError } from "../http";
 const ACTIVE: JobStatus[] = ["running", "validating", "storing"];
 export const leaseMs = () => env().GENERATION_TIMEOUT_SECONDS * 1000 * 3;
 
-/** Creates the user's initial batch once. Repeated calls return the same batch. */
+/**
+ * Creates the batch for the user's active plan version once; repeated calls return it.
+ * Plans are limited to one per STUDY_PLAN_COOLDOWN_DAYS, which also bounds generation.
+ */
 export async function startInitialBatch(userId: string, idempotencyKey: string) {
   const plan = await db.studyPlan.findFirst({ where: { userId, status: "active" } });
   if (!plan) throw new ApiError(409, "CONFLICT", "Create your study plan first.");
 
   const sameKey = await db.generationBatch.findUnique({ where: { userId_idempotencyKey: { userId, idempotencyKey } } });
   if (sameKey) return sameKey;
-  const existing = await db.generationBatch.findFirst({ where: { userId }, orderBy: { createdAt: "asc" } });
-  if (existing) {
-    if (existing.planVersion === plan.version) return existing;
-    // One initial generation per account; new packs for later plan versions are a future feature.
-    throw new ApiError(403, "FEATURE_NOT_AVAILABLE", "Generating new content for an updated plan is not available yet. Your existing practice content stays available.");
-  }
+  const existing = await db.generationBatch.findFirst({ where: { userId, planVersion: plan.version } });
+  if (existing) return existing;
 
   const perTask = env().GENERATION_ITEMS_PER_TASK;
   try {

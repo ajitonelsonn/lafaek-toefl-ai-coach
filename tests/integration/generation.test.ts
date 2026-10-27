@@ -59,12 +59,21 @@ describe("generation batches", () => {
     expect(await db.generationJob.count({ where: { jobType: "task_pack" } })).toBe(12);
   });
 
-  it("refuses new generation for a later plan version (feature not available)", async () => {
+  it("allows one study plan per 30 days; a later plan gets its own batch", async () => {
     const u = await createUser("a@example.com");
-    await savePlan(u.id, { ...INPUT }, false);
-    await startInitialBatch(u.id, randomUUID());
-    await savePlan(u.id, { ...INPUT, targetScore: 100 }, true);
-    await expect(startInitialBatch(u.id, randomUUID())).rejects.toMatchObject({ code: "FEATURE_NOT_AVAILABLE" });
+    const first = await savePlan(u.id, { ...INPUT }, false);
+    expect(first.nextPlanAt).not.toBeNull();
+    const firstBatch = await startInitialBatch(u.id, randomUUID());
+    await expect(savePlan(u.id, { ...INPUT, targetScore: 100 }, true)).rejects.toMatchObject({ code: "PLAN_LIMIT" });
+    expect(await db.studyPlan.count({ where: { userId: u.id } })).toBe(1);
+
+    // 31 days later a new plan is allowed and starts a new batch.
+    await db.studyPlan.updateMany({ where: { userId: u.id }, data: { createdAt: new Date(Date.now() - 31 * 86_400_000) } });
+    const second = await savePlan(u.id, { ...INPUT, targetScore: 100 }, true);
+    expect(second.version).toBe(2);
+    const secondBatch = await startInitialBatch(u.id, randomUUID());
+    expect(secondBatch.id).not.toBe(firstBatch.id);
+    expect(secondBatch.planVersion).toBe(2);
   });
 
   it("generates, validates and stores every task type; re-running creates no duplicates", async () => {

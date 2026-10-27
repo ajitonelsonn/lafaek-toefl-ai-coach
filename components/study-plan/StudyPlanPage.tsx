@@ -25,18 +25,22 @@ import { cn } from "@/lib/utils/cn";
 type PlanDTO = StudyPlanDTO;
 const KEY_STORAGE = "lafaek-toefl:generation-key";
 
-/** Idempotency key for the generation start request; reused on retries so only one batch is created. */
-function generationKey(): string {
+/** Idempotency key for the generation start request, per plan; reused on retries so only one batch is created. */
+function generationKey(planId: string): string {
+  const slot = `${KEY_STORAGE}:${planId}`;
   try {
-    const existing = sessionStorage.getItem(KEY_STORAGE);
+    const existing = sessionStorage.getItem(slot);
     if (existing) return existing;
     const k = crypto.randomUUID();
-    sessionStorage.setItem(KEY_STORAGE, k);
+    sessionStorage.setItem(slot, k);
     return k;
   } catch {
     return crypto.randomUUID();
   }
 }
+
+/** Fixed locale and time zone so server and browser render the same text. */
+const formatDay = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
 const PHASE_TONES = [
   { box: "border-reading/25 bg-reading-soft", text: "text-reading" },
@@ -61,12 +65,11 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
       const { plan } = await api<{ plan: PlanDTO }>("/api/study-plan", { body: { input, confirmNewVersion: Boolean(studyPlan) } });
       setStudyPlan(plan);
       try {
-        const r = await api<{ batch: GenerationBatchDTO }>("/api/generation/start", { body: { idempotencyKey: generationKey() } });
+        const r = await api<{ batch: GenerationBatchDTO }>("/api/generation/start", { body: { idempotencyKey: generationKey(plan.id) } });
         setCurrentBatch(r.batch);
         toast("Your study plan is saved. Personalised practice is being prepared.");
       } catch (e) {
-        if (e instanceof ApiClientError && e.code === "FEATURE_NOT_AVAILABLE") toast("Your plan is updated. Your existing practice content stays available.", "info");
-        else toast(errorMessage(e), "warning");
+        toast(errorMessage(e), "warning");
       }
       setEditing(false);
       setJustCreated(true);
@@ -74,18 +77,23 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       toast(errorMessage(e), "warning");
+      if (e instanceof ApiClientError && e.code === "PLAN_LIMIT") setEditing(false);
     } finally {
       setSaving(false);
     }
   };
 
-  if (!studyPlan || editing) {
+  const lockedUntil = studyPlan?.nextPlanAt ?? null;
+  const lockNote = lockedUntil ? `You can make a new plan from ${formatDay(lockedUntil)}.` : null;
+
+  if (!studyPlan || (editing && !lockedUntil)) {
     return (
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <StudyPlanWizard initial={studyPlan?.input} onFinish={finish} onCancel={studyPlan ? () => setEditing(false) : undefined} saving={saving} />
         <TipCard title="How the plan works">
           <p>We suggest which of the 12 practice types to focus on each week, and give you a short list of tasks for each day.</p>
           <p>After you finish, AI creates personalised questions for every practice type in the background.</p>
+          <p>You can make one study plan per month. Each plan gets its own set of personalised questions.</p>
         </TipCard>
       </div>
     );
@@ -130,9 +138,9 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
                 <StepNumber n={1} /> Your Goal
               </span>
             }
-            description="Your target score and study schedule."
+            description={lockNote ? `Your target score and study schedule. ${lockNote}` : "Your target score and study schedule."}
             action={
-              <Button variant="secondary" size="sm" leftIcon={<Pencil className="size-4" />} onClick={() => setEditing(true)}>
+              <Button variant="secondary" size="sm" leftIcon={<Pencil className="size-4" />} onClick={() => setEditing(true)} disabled={Boolean(lockedUntil)} title={lockNote ?? undefined}>
                 Edit plan
               </Button>
             }
@@ -171,7 +179,7 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
             }
             description="Based on your goal and level. Ticks show practice types you have tried."
             action={
-              <Button variant="secondary" size="sm" leftIcon={<RefreshCw className="size-4" />} onClick={() => setConfirmReset(true)}>
+              <Button variant="secondary" size="sm" leftIcon={<RefreshCw className="size-4" />} onClick={() => setConfirmReset(true)} disabled={Boolean(lockedUntil)} title={lockNote ?? undefined}>
                 Make a new plan
               </Button>
             }
@@ -286,7 +294,7 @@ export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: Pl
       <ConfirmDialog
         open={confirmReset}
         title="Make a new plan?"
-        description="You will answer the questions again. Your practice history stays the same."
+        description="You will answer the questions again, and AI will prepare new personalised questions for the new plan. You can make one plan per month. Your practice history and earlier questions stay the same."
         confirmLabel="Start new plan"
         onCancel={() => setConfirmReset(false)}
         onConfirm={() => {

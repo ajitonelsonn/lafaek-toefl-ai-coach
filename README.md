@@ -56,7 +56,10 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
   heartbeats, expired-lease recovery, exponential backoff with jitter, a per-user concurrency limit, and checkpoints per
   item. Completed items are never regenerated.
   - Usage events are idempotent by provider request ID.
-  - A later plan version returns `FEATURE_NOT_AVAILABLE` for new generation (future feature).
+  - **One study plan per account per 30 days** (`STUDY_PLAN_COOLDOWN_DAYS`). Editing or replacing the plan within
+    that period is refused with `PLAN_LIMIT`, and the Study Plan page disables both buttons and shows the date. A
+    per-user advisory lock stops concurrent saves from bypassing the limit. A new plan after the period gets its
+    own generation batch; earlier questions stay available.
 - **Audio.** Meta has no text-to-speech model, so the owner approved ElevenLabs. There is one MP3 per script line,
   played as a playlist through 5-minute signed URLs. Until an item has audio, the player uses the browser's voice and
   says so; in that case the script is sent to the browser, otherwise it is withheld.
