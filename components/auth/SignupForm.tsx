@@ -4,34 +4,41 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Lock, Mail, User } from "lucide-react";
-import { services } from "@/lib/services";
-import { updateDemo } from "@/lib/store/demo-store";
-import { validateSignup, type FieldErrors } from "@/lib/validation/auth";
+import { api, ApiClientError, errorMessage } from "@/lib/client/api";
+import { setPendingEmail } from "@/lib/client/pending-email";
+import { signupSchema } from "@/lib/validation/schemas";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
-import { AuthHeading, DemoAuthNotice, OrDivider } from "./AuthLayout";
+import { AuthHeading, OrDivider } from "./AuthLayout";
 import { GoogleButton } from "./GoogleButton";
+import { fieldErrors } from "./field-errors";
 
 type Field = "name" | "email" | "password" | "confirm";
 
 export function SignupForm() {
   const router = useRouter();
   const [values, setValues] = useState({ name: "", email: "", password: "", confirm: "" });
-  const [errors, setErrors] = useState<FieldErrors<Field>>({});
+  const [errors, setErrors] = useState<Partial<Record<Field | "_", string>>>({});
   const [loading, setLoading] = useState(false);
   const set = (k: Field) => (e: React.ChangeEvent<HTMLInputElement>) => setValues((v) => ({ ...v, [k]: e.target.value }));
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const found = validateSignup(values);
+    const parsed = signupSchema.safeParse(values);
+    const found: Partial<Record<Field | "_", string>> = parsed.success ? {} : fieldErrors(parsed.error);
+    if (values.confirm !== values.password) found.confirm = "The passwords do not match.";
     setErrors(found);
-    if (Object.keys(found).length) return;
+    if (!parsed.success || found.confirm) return;
     setLoading(true);
-    const { email } = await services.auth.signUp({ name: values.name.trim(), email: values.email.trim(), password: values.password });
-    // Only the name and email are kept for the OTP step — never the password.
-    updateDemo((s) => ({ ...s, pendingSignup: { name: values.name.trim(), email } }));
-    setValues((v) => ({ ...v, password: "", confirm: "" }));
-    router.push("/verify-email");
+    try {
+      await api("/api/auth/signup", { body: parsed.data });
+      setPendingEmail(parsed.data.email);
+      setValues((v) => ({ ...v, password: "", confirm: "" }));
+      router.push("/verify-email");
+    } catch (err) {
+      setLoading(false);
+      setErrors({ ...(err instanceof ApiClientError && err.fields ? err.fields : {}), _: errorMessage(err) });
+    }
   };
 
   return (
@@ -51,16 +58,12 @@ export function SignupForm() {
           error={errors.password}
           hint="Use at least 8 characters, with letters and a number."
         />
-        <Input
-          label="Confirm password"
-          type="password"
-          autoComplete="new-password"
-          placeholder="Type the password again"
-          icon={<Lock />}
-          value={values.confirm}
-          onChange={set("confirm")}
-          error={errors.confirm}
-        />
+        <Input label="Confirm password" type="password" autoComplete="new-password" placeholder="Type the password again" icon={<Lock />} value={values.confirm} onChange={set("confirm")} error={errors.confirm} />
+        {errors._ && (
+          <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger" role="alert">
+            {errors._}
+          </p>
+        )}
         <Button type="submit" size="lg" fullWidth loading={loading}>
           Sign Up
         </Button>
@@ -73,7 +76,7 @@ export function SignupForm() {
           Log In
         </Link>
       </p>
-      <DemoAuthNotice>Demo sign-up: no account is created and no email is sent. Your password is checked in the form only and is not saved.</DemoAuthNotice>
+      <p className="mt-4 text-center text-xs text-muted">We&apos;ll email you a 6-digit code to confirm your address.</p>
     </>
   );
 }

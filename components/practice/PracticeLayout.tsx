@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { ArrowLeft, ChevronUp, Info } from "lucide-react";
 import type { PracticeType } from "@/lib/config/practice-types";
-import { PRACTICE_GUIDES } from "@/lib/mock-data/practice-guides";
+import { PRACTICE_GUIDES } from "@/lib/content/practice-guides";
 import { SkillIconTile } from "./icons";
 import { TipCard } from "@/components/ui/Callouts";
-import { DemoBadge } from "@/components/ui/StatusBadge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { cn } from "@/lib/utils/cn";
 
 interface PracticeLayoutProps {
@@ -20,9 +20,11 @@ interface PracticeLayoutProps {
   children: ReactNode;
   /** Replace default instructions (e.g. to add counts). */
   instructions?: string[];
+  /** Source of the current item: personalised (AI-generated) or the hand-written starter set. */
+  source?: "starter" | "generated";
 }
 
-export function PracticeLayout({ type, position, timer, sidebar, footer, banner, children, instructions }: PracticeLayoutProps) {
+export function PracticeLayout({ type, position, timer, sidebar, footer, banner, children, instructions, source }: PracticeLayoutProps) {
   const guide = PRACTICE_GUIDES[type.slug];
   const [showInstructions, setShowInstructions] = useState(true);
   const steps = instructions ?? guide.instructions;
@@ -45,7 +47,7 @@ export function PracticeLayout({ type, position, timer, sidebar, footer, banner,
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">{type.title}</h1>
-                  <DemoBadge>Sample questions</DemoBadge>
+                  {source && <StatusBadge tone={source === "generated" ? "primary" : "neutral"}>{source === "generated" ? "Personalised · AI-generated" : "Starter set"}</StatusBadge>}
                 </div>
                 <p className="mt-1 text-base text-muted sm:text-lg">{type.instruction}</p>
               </div>

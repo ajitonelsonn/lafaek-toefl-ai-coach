@@ -1,58 +1,36 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 import { ArrowRight, Clock, RotateCcw } from "lucide-react";
 import { getSkill, practiceTypesForSkill, practiceHref } from "@/lib/config/practice-types";
-import { useDemoState, useHydrated, type MockTestResult } from "@/lib/store/demo-store";
 import { formatDate, formatMinutes, percent } from "@/lib/utils/format";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { Button, LinkButton } from "@/components/ui/Button";
+import { LinkButton } from "@/components/ui/Button";
 import { ProgressBar, ProgressRing } from "@/components/ui/ProgressBar";
-import { DemoBadge, StatusBadge } from "@/components/ui/StatusBadge";
-import { EmptyState, LoadingState } from "@/components/ui/States";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { EmptyState } from "@/components/ui/States";
 import { Icon3D } from "@/components/ui/Icon3D";
 import { SKILL_TONE, SkillIconTile } from "@/components/practice/icons";
 import { cn } from "@/lib/utils/cn";
 
-const SAMPLE_RESULT: MockTestResult = {
-  completedAt: "2026-10-20T10:00:00.000Z",
-  durationSeconds: 14 * 60,
-  sections: [
-    { skill: "reading", correct: 3, total: 4, answered: 4 },
-    { skill: "listening", correct: 2, total: 3, answered: 3 },
-    { skill: "writing", correct: null, total: 1, answered: 1, note: "112 words written. AI scoring is not connected." },
-    { skill: "speaking", correct: null, total: 1, answered: 1, note: "Response recorded. AI scoring is not connected." },
-  ],
-};
+export interface MockResultDTO {
+  completedAt: string;
+  durationSeconds: number;
+  sections: { skill: "reading" | "listening" | "writing" | "speaking"; correct: number | null; total: number; answered: number; note?: string }[];
+}
 
-export function MockTestResults() {
-  const hydrated = useHydrated();
-  const { mockResult } = useDemoState();
-  const [showSample, setShowSample] = useState(false);
-
-  if (!hydrated) return <LoadingState label="Loading results…" />;
-
-  const result = mockResult ?? (showSample ? SAMPLE_RESULT : null);
+export function MockTestResults({ result }: { result: MockResultDTO | null }) {
   if (!result) {
     return (
       <EmptyState
         icon={<Icon3D name="practice-test" size={48} />}
         title="No mock test results yet"
-        description="Take a demo mock test to see your results here."
-        action={
-          <div className="flex flex-wrap justify-center gap-3">
-            <LinkButton href="/mock-test">Take the Mock Test</LinkButton>
-            <Button variant="secondary" onClick={() => setShowSample(true)}>
-              Preview sample results
-            </Button>
-          </div>
-        }
+        description="Take a mock test to see your results here."
+        action={<LinkButton href="/mock-test">Take the Mock Test</LinkButton>}
       />
     );
   }
 
-  const isSample = !mockResult;
   const graded = result.sections.filter((s) => s.correct !== null);
   const correct = graded.reduce((n, s) => n + (s.correct ?? 0), 0);
   const total = graded.reduce((n, s) => n + s.total, 0);
@@ -72,7 +50,7 @@ export function MockTestResults() {
               <h2 id="summary-title" className="text-2xl font-extrabold text-ink">
                 Practice estimate
               </h2>
-              <DemoBadge>{isSample ? "Sample results" : "Demo test"}</DemoBadge>
+              <StatusBadge tone="warning">Practice estimate</StatusBadge>
             </div>
             <p className="mt-2 text-body">
               You answered <span className="font-bold text-ink">{correct}</span> of {total} Reading and Listening questions correctly.
@@ -81,7 +59,7 @@ export function MockTestResults() {
               <Clock className="size-4" aria-hidden /> {formatMinutes(result.durationSeconds / 60)} · {formatDate(result.completedAt)}
             </p>
             <p className="mt-3 text-xs text-muted">
-              This is not an official or certified TOEFL score. It only reflects a short demo test with sample questions.
+              This is not an official or certified TOEFL score. It only reflects a short practice test.
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-3 md:justify-start">
               <LinkButton href="/mock-test" variant="secondary" leftIcon={<RotateCcw className="size-4" />}>
@@ -113,7 +91,7 @@ export function MockTestResults() {
                     <p className="text-sm font-semibold text-ink">{s.correct !== null ? `${s.correct} / ${s.total} correct` : `${s.answered} / ${s.total} answered`}</p>
                   </div>
                 </div>
-                {p !== null ? <ProgressBar value={p} tone={tone.tone} label={`${getSkill(s.skill).title} accuracy`} showValue /> : <StatusBadge>Not scored (demo)</StatusBadge>}
+                {p !== null ? <ProgressBar value={p} tone={tone.tone} label={`${getSkill(s.skill).title} accuracy`} showValue /> : <StatusBadge>Not auto-scored</StatusBadge>}
                 {s.note && <p className="text-sm text-body">{s.note}</p>}
                 <Link href={practiceHref(firstType.slug)} className="mt-auto text-sm font-semibold text-primary hover:underline">
                   Practise {firstType.title} →

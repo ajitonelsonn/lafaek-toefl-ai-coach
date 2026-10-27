@@ -1,17 +1,23 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { BookOpen, Bookmark, BookmarkCheck, Check, ChevronLeft, ChevronRight, List, RotateCcw, Search, Share2, Star, Volume2, Zap } from "lucide-react";
-import { VOCABULARY, VOCAB_CATEGORIES } from "@/lib/mock-data/vocabulary";
+import { VOCABULARY, VOCAB_CATEGORIES } from "@/lib/content/vocabulary";
 import { ILLUSTRATIONS } from "@/lib/config/assets";
 import type { VocabCategory, VocabWord } from "@/lib/services/types";
-import { updateDemo, useDemoState, type VocabProgress } from "@/lib/store/demo-store";
+import { api, errorMessage } from "@/lib/client/api";
+import { useSession } from "@/components/session/SessionProvider";
+
+export interface VocabProgress {
+  status?: "known" | "review";
+  bookmarked?: boolean;
+}
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ChipGroup, Tabs } from "@/components/ui/Segmented";
 import { ProgressBar, ProgressRing } from "@/components/ui/ProgressBar";
-import { DemoBadge, StatusBadge } from "@/components/ui/StatusBadge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/States";
 import { TipCard } from "@/components/ui/Callouts";
 import { Icon3D } from "@/components/ui/Icon3D";
@@ -31,9 +37,6 @@ function speak(text: string) {
   return true;
 }
 
-function setVocab(id: string, patch: VocabProgress) {
-  updateDemo((s) => ({ ...s, vocab: { ...s.vocab, [id]: { ...s.vocab[id], ...patch } } }));
-}
 
 function Highlight({ text, word }: { text: string; word: string }) {
   const i = text.toLowerCase().indexOf(word.toLowerCase());
@@ -47,9 +50,25 @@ function Highlight({ text, word }: { text: string; word: string }) {
   );
 }
 
-export function VocabularyPage() {
-  const { vocab, settings } = useDemoState();
+export function VocabularyPage({ initialProgress }: { initialProgress: Record<string, VocabProgress> }) {
+  const { settings } = useSession();
   const toast = useToast();
+  const [vocab, setVocabState] = useState(initialProgress);
+
+  /** Optimistic update, saved to the server; rolled back if saving fails. */
+  const setVocab = useCallback(
+    async (id: string, patch: VocabProgress) => {
+      const before = vocab[id];
+      setVocabState((v) => ({ ...v, [id]: { ...v[id], ...patch } }));
+      try {
+        await api(`/api/vocabulary/${id}`, { method: "PUT", body: patch });
+      } catch (e) {
+        setVocabState((v) => ({ ...v, [id]: before ?? {} }));
+        toast(errorMessage(e), "warning");
+      }
+    },
+    [toast, vocab],
+  );
   const [tab, setTab] = useState<Tab>("practice");
   const [category, setCategory] = useState<"all" | VocabCategory>("all");
   const [query, setQuery] = useState("");
@@ -172,7 +191,7 @@ export function VocabularyPage() {
               }}
             />
           ) : (
-            <WordList words={filtered} vocab={vocab} onPronounce={pronounce} />
+            <WordList words={filtered} vocab={vocab} onPronounce={pronounce} setVocab={setVocab} />
           )}
         </div>
       </div>
@@ -183,7 +202,7 @@ export function VocabularyPage() {
             <h2 id="vp-title" className="text-base font-bold text-ink">
               Vocabulary Progress
             </h2>
-            <DemoBadge>Sample list</DemoBadge>
+            <StatusBadge tone="primary">Curated list</StatusBadge>
           </div>
           <div className="flex items-center gap-4">
             <ProgressRing value={known} max={VOCABULARY.length} size={96} label={`${known} of ${VOCABULARY.length} words known`}>
@@ -338,7 +357,7 @@ function Flashcard(props: {
   );
 }
 
-function WordList({ words, vocab, onPronounce }: { words: VocabWord[]; vocab: Record<string, VocabProgress>; onPronounce: (w: VocabWord) => void }) {
+function WordList({ words, vocab, onPronounce, setVocab }: { words: VocabWord[]; vocab: Record<string, VocabProgress>; onPronounce: (w: VocabWord) => void; setVocab: (id: string, patch: VocabProgress) => void }) {
   return (
     <ul className="grid gap-3 md:grid-cols-2">
       {words.map((w) => {

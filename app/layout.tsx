@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { SITE } from "@/lib/config/site";
 import { ToastProvider } from "@/components/ui/Toast";
-import { ThemeSync, THEME_BOOTSTRAP } from "@/components/layout/ThemeSync";
+import { THEME_BOOTSTRAP } from "@/components/layout/ThemeSync";
 
 export const metadata: Metadata = {
   title: { default: SITE.name, template: `%s · ${SITE.shortName}` },
@@ -25,7 +25,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <ToastProvider>
-          <ThemeSync />
           {children}
         </ToastProvider>
       </body>

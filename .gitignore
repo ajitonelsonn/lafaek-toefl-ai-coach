@@ -13,3 +13,18 @@ logo_icon/
 ilu/
 example/
 sensitive_info.txt
+
+LAFAEK_TOEFL_BACKEND_IMPLEMENTATION_SPEC.md
+# Backend secrets and local data (never commit)
+.env.local
+.env.*.local
+*.pem
+.aws/
+credentials
+*.dump
+*.sql.gz
+backups/
+tmp-assets/
+storage/
+BACKEND_AUDIT.md
+BACKEND_PROGRESS.md

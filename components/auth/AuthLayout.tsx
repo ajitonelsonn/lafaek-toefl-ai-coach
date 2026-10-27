@@ -63,7 +63,3 @@ export function OrDivider() {
     </div>
   );
 }
-
-export function DemoAuthNotice({ children }: { children: ReactNode }) {
-  return <p className="mt-5 rounded-lg bg-warning-soft px-3 py-2 text-xs text-body">{children}</p>;
-}

@@ -1,57 +1,48 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Camera } from "lucide-react";
 import { BACKGROUNDS } from "@/lib/config/assets";
-import { updateDemo, useDemoState, useHydrated } from "@/lib/store/demo-store";
+import { useSession } from "@/components/session/SessionProvider";
+import { api, ApiClientError, errorMessage } from "@/lib/client/api";
 import { initials } from "@/lib/utils/format";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
-import { LoadingState } from "@/components/ui/States";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/Toast";
 
 export function ProfileForm() {
-  const hydrated = useHydrated();
-  const { user } = useDemoState();
-  if (!hydrated) return <LoadingState label="Loading profile…" />;
-  if (!user) {
-    return (
-      <Card className="text-center">
-        <p className="text-body">You are browsing the demo without signing in.</p>
-        <p className="mt-1 text-sm text-muted">Sign in (demo) to set your name.</p>
-        <div className="mt-4 flex justify-center gap-3">
-          <Link href="/login" className="font-semibold text-primary hover:underline">
-            Log in
-          </Link>
-          <Link href="/signup" className="font-semibold text-primary hover:underline">
-            Sign up
-          </Link>
-        </div>
-      </Card>
-    );
-  }
+  const { user } = useSession();
   return <ProfileEditor key={user.email} name={user.name} email={user.email} />;
 }
 
 function ProfileEditor({ name: savedName, email }: { name: string; email: string }) {
   const toast = useToast();
+  const { user, setUser } = useSession();
   const [name, setName] = useState(savedName);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const dirty = name.trim() !== savedName;
 
-  const save = (e: FormEvent) => {
+  const save = async (e: FormEvent) => {
     e.preventDefault();
     if (name.trim().length < 2) {
       setError("Please enter at least 2 letters.");
       return;
     }
     setError("");
-    updateDemo((s) => (s.user ? { ...s, user: { ...s.user, name: name.trim() } } : s));
-    toast("Profile saved.");
+    setSaving(true);
+    try {
+      const r = await api<{ profile: { name: string } }>("/api/profile", { method: "PATCH", body: { name: name.trim() } });
+      setUser({ ...user, name: r.profile.name });
+      toast("Profile saved.");
+    } catch (err) {
+      setError(err instanceof ApiClientError && err.fields?.name ? err.fields.name : errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -67,7 +58,7 @@ function ProfileEditor({ name: savedName, email }: { name: string; email: string
                 <button
                   type="button"
                   disabled
-                  title="Photo upload will be available when file storage is connected."
+                  title="Photo upload is not available yet."
                   aria-label="Change photo (not available yet)"
                   className="absolute bottom-1 right-1 inline-flex size-10 cursor-not-allowed items-center justify-center rounded-full border border-line bg-surface text-muted shadow"
                 >
@@ -87,7 +78,7 @@ function ProfileEditor({ name: savedName, email }: { name: string; email: string
             <Button variant="secondary" disabled={!dirty} onClick={() => { setName(savedName); setError(""); }}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!dirty}>
+            <Button type="submit" disabled={!dirty} loading={saving}>
               Save Changes
             </Button>
           </div>

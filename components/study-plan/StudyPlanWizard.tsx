@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Info } from "lucide-react";
 import { SKILLS, type SkillId } from "@/lib/config/practice-types";
-import type { EnglishLevel, StudyEmphasis, StudyPlanInput, Weekday } from "@/lib/services/types";
+import type { EnglishLevel, StudyEmphasis, Weekday } from "@/lib/services/types";
+import type { StudyPlanInputBody as StudyPlanInput } from "@/lib/validation/schemas";
 import { Button } from "@/components/ui/Button";
-import { Input, Select } from "@/components/ui/Field";
+import { Input, Select, Textarea } from "@/components/ui/Field";
 import { cn } from "@/lib/utils/cn";
 
 export const LEVEL_OPTIONS: { value: EnglishLevel; label: string; hint: string }[] = [
@@ -42,7 +43,16 @@ export const DEFAULT_INPUT: StudyPlanInput = {
   studyDays: ["mon", "tue", "wed", "thu", "fri"],
   weakAreas: [],
   emphasis: "balanced",
+  accents: ["en-US", "en-GB"],
+  goals: "",
 };
+
+const ACCENT_OPTIONS: { value: StudyPlanInput["accents"][number]; label: string }[] = [
+  { value: "en-US", label: "American English" },
+  { value: "en-GB", label: "British English" },
+  { value: "en-AU", label: "Australian English" },
+  { value: "en-IN", label: "Indian English" },
+];
 
 type Errors = Partial<Record<"targetScore" | "testDate" | "studyDays", string>>;
 
@@ -207,6 +217,21 @@ export function StudyPlanWizard({ initial = DEFAULT_INPUT, onFinish, onCancel, s
               </div>
             </fieldset>
             <Select label="What should your plan focus on?" value={v.emphasis} onChange={(e) => set("emphasis", e.target.value as StudyEmphasis)} options={EMPHASIS_OPTIONS} containerClassName="max-w-md" />
+            <fieldset>
+              <legend className="mb-1 text-sm font-semibold text-ink">Which English accents would you like to hear in listening practice?</legend>
+              <p className="mb-3 text-sm text-muted">We use these when choosing voices. Available accents depend on the voices our audio provider offers.</p>
+              <div className="flex flex-wrap gap-2">
+                {ACCENT_OPTIONS.map((a) => {
+                  const on = v.accents.includes(a.value);
+                  return (
+                    <button key={a.value} type="button" aria-pressed={on} onClick={() => set("accents", toggle(v.accents, a.value))} className={cn("rounded-xl border px-4 py-2.5 text-sm font-semibold", on ? "border-primary bg-primary text-on-primary" : "border-line text-body hover:border-primary")}>
+                      {a.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+            <Textarea label="Your goal (optional)" hint="For example: “University admission in the UK”. Up to 300 characters." maxLength={300} className="min-h-20" value={v.goals} onChange={(e) => set("goals", e.target.value)} />
           </div>
         )}
 
@@ -222,6 +247,8 @@ export function StudyPlanWizard({ initial = DEFAULT_INPUT, onFinish, onCancel, s
                 ["Study days", v.studyDays.map((d) => WEEKDAY_OPTIONS.find((w) => w.value === d)?.label).join(", "), 1],
                 ["Weakest areas", v.weakAreas.length ? v.weakAreas.map((w) => SKILLS.find((s) => s.id === w)?.title).join(", ") : "Not sure", 2],
                 ["Plan focus", EMPHASIS_OPTIONS.find((o) => o.value === v.emphasis)?.label, 2],
+                ["Accents", v.accents.length ? v.accents.map((a) => ACCENT_OPTIONS.find((o) => o.value === a)?.label).join(", ") : "Any", 2],
+                ["Goal", v.goals || "Not set", 2],
               ].map(([label, value, s]) => (
                 <div key={label as string} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
                   <dt className="text-muted">{label}</dt>
@@ -236,8 +263,8 @@ export function StudyPlanWizard({ initial = DEFAULT_INPUT, onFinish, onCancel, s
             </dl>
             <p className="mt-4 flex gap-2 rounded-xl bg-primary-soft/70 p-3 text-sm text-body">
               <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
-              AI content generation is not connected in this preview. Your plan is created by simple rules in your browser, and personalised practice
-              generation is simulated. You can use the sample questions right away.
+              When you finish, we save your plan and start creating personalised practice questions with AI in the background. This takes a few
+              minutes; you can use the starter questions right away and leave this page at any time.
             </p>
           </div>
         )}

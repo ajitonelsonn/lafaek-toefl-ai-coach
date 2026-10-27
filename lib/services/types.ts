@@ -1,6 +1,5 @@
-// Typed contracts between the UI and data sources. Phase 1 ships mock
-// implementations (lib/services/mock); a backend can implement the same
-// interfaces later without changing UI components.
+// Shared content and domain types (study plans, documents, vocabulary).
+// Server implementations live in lib/server; browser DTOs in lib/practice.
 
 import type { PracticeSlug, SkillId } from "@/lib/config/practice-types";
 
@@ -140,12 +139,9 @@ export interface QuestionSet {
   content: PracticeContent;
 }
 
-export interface QuestionService {
-  getQuestionSet(slug: PracticeSlug): Promise<QuestionSet | null>;
-}
 
 // ---------------------------------------------------------------------------
-// Auth (simulated in Phase 1 — no real security)
+// Auth
 // ---------------------------------------------------------------------------
 
 export interface AuthUser {
@@ -154,13 +150,6 @@ export interface AuthUser {
   createdAt: string;
 }
 
-export interface AuthService {
-  signIn(input: { email: string; password: string }): Promise<AuthUser>;
-  signUp(input: { name: string; email: string; password: string }): Promise<{ email: string }>;
-  verifyEmail(input: { email: string; code: string; name?: string }): Promise<AuthUser>;
-  resendCode(email: string): Promise<{ resendAfterSeconds: number }>;
-  signOut(): Promise<void>;
-}
 
 // ---------------------------------------------------------------------------
 // Study plans & generation jobs
@@ -196,9 +185,6 @@ export interface StudyPlan {
   dailyTasks: { id: string; label: string; href: string; minutes: number }[];
 }
 
-export interface StudyPlanService {
-  createPlan(input: StudyPlanInput): Promise<StudyPlan>;
-}
 
 export type GenerationState = "not_started" | "queued" | "generating" | "ready" | "failed";
 
@@ -213,19 +199,11 @@ export interface GenerationJob {
   error?: string;
 }
 
-export interface GenerationService {
-  listJobs(): Promise<GenerationJob[]>;
-  retryJob(id: string): Promise<GenerationJob>;
-}
 
 // ---------------------------------------------------------------------------
 // Media (future: private S3 objects served through short-lived signed URLs)
 // ---------------------------------------------------------------------------
 
-export interface MediaService {
-  /** Returns a playable URL, or null when no file exists yet. Never a permanent public object URL. */
-  getPlaybackUrl(media: MediaRef): Promise<string | null>;
-}
 
 // ---------------------------------------------------------------------------
 // Usage
@@ -259,9 +237,6 @@ export interface UsageSummary {
   isDemo: boolean;
 }
 
-export interface UsageService {
-  getUsage(range: UsageRange): Promise<UsageSummary>;
-}
 
 // ---------------------------------------------------------------------------
 // Vocabulary

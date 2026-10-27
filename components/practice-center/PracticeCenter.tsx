@@ -5,22 +5,21 @@ import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ArrowRight, ChevronUp, Search } from "lucide-react";
 import { PRACTICE_TYPES, SKILLS, practiceHref, type SkillId } from "@/lib/config/practice-types";
-import { sampleCount } from "@/lib/mock-data/questions";
-import { useDemoState } from "@/lib/store/demo-store";
+import type { ProgressDTO } from "@/lib/practice/insights-dto";
+import type { GenerationTaskDTO } from "@/lib/practice/generation-dto";
 import { ChipGroup } from "@/components/ui/Segmented";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/States";
-import { GenerationBadge, jobFor } from "@/components/generation/GenerationStatus";
+import { GenerationBadge } from "@/components/generation/GenerationStatus";
 import { SKILL_TONE, SkillIconTile } from "@/components/practice/icons";
 import { cn } from "@/lib/utils/cn";
 
 type Filter = "all" | SkillId;
 
-export function PracticeCenter({ initialSkill }: { initialSkill: Filter }) {
+export function PracticeCenter({ initialSkill, byTask, tasks }: { initialSkill: Filter; byTask: ProgressDTO["byTask"]; tasks: GenerationTaskDTO[] }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { completedUnits, generationJobs } = useDemoState();
   const [filter, setFilter] = useState<Filter>(initialSkill);
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -108,9 +107,10 @@ export function PracticeCenter({ initialSkill }: { initialSkill: Filter }) {
             {!isCollapsed && (
               <ul id={`skill-list-${skill.id}`} className={cn("grid gap-3", types.length === 2 ? "md:grid-cols-2" : types.length === 4 ? "md:grid-cols-2 2xl:grid-cols-4" : "md:grid-cols-3")}>
                 {types.map((t) => {
-                  const count = sampleCount(t.slug);
-                  const done = Math.min(count, completedUnits[t.slug]?.length ?? 0);
-                  const job = jobFor(generationJobs, t.slug);
+                  const p = byTask.find((b) => b.slug === t.slug);
+                  const count = p?.availableUnits ?? 0;
+                  const done = Math.min(count, p?.attemptedUnits ?? 0);
+                  const job = tasks.find((x) => x.slug === t.slug);
                   return (
                     <li key={t.slug}>
                       <Link
@@ -125,14 +125,14 @@ export function PracticeCenter({ initialSkill }: { initialSkill: Filter }) {
                           </div>
                         </div>
                         <div className="mt-auto flex flex-wrap items-center gap-2">
-                          {job ? <GenerationBadge state={job.state} /> : <StatusBadge tone="success">Sample ready</StatusBadge>}
+                          {job ? <GenerationBadge state={job.state} label={job.state === "ready" ? "Personalised ready" : undefined} /> : <StatusBadge tone="success">Starter set ready</StatusBadge>}
                           <span className="text-xs text-muted">{t.referenceCount} planned</span>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="w-12 shrink-0 text-sm font-semibold text-ink tabular-nums">
                             {done}/{count}
                           </span>
-                          <ProgressBar value={done} max={count} tone={done === count ? "success" : tone.tone} label={`${t.title}: ${done} of ${count} sample questions practised`} size="sm" />
+                          <ProgressBar value={done} max={count} tone={done === count ? "success" : tone.tone} label={`${t.title}: ${done} of ${count} questions practised`} size="sm" />
                           <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-line text-primary transition-colors group-hover:border-primary group-hover:bg-primary group-hover:text-on-primary" aria-hidden>
                             <ArrowRight className="size-4" />
                           </span>

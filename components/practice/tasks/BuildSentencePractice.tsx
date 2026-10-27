@@ -1,37 +1,23 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, Lightbulb, RotateCcw, SkipForward, XCircle } from "lucide-react";
 import type { PracticeType } from "@/lib/config/practice-types";
-import type { BuildSentenceSet, SentencePart } from "@/lib/services/types";
+import type { PracticeView } from "@/lib/practice/dto";
+import type { SentencePart } from "@/lib/services/types";
 import { ILLUSTRATIONS } from "@/lib/config/assets";
 import { Button } from "@/components/ui/Button";
 import { PracticeFooter, PracticeLayout } from "../PracticeLayout";
 import { CountdownTimer } from "../CountdownTimer";
 import { QuestionNavigation } from "../QuestionNavigation";
 import { ResultsPanel } from "../ResultsPanel";
-import { SampleSetCard } from "../SampleSetCard";
-import { usePracticeSession } from "../usePracticeSession";
+import { unitKey, usePracticeSession } from "../usePracticeSession";
 import { cn } from "@/lib/utils/cn";
 
-/** One entry per answer slot: the index of the token placed there, or null when empty. */
-type Slots = (number | null)[];
-
-/** Deterministic shuffle so server and client render the same word bank. */
-function shuffledIndexes(n: number, seedText: string): number[] {
-  let seed = 0;
-  for (const ch of seedText) seed = (seed * 33 + ch.charCodeAt(0)) >>> 0;
-  const idx = Array.from({ length: n }, (_, i) => i);
-  for (let i = n - 1; i > 0; i--) {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    const j = seed % (i + 1);
-    [idx[i], idx[j]] = [idx[j], idx[i]];
-  }
-  // Never show the words already in the correct order.
-  if (idx.every((v, i) => v === i) && n > 1) [idx[0], idx[1]] = [idx[1], idx[0]];
-  return idx;
-}
+/** One entry per answer slot: the id of the word group placed there, or null when empty. */
+type Slots = (string | null)[];
+type BsView = Extract<PracticeView, { kind: "build-sentence" }>;
 
 const ROLE_STYLE: Record<SentencePart["role"], { label: string; className: string }> = {
   opener: { label: "Question opener", className: "bg-reading-soft text-reading" },
@@ -42,32 +28,27 @@ const ROLE_STYLE: Record<SentencePart["role"], { label: string; className: strin
   rest: { label: "Rest", className: "bg-surface-muted text-body" },
 };
 
-export function BuildSentencePractice({ type, content, sampleCount }: { type: PracticeType; content: BuildSentenceSet; sampleCount: number }) {
-  const items = content.items;
-  const unitIds = useMemo(() => items.map((i) => i.id), [items]);
-  const grade = useCallback(
-    (id: string, value: unknown) => {
-      const item = items.find((i) => i.id === id)!;
-      const slots = value as Slots;
-      return slots.length === item.tokens.length && slots.every((v, i) => v === i);
-    },
-    [items],
-  );
-  const s = usePracticeSession<Slots>({ slug: type.slug, unitIds, grade });
-  const [dragToken, setDragToken] = useState<number | null>(null);
+export function BuildSentencePractice({ type, view, sidebarExtra }: { type: PracticeType; view: BsView; sidebarExtra: ReactNode }) {
+  const items = view.items;
+  const unitKeys = useMemo(() => items.map((i) => unitKey(i.itemId, i.unitId)), [items]);
+  const s = usePracticeSession<Slots>({ unitKeys });
+  const [dragToken, setDragToken] = useState<string | null>(null);
 
   const item = items[s.index];
-  const slots: Slots = s.answers[item.id] ?? Array(item.tokens.length).fill(null);
-  const revealed = !!s.checked[item.id];
-  const status = s.statusOf(item.id);
-  const bankOrder = useMemo(() => shuffledIndexes(item.tokens.length, item.id), [item]);
-  const bank = bankOrder.filter((t) => !slots.includes(t));
+  const key = unitKey(item.itemId, item.unitId);
+  const textOf = (id: string) => item.tokens.find((t) => t.id === id)?.text ?? "";
+  const slots: Slots = s.answers[key] ?? Array(item.tokens.length).fill(null);
+  const result = s.results[key];
+  const revealed = Boolean(result);
+  const status = s.statusOf(key);
+  const expected = Array.isArray(result?.answer) ? (result.answer as string[]) : [];
+  const bank = item.tokens.filter((t) => !slots.includes(t.id));
   const isLast = s.index === items.length - 1;
   const complete = slots.every((v) => v !== null);
 
-  const setSlots = (next: Slots) => s.answer(item.id, next.some((v) => v !== null) ? next : undefined);
-  /** Places a token in a slot (default: the first empty one). A token already in that slot goes back to the bank. */
-  const place = (token: number, slot?: number) => {
+  const setSlots = (next: Slots) => s.answer(key, next.some((v) => v !== null) ? next : undefined);
+  /** Places a word group in a slot (default: the first empty one). */
+  const place = (token: string, slot?: number) => {
     if (revealed) return;
     const next = slots.map((v) => (v === token ? null : v));
     const target = slot ?? next.findIndex((v) => v === null);
@@ -79,7 +60,7 @@ export function BuildSentencePractice({ type, content, sampleCount }: { type: Pr
     if (revealed) return;
     setSlots(slots.map((v, i) => (i === slot ? null : v)));
   };
-  const goNext = () => (isLast ? s.finish() : s.setIndex(s.index + 1));
+  const goNext = () => (isLast ? void s.finish() : s.setIndex(s.index + 1));
 
   const wordClass = "rounded px-1 text-lg font-semibold text-brand-700 dark:text-primary";
 
@@ -88,10 +69,11 @@ export function BuildSentencePractice({ type, content, sampleCount }: { type: Pr
       type={type}
       position={`${s.index + 1} of ${items.length}`}
       timer={<CountdownTimer key={s.resetKey} totalSeconds={type.timeLimitSeconds} stopped={s.finished} />}
+      source={item.source}
       sidebar={
         <>
-          <QuestionNavigation items={items.map((i) => ({ id: i.id, status: s.statusOf(i.id) }))} current={s.index} onSelect={s.setIndex} />
-          <SampleSetCard type={type} sampleCount={sampleCount} />
+          <QuestionNavigation items={unitKeys.map((k) => ({ id: k, status: s.statusOf(k) }))} current={s.index} onSelect={s.setIndex} />
+          {sidebarExtra}
         </>
       }
       banner={s.finished && <ResultsPanel type={type} correct={s.summary.correct} total={s.summary.total} answered={s.summary.answered} onRetry={s.reset} />}
@@ -109,7 +91,7 @@ export function BuildSentencePractice({ type, content, sampleCount }: { type: Pr
                 <Button variant="secondary" size="lg" leftIcon={<SkipForward className="size-4" />} onClick={goNext}>
                   Skip
                 </Button>
-                <Button size="lg" rightIcon={<Check className="size-4" />} disabled={!complete} onClick={() => s.check(item.id)} title={!complete ? "Fill every blank first" : undefined}>
+                <Button size="lg" rightIcon={<Check className="size-4" />} disabled={!complete} loading={s.pending} onClick={() => void s.check(key)} title={!complete ? "Fill every blank first" : undefined}>
                   Check
                 </Button>
               </>
@@ -136,7 +118,7 @@ export function BuildSentencePractice({ type, content, sampleCount }: { type: Pr
             <ol className="flex flex-wrap items-end gap-x-3 gap-y-4">
               {item.prefix && <li className="pb-1 text-lg text-ink">{item.prefix}</li>}
               {slots.map((token, i) => {
-                const correctHere = token === i;
+                const correctHere = token !== null && token === expected[i];
                 return (
                   <li
                     key={i}
@@ -163,12 +145,12 @@ export function BuildSentencePractice({ type, content, sampleCount }: { type: Pr
                           )}
                         >
                           <span className="sr-only">{correctHere ? "Correct: " : "Your word: "}</span>
-                          {item.tokens[token]}
+                          {textOf(token)}
                         </span>
-                        {!correctHere && (
+                        {!correctHere && expected[i] && (
                           <span className="pb-1 text-lg font-semibold text-success">
                             <span className="sr-only">Correct word: </span>
-                            {item.tokens[i]}
+                            {textOf(expected[i])}
                           </span>
                         )}
                       </>
@@ -178,10 +160,10 @@ export function BuildSentencePractice({ type, content, sampleCount }: { type: Pr
                         draggable
                         onDragStart={() => setDragToken(token)}
                         onClick={() => clearSlot(i)}
-                        aria-label={`Blank ${i + 1}: ${item.tokens[token]}. Click to remove.`}
+                        aria-label={`Blank ${i + 1}: ${textOf(token)}. Click to remove.`}
                         className={cn(wordClass, "border-b-2 border-ink pb-0.5 hover:border-danger hover:text-danger")}
                       >
-                        {item.tokens[token]}
+                        {textOf(token)}
                       </button>
                     )}
                   </li>
@@ -211,14 +193,14 @@ export function BuildSentencePractice({ type, content, sampleCount }: { type: Pr
               ) : (
                 bank.map((t) => (
                   <button
-                    key={t}
+                    key={t.id}
                     type="button"
                     draggable
-                    onDragStart={() => setDragToken(t)}
-                    onClick={() => place(t)}
+                    onDragStart={() => setDragToken(t.id)}
+                    onClick={() => place(t.id)}
                     className={cn(wordClass, "hover:underline")}
                   >
-                    {item.tokens[t]}
+                    {t.text}
                   </button>
                 ))
               )}
@@ -243,19 +225,19 @@ export function BuildSentencePractice({ type, content, sampleCount }: { type: Pr
           </div>
           <div className="rounded-xl border border-line bg-surface-soft p-4 sm:p-5">
             <p className="text-sm font-semibold text-muted">Correct sentence</p>
-            <p className="mt-1 text-lg font-medium text-ink">{item.answer}</p>
+            <p className="mt-1 text-lg font-medium text-ink">{result?.label}</p>
             <p className="mt-4 flex items-center gap-2 font-bold text-ink">
               <Lightbulb className="size-5 text-warning" aria-hidden /> Why this order?
             </p>
             <ul className="mt-2 flex flex-wrap gap-2">
-              {item.parts.map((p, i) => (
+              {(result?.parts ?? []).map((p, i) => (
                 <li key={i} className={cn("rounded-lg px-3 py-2", ROLE_STYLE[p.role].className)}>
                   <span className="block text-[10px] font-bold uppercase tracking-wider opacity-80">{ROLE_STYLE[p.role].label}</span>
                   <span className="text-base font-semibold">{p.text}</span>
                 </li>
               ))}
             </ul>
-            <p className="mt-3 text-sm text-body">{item.explanation}</p>
+            <p className="mt-3 text-sm text-body">{result?.explanation}</p>
           </div>
         </section>
       )}

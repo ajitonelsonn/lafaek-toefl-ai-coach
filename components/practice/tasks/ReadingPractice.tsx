@@ -2,7 +2,9 @@
 
 import { Megaphone, MessageCircle } from "lucide-react";
 import type { PracticeType } from "@/lib/config/practice-types";
-import type { DailyLifeDocument, ReadingSet } from "@/lib/services/types";
+import type { ReactNode } from "react";
+import type { DailyLifeDocument } from "@/lib/services/types";
+import type { PracticeView } from "@/lib/practice/dto";
 import { ChoiceSetPractice } from "./ChoiceSetPractice";
 
 function DocumentView({ doc }: { doc: DailyLifeDocument }) {
@@ -66,15 +68,17 @@ function DocumentView({ doc }: { doc: DailyLifeDocument }) {
   );
 }
 
-export function ReadingPractice({ type, content, sampleCount }: { type: PracticeType; content: ReadingSet; sampleCount: number }) {
-  const groups = content.items.map((i) => ({ id: i.id, title: i.title, questions: i.questions }));
+type ReadingView = Extract<PracticeView, { kind: "read-in-daily-life" | "read-academic-passage" }>;
+
+export function ReadingPractice({ type, view, sidebarExtra }: { type: PracticeType; view: ReadingView; sidebarExtra: ReactNode }) {
+  const groups = view.items.map((i) => ({ id: i.itemId, title: i.title, source: i.source, questions: i.questions }));
   return (
     <ChoiceSetPractice
       type={type}
-      sampleCount={sampleCount}
       groups={groups}
+      sidebarExtra={sidebarExtra}
       stimulus={(group) => {
-        const item = content.items.find((i) => i.id === group.id)!;
+        const item = view.items.find((i) => i.itemId === group.id)!;
         if (item.document) return <DocumentView doc={item.document} />;
         return (
           <article aria-label={item.title} className="max-h-[560px] overflow-y-auto rounded-xl border border-line bg-surface-soft p-5">

@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { ArrowLeft, Lock, Mail } from "lucide-react";
-import { SITE } from "@/lib/config/site";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { AuthHeading, OrDivider } from "./AuthLayout";
 
-export function ForgotPassword() {
+export function ForgotPassword({ adminContact }: { adminContact: string | null }) {
   const [showHelp, setShowHelp] = useState(false);
-  const admin = SITE.adminContactEmail;
+  const admin = adminContact;
   const mailto = admin ? `mailto:${admin}?subject=${encodeURIComponent("Password reset request — LafaekTOEFL")}` : null;
 
   return (

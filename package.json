@@ -2,32 +2,53 @@
   "name": "lafaek-toefl",
   "version": "0.1.0",
   "private": true,
-  "description": "LafaekTOEFL AI Coach — open-source TOEFL preparation frontend (Phase 1: frontend-only with demo data).",
+  "description": "LafaekTOEFL AI Coach \u2014 open-source TOEFL preparation frontend (Phase 1: frontend-only with demo data).",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "assets:crop": "node scripts/crop-assets.mjs"
+    "assets:crop": "node scripts/crop-assets.mjs",
+    "postinstall": "prisma generate",
+    "test": "vitest run",
+    "db:generate": "prisma generate",
+    "db:migrate": "dotenv -e .env.local -- prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:status": "dotenv -e .env.local -- prisma migrate status",
+    "db:seed": "dotenv -e .env.local -- tsx --conditions=react-server scripts/seed-starter.ts",
+    "worker": "dotenv -e .env.local -- tsx --conditions=react-server scripts/worker.ts",
+    "worker:prod": "tsx --conditions=react-server scripts/worker.ts",
+    "verify:providers": "dotenv -e .env.local -- tsx --conditions=react-server scripts/verify-providers.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1157.0",
+    "@aws-sdk/s3-request-presigner": "^3.1157.0",
+    "@prisma/client": "^6.19.3",
     "lucide-react": "^1.61.0",
     "next": "^15.5.28",
+    "nodemailer": "^10.2.1",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^22.20.5",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.28",
     "postcss": "^8.5.31",
+    "prisma": "^6.19.3",
     "sharp": "^0.35.5",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5.9.3"
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   }
 }

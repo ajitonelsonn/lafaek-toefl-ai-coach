@@ -5,21 +5,24 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CheckCircle2, Clock, FileText, Lightbulb, ListChecks, Play, TrendingUp } from "lucide-react";
 import { SKILLS, practiceTypesForSkill, referenceTotalForSkill, type SkillId } from "@/lib/config/practice-types";
-import { MOCK_DEMO_MINUTES, MOCK_FULL_MINUTES, itemsForSections } from "@/lib/mock-data/mock-test";
-import { useDemoState, useHydrated } from "@/lib/store/demo-store";
+import { MOCK_DEMO_MINUTES, MOCK_FULL_MINUTES } from "@/lib/config/mock-test";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ProgressRing } from "@/components/ui/ProgressBar";
 import { TipCard, InfoCallout } from "@/components/ui/Callouts";
-import { DemoBadge, StatusBadge } from "@/components/ui/StatusBadge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { SKILL_TONE, SkillIconTile } from "@/components/practice/icons";
 import { percent } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 
-export function MockTestIntro() {
+export interface MockSummary {
+  sections: { skill: SkillId; correct: number | null; total: number }[];
+}
+
+export function MockTestIntro({ latest, unitsPerSkill }: { latest: MockSummary | null; unitsPerSkill: Record<SkillId, number> }) {
   const router = useRouter();
-  const hydrated = useHydrated();
-  const { mockResult } = useDemoState();
+  const mockResult = latest;
+  const itemsForSections = (skills: SkillId[]) => ({ length: skills.reduce((n, s) => n + (unitsPerSkill[s] ?? 0), 0) });
   const [sections, setSections] = useState<SkillId[]>(SKILLS.map((s) => s.id));
   const [error, setError] = useState("");
 
@@ -47,8 +50,8 @@ export function MockTestIntro() {
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="flex min-w-0 flex-col gap-6">
         <InfoCallout title="About the Mock Test">
-          The full practice test will follow the TOEFL 2026 format with all 12 task types. While the question bank is being built, you can take a
-          short demo test made from sample questions. Results are practice estimates, not official TOEFL scores.
+          This short practice test uses questions from the starter set across the four sections, so you can try the test flow and timing.
+          Results are practice estimates, not official TOEFL scores.
         </InfoCallout>
 
         <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
@@ -103,7 +106,7 @@ export function MockTestIntro() {
                       ))}
                     </ul>
                     <span className="mt-3 rounded-lg bg-surface/80 px-3 py-2 text-sm font-semibold text-ink">
-                      Planned: {referenceTotalForSkill(s.id)} questions · Demo: {itemsForSections([s.id]).length}
+                      Planned library: {referenceTotalForSkill(s.id)} · This test: {itemsForSections([s.id]).length}
                     </span>
                   </label>
                 );
@@ -114,7 +117,7 @@ export function MockTestIntro() {
 
         <section aria-label="Start" className="flex flex-col items-center gap-3 rounded-[var(--radius-card)] border border-line bg-primary-soft/50 p-6 text-center">
           <p className="text-sm text-body">
-            Demo test: <span className="font-bold text-ink">{items.length} questions</span> · about <span className="font-bold text-ink">{minutes} minutes</span>
+            Practice test: <span className="font-bold text-ink">{items.length} questions</span> · about <span className="font-bold text-ink">{minutes} minutes</span>
           </p>
           <Button size="lg" className="h-14 px-8 text-lg" leftIcon={<Play className="size-5" />} onClick={start}>
             Start Mock Test
@@ -134,15 +137,15 @@ export function MockTestIntro() {
             <h2 id="best-title" className="text-base font-bold text-ink">
               Latest Mock Test
             </h2>
-            <DemoBadge>Estimate</DemoBadge>
+            <StatusBadge tone="warning">Estimate</StatusBadge>
           </div>
           <div className="flex items-center gap-4">
             <ProgressRing value={best ?? 0} size={96} label={best === null ? "Not taken yet" : `${best}% correct`}>
-              <span className="text-lg font-bold text-ink">{hydrated && best !== null ? `${best}%` : "–"}</span>
+              <span className="text-lg font-bold text-ink">{best !== null ? `${best}%` : "–"}</span>
             </ProgressRing>
             <div>
-              <p className="text-sm text-muted">{hydrated && best !== null ? "Correct answers" : "Not taken yet"}</p>
-              {hydrated && best !== null && (
+              <p className="text-sm text-muted">{best !== null ? "Correct answers" : "Not taken yet"}</p>
+              {best !== null && (
                 <Link href="/mock-test/results" className="text-sm font-semibold text-primary hover:underline">
                   View results
                 </Link>

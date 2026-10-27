@@ -1,23 +1,26 @@
 "use client";
 
 import { CheckCircle2, XCircle } from "lucide-react";
-import type { ChoiceQuestion } from "@/lib/services/types";
+import type { ChoiceQuestionDTO, UnitResultDTO } from "@/lib/practice/dto";
 import { cn } from "@/lib/utils/cn";
 
 interface ChoiceListProps {
-  question: ChoiceQuestion;
+  question: ChoiceQuestionDTO;
   value: string | undefined;
   onChange: (id: string) => void;
-  revealed?: boolean;
+  /** Server result after submission (reveals the answer and explanation). */
+  result?: UnitResultDTO;
   number?: number;
   size?: "md" | "lg";
   hidePrompt?: boolean;
 }
 
 /** Single-answer question rendered as a native radio group. */
-export function ChoiceList({ question, value, onChange, revealed, number, size = "md", hidePrompt }: ChoiceListProps) {
-  const name = `q-${question.id}`;
-  const isCorrect = value === question.answerId;
+export function ChoiceList({ question, value, onChange, result, number, size = "md", hidePrompt }: ChoiceListProps) {
+  const name = `q-${question.unitId}-${question.prompt.length}`;
+  const revealed = Boolean(result);
+  const answerId = typeof result?.answer === "string" ? result.answer : undefined;
+  const isCorrect = result?.correct === true;
   return (
     <fieldset className="min-w-0">
       <legend className={cn("mb-3 flex items-start gap-3 font-semibold text-ink", hidePrompt && "sr-only")}>
@@ -31,7 +34,7 @@ export function ChoiceList({ question, value, onChange, revealed, number, size =
       <div className="flex flex-col gap-2">
         {question.options.map((o) => {
           const selected = value === o.id;
-          const showCorrect = revealed && o.id === question.answerId;
+          const showCorrect = revealed && o.id === answerId;
           const showWrong = revealed && selected && !isCorrect;
           return (
             <label
@@ -82,9 +85,9 @@ export function ChoiceList({ question, value, onChange, revealed, number, size =
       {revealed && (
         <div className={cn("mt-3 rounded-xl p-3 text-sm", value === undefined ? "bg-surface-muted" : isCorrect ? "bg-success-soft" : "bg-danger-soft")} role="status">
           <p className="font-bold text-ink">
-            {value === undefined ? "Not answered." : isCorrect ? "Correct!" : `Not quite. The answer is ${question.answerId}.`}
+            {value === undefined ? "Not answered." : isCorrect ? "Correct!" : `Not quite. The answer is ${answerId}.`}
           </p>
-          <p className="mt-0.5 text-body">{question.explanation}</p>
+          {result?.explanation && <p className="mt-0.5 text-body">{result.explanation}</p>}
         </div>
       )}
     </fieldset>

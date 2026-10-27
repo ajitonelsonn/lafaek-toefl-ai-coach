@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FlaskConical, Mic, RotateCcw, Square } from "lucide-react";
+import { Mic, RotateCcw, Square, Timer } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatClock } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
@@ -10,8 +10,10 @@ type RecState = "idle" | "requesting" | "recording" | "recorded" | "blocked";
 
 export interface RecordingResult {
   url: string | null;
+  /** True when the learner continued without a microphone (nothing was captured). */
   simulated: boolean;
   seconds: number;
+  blob: Blob | null;
 }
 
 interface RecordingControlProps {
@@ -24,8 +26,8 @@ interface RecordingControlProps {
 
 /**
  * Records the learner's answer with the browser microphone (MediaRecorder).
- * Audio stays in this tab as an object URL and is never uploaded. When the
- * microphone is unavailable, a clearly labelled simulated recording is offered.
+ * The parent decides whether to upload it. When the microphone is unavailable,
+ * a clearly labelled timer-only mode is offered (nothing is captured).
  */
 export function RecordingControl({ maxSeconds, onRecorded, onCleared, disabled, disabledReason }: RecordingControlProps) {
   const [state, setState] = useState<RecState>("idle");
@@ -53,12 +55,12 @@ export function RecordingControl({ maxSeconds, onRecorded, onCleared, disabled, 
   );
 
   const complete = useCallback(
-    (objectUrl: string | null, wasSimulated: boolean) => {
+    (objectUrl: string | null, wasSimulated: boolean, blob: Blob | null = null) => {
       const seconds = Math.min(maxSeconds, Math.round((Date.now() - startedAt.current) / 1000));
       urlRef.current = objectUrl;
       setUrl(objectUrl);
       setState("recorded");
-      onRecorded?.({ url: objectUrl, simulated: wasSimulated, seconds });
+      onRecorded?.({ url: objectUrl, simulated: wasSimulated, seconds, blob });
     },
     [maxSeconds, onRecorded],
   );
@@ -105,7 +107,7 @@ export function RecordingControl({ maxSeconds, onRecorded, onCleared, disabled, 
       r.onstop = () => {
         stopTracks();
         const blob = new Blob(chunks.current, { type: r.mimeType || "audio/webm" });
-        complete(URL.createObjectURL(blob), false);
+        complete(URL.createObjectURL(blob), false, blob);
       };
       recorder.current = r;
       r.start();
@@ -138,18 +140,18 @@ export function RecordingControl({ maxSeconds, onRecorded, onCleared, disabled, 
             <Square className="size-7 fill-current" />
           </button>
           <p className="text-sm font-semibold text-danger" aria-live="polite">
-            {simulated ? "Simulated recording" : "Recording"} · {formatClock(remaining)} left
+            {simulated ? "Timing your answer (no microphone)" : "Recording"} · {formatClock(remaining)} left
           </p>
-          {simulated && <p className="text-xs text-muted">Demo only — no sound is being captured.</p>}
+          {simulated && <p className="text-xs text-muted">No sound is being captured, so there will be no transcript or feedback.</p>}
         </>
       ) : state === "recorded" ? (
         <>
           <div className="flex items-center gap-2 rounded-full bg-success-soft px-4 py-2 text-sm font-semibold text-success">
             <Mic className="size-4" aria-hidden />
-            {simulated ? "Simulated response saved (demo)" : "Response recorded"}
+            {simulated ? "Answer timed (not recorded)" : "Response recorded"}
           </div>
           {url && <audio controls src={url} className="w-full max-w-xs" aria-label="Your recorded response" />}
-          <p className="text-xs text-muted">{simulated ? "No audio was captured." : "Your recording stays in this browser tab and is not uploaded."}</p>
+          <p className="text-xs text-muted">{simulated ? "No audio was captured." : "Your recording is sent securely for transcription."}</p>
           <Button variant="secondary" size="sm" leftIcon={<RotateCcw className="size-4" />} onClick={clear}>
             Record again
           </Button>
@@ -172,9 +174,9 @@ export function RecordingControl({ maxSeconds, onRecorded, onCleared, disabled, 
           {state === "blocked" && (
             <div className="w-full max-w-sm rounded-xl bg-warning-soft p-3 text-sm text-body" role="alert">
               <p className="font-semibold text-ink">{blockedReason}</p>
-              <p className="mt-1">You can continue with a simulated recording. It does not capture any sound.</p>
-              <Button variant="secondary" size="sm" className="mt-2" leftIcon={<FlaskConical className="size-4" />} onClick={() => beginCountdown(true)}>
-                Use simulated recording
+              <p className="mt-1">Allow microphone access in your browser and try again, or practise speaking aloud with the timer only (no transcript or feedback).</p>
+              <Button variant="secondary" size="sm" className="mt-2" leftIcon={<Timer className="size-4" />} onClick={() => beginCountdown(true)}>
+                Practise with timer only
               </Button>
             </div>
           )}

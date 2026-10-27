@@ -3,15 +3,15 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { BellRing, Globe, LogOut, Moon, Trash2, Volume2 } from "lucide-react";
+import { BellRing, Globe, LogOut, Mic, Moon, Trash2, Volume2 } from "lucide-react";
 import { BACKGROUNDS } from "@/lib/config/assets";
-import { resetDemo, updateDemo, useDemoState, useHydrated, type DemoState, type ThemePreference } from "@/lib/store/demo-store";
+import { api, errorMessage } from "@/lib/client/api";
+import { useSession, type UserSettings } from "@/components/session/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Select } from "@/components/ui/Field";
+import { Input, Select } from "@/components/ui/Field";
 import { Toggle } from "@/components/ui/Toggle";
 import { ConfirmDialog } from "@/components/ui/Dialog";
-import { LoadingState } from "@/components/ui/States";
 import { useToast } from "@/components/ui/Toast";
 
 function Row({ icon, title, description, control, id }: { icon: ReactNode; title: string; description: ReactNode; control: ReactNode; id: string }) {
@@ -32,22 +32,53 @@ function Row({ icon, title, description, control, id }: { icon: ReactNode; title
 }
 
 export function SettingsForm() {
-  const hydrated = useHydrated();
-  const { settings, user } = useDemoState();
-  if (!hydrated) return <LoadingState label="Loading settings…" />;
-  return <SettingsEditor key={JSON.stringify(settings)} saved={settings} signedIn={!!user} />;
+  const { settings } = useSession();
+  return <SettingsEditor key={JSON.stringify(settings)} saved={settings} />;
 }
 
-function SettingsEditor({ saved, signedIn }: { saved: DemoState["settings"]; signedIn: boolean }) {
+function SettingsEditor({ saved }: { saved: UserSettings }) {
   const router = useRouter();
   const toast = useToast();
+  const { setSettings } = useSession();
   const [draft, setDraft] = useState(saved);
-  const [confirm, setConfirm] = useState<"logout" | "reset" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirm, setConfirm] = useState<"logout" | "delete" | null>(null);
+  const [deleteText, setDeleteText] = useState("");
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
-  const save = () => {
-    updateDemo((s) => ({ ...s, settings: draft }));
-    toast("Settings saved.");
+  const save = async () => {
+    setSaving(true);
+    try {
+      const r = await api<{ settings: UserSettings }>("/api/settings", { method: "PATCH", body: draft });
+      setSettings(r.settings);
+      toast("Settings saved.");
+    } catch (e) {
+      toast(errorMessage(e), "warning");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const logout = async () => {
+    setConfirm(null);
+    try {
+      await api("/api/auth/logout", { method: "POST", body: {} });
+      router.replace("/login");
+      router.refresh();
+    } catch (e) {
+      toast(errorMessage(e), "warning");
+    }
+  };
+
+  const deleteAccount = async () => {
+    try {
+      await api("/api/account", { method: "DELETE", body: { confirm: "DELETE" } });
+      setConfirm(null);
+      router.replace("/");
+      router.refresh();
+    } catch (e) {
+      toast(errorMessage(e), "warning");
+    }
   };
 
   return (
@@ -74,7 +105,7 @@ function SettingsEditor({ saved, signedIn }: { saved: DemoState["settings"]; sig
                 label="Theme"
                 srOnlyLabel
                 value={draft.theme}
-                onChange={(e) => setDraft((d) => ({ ...d, theme: e.target.value as ThemePreference }))}
+                onChange={(e) => setDraft((d) => ({ ...d, theme: e.target.value as UserSettings["theme"] }))}
                 options={[
                   { value: "light", label: "Light" },
                   { value: "dark", label: "Dark" },
@@ -84,18 +115,19 @@ function SettingsEditor({ saved, signedIn }: { saved: DemoState["settings"]; sig
               />
             }
           />
+          <Row id="sound-label" icon={<Volume2 />} title="Sound" description="Play audio during practice." control={<Toggle checked={draft.sound} onChange={(v) => setDraft((d) => ({ ...d, sound: v }))} label="Sound during practice" />} />
           <Row
-            id="sound-label"
-            icon={<Volume2 />}
-            title="Sound"
-            description="Play audio during practice."
-            control={<Toggle checked={draft.sound} onChange={(v) => setDraft((d) => ({ ...d, sound: v }))} label="Sound during practice" />}
+            id="recording-label"
+            icon={<Mic />}
+            title="Keep my speaking recordings"
+            description="Off: recordings are deleted right after transcription. On: they are stored privately so you can review them later (requires media storage)."
+            control={<Toggle checked={draft.recordingConsent} onChange={(v) => setDraft((d) => ({ ...d, recordingConsent: v }))} label="Keep speaking recordings" />}
           />
           <Row
             id="remind-label"
             icon={<BellRing />}
             title="Study reminders"
-            description="Email reminders are not connected yet. Your choice is saved for later."
+            description="Reminder emails are not sent yet. Your choice is saved for when they are."
             control={<Toggle checked={draft.reminders} onChange={(v) => setDraft((d) => ({ ...d, reminders: v }))} label="Study reminders" />}
           />
           <div className="mt-4 flex flex-wrap justify-end gap-3">
@@ -103,7 +135,7 @@ function SettingsEditor({ saved, signedIn }: { saved: DemoState["settings"]; sig
             <Button variant="secondary" disabled={!dirty} onClick={() => setDraft(saved)}>
               Cancel
             </Button>
-            <Button disabled={!dirty} onClick={save}>
+            <Button disabled={!dirty} loading={saving} onClick={() => void save()}>
               Save Changes
             </Button>
           </div>
@@ -117,21 +149,21 @@ function SettingsEditor({ saved, signedIn }: { saved: DemoState["settings"]; sig
             id="logout-label"
             icon={<LogOut />}
             title="Log out"
-            description={signedIn ? "End your demo session on this device." : "You are not signed in."}
+            description="End your session on this device."
             control={
-              <Button variant="secondary" disabled={!signedIn} onClick={() => setConfirm("logout")}>
+              <Button variant="secondary" onClick={() => setConfirm("logout")}>
                 Log out
               </Button>
             }
           />
           <Row
-            id="reset-label"
+            id="delete-label"
             icon={<Trash2 />}
-            title="Reset demo data"
-            description="Delete practice history, study plan, vocabulary progress and drafts saved in this browser."
+            title="Delete account"
+            description="Permanently delete your account, study plan, practice history and stored media."
             control={
-              <Button variant="danger" onClick={() => setConfirm("reset")}>
-                Reset data
+              <Button variant="danger" onClick={() => setConfirm("delete")}>
+                Delete account
               </Button>
             }
           />
@@ -141,32 +173,21 @@ function SettingsEditor({ saved, signedIn }: { saved: DemoState["settings"]; sig
         <Image src={BACKGROUNDS.settings.src} alt="" width={BACKGROUNDS.settings.width} height={BACKGROUNDS.settings.height} className="h-auto w-full" />
       </div>
 
+      <ConfirmDialog open={confirm === "logout"} title="Log out?" description="You can log in again at any time." confirmLabel="Log out" onCancel={() => setConfirm(null)} onConfirm={() => void logout()} />
       <ConfirmDialog
-        open={confirm === "logout"}
-        title="Log out?"
-        description="You can log in again at any time. Your progress stays in this browser."
-        confirmLabel="Log out"
-        onCancel={() => setConfirm(null)}
-        onConfirm={() => {
-          setConfirm(null);
-          updateDemo((s) => ({ ...s, user: null }));
-          toast("You have been logged out of the demo.", "info");
-          router.push("/login");
-        }}
-      />
-      <ConfirmDialog
-        open={confirm === "reset"}
-        title="Reset all demo data?"
-        description="This deletes your practice history, study plan, vocabulary progress and drafts in this browser. This cannot be undone."
-        confirmLabel="Reset data"
+        open={confirm === "delete"}
+        title="Delete your account?"
+        description="This permanently deletes your account and all your data. It cannot be undone."
+        confirmLabel="Delete account"
         tone="danger"
-        onCancel={() => setConfirm(null)}
-        onConfirm={() => {
+        onCancel={() => {
           setConfirm(null);
-          resetDemo(true);
-          toast("Demo data has been reset.", "info");
+          setDeleteText("");
         }}
-      />
+        onConfirm={() => (deleteText === "DELETE" ? void deleteAccount() : toast("Type DELETE to confirm.", "warning"))}
+      >
+        <Input label="Type DELETE to confirm" value={deleteText} onChange={(e) => setDeleteText(e.target.value)} autoComplete="off" />
+      </ConfirmDialog>
     </div>
   );
 }

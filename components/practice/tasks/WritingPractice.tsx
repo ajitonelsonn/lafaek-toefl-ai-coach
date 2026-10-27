@@ -1,13 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, CheckCircle2, Circle, CircleAlert, ListChecks, Mail, PencilLine, Save, Send } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRight, CheckCircle2, CircleAlert, ListChecks, Mail, PencilLine, Save, Send, Sparkles } from "lucide-react";
 import type { PracticeType } from "@/lib/config/practice-types";
-import type { WritingSet } from "@/lib/services/types";
+import type { PracticeView } from "@/lib/practice/dto";
 import { ILLUSTRATIONS } from "@/lib/config/assets";
-import { updateDemo, useDemoState, useHydrated } from "@/lib/store/demo-store";
-import { runWritingChecks } from "@/lib/utils/writing-checks";
+import { api, errorMessage } from "@/lib/client/api";
 import { countWords, initials } from "@/lib/utils/format";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Field";
@@ -16,8 +15,9 @@ import { PracticeFooter, PracticeLayout } from "../PracticeLayout";
 import { CountdownTimer } from "../CountdownTimer";
 import { QuestionNavigation } from "../QuestionNavigation";
 import { ResultsPanel } from "../ResultsPanel";
-import { SampleSetCard } from "../SampleSetCard";
-import { usePracticeSession } from "../usePracticeSession";
+import { unitKey, usePracticeSession } from "../usePracticeSession";
+import { ItemImage } from "./ListeningPractice";
+import { AiFeedbackPanel, type AiFeedback } from "./AiFeedbackPanel";
 import { cn } from "@/lib/utils/cn";
 
 interface Draft {
@@ -26,51 +26,67 @@ interface Draft {
   body: string;
 }
 
+type WritingView = Extract<PracticeView, { kind: "write-email" | "academic-discussion" }>;
 const AVATAR_TONES = ["bg-reading-soft text-reading", "bg-listening-soft text-listening", "bg-speaking-soft text-speaking"];
 
-export function WritingPractice({ type, content, sampleCount }: { type: PracticeType; content: WritingSet; sampleCount: number }) {
-  const items = content.items;
-  const isEmail = content.kind === "write-email";
-  const unitIds = useMemo(() => items.map((i) => i.id), [items]);
-  const grade = useCallback(() => null, []);
-  const s = usePracticeSession<Draft>({ slug: type.slug, unitIds, grade, gradable: false });
-  const { drafts } = useDemoState();
-  const hydrated = useHydrated();
+export function WritingPractice({ type, view, sidebarExtra }: { type: PracticeType; view: WritingView; sidebarExtra: ReactNode }) {
+  const items = view.items;
+  const isEmail = view.kind === "write-email";
+  const unitKeys = useMemo(() => items.map((i) => unitKey(i.itemId, i.unitId)), [items]);
+  const s = usePracticeSession<Draft>({ unitKeys, gradable: false });
   const toast = useToast();
   const [selfCheck, setSelfCheck] = useState<Record<string, boolean[]>>({});
-  const [loadedDrafts, setLoadedDrafts] = useState(false);
+  const [coaching, setCoaching] = useState<Record<string, { feedback: AiFeedback; label: string }>>({});
+  const [coachBusy, setCoachBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const task = items[s.index];
-  const draft: Draft = s.answers[task.id] ?? { to: task.recipient, subject: task.subject, body: "" };
+  const key = unitKey(task.itemId, task.unitId);
+  const draft: Draft = s.answers[key] ?? task.draft ?? { to: task.recipient ?? undefined, subject: task.subject ?? undefined, body: "" };
   const words = countWords(draft.body);
-  const submitted = !!s.checked[task.id];
+  const result = s.results[key];
+  const submitted = Boolean(result);
   const isLast = s.index === items.length - 1;
-  const ticks = selfCheck[task.id] ?? task.checklist.map(() => false);
-  const checks = useMemo(() => (submitted ? runWritingChecks(task, content.kind, draft.body) : []), [submitted, task, content.kind, draft.body]);
-
-  // Restore saved drafts once, after hydration.
-  useEffect(() => {
-    if (!hydrated || loadedDrafts) return;
-    setLoadedDrafts(true);
-    for (const item of items) {
-      const saved = drafts[`${type.slug}:${item.id}`];
-      if (saved?.body) s.answer(item.id, saved);
-    }
-  }, [hydrated, loadedDrafts, drafts, items, s, type.slug]);
+  const ticks = selfCheck[key] ?? task.checklist.map(() => false);
 
   const update = (patch: Partial<Draft>) => {
     const next = { ...draft, ...patch };
-    s.answer(task.id, next.body.trim() ? next : undefined);
+    s.answer(key, next.body.trim() ? next : undefined);
   };
 
-  const saveDraft = () => {
-    updateDemo((st) => ({ ...st, drafts: { ...st.drafts, [`${type.slug}:${task.id}`]: draft } }));
-    toast("Draft saved in this browser.");
+  const saveDraft = async () => {
+    setSaving(true);
+    try {
+      await api(`/api/practice/items/${task.itemId}/draft`, { method: "PUT", body: { to: draft.to, subject: draft.subject, body: draft.body } });
+      toast("Draft saved to your account.");
+    } catch (e) {
+      toast(errorMessage(e), "warning");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!(key in s.answers)) s.answer(key, draft);
+    await s.check(key, draft);
+  };
+
+  const coach = async () => {
+    setCoachBusy(true);
+    try {
+      const r = await api<{ feedback: AiFeedback; label: string }>(`/api/practice/items/${task.itemId}/feedback`, { body: { unitId: task.unitId, text: draft.body } });
+      setCoaching((c) => ({ ...c, [key]: r }));
+    } catch (e) {
+      toast(errorMessage(e), "warning");
+    } finally {
+      setCoachBusy(false);
+    }
   };
 
   return (
     <PracticeLayout
       type={type}
+      source={task.source}
       position={`${s.index + 1} of ${items.length}`}
       timer={<CountdownTimer key={s.resetKey} totalSeconds={type.timeLimitSeconds} stopped={s.finished} />}
       sidebar={
@@ -93,7 +109,7 @@ export function WritingPractice({ type, content, sampleCount }: { type: Practice
                       type="checkbox"
                       className="mt-0.5 size-5 shrink-0 accent-[var(--primary)]"
                       checked={ticks[i]}
-                      onChange={(e) => setSelfCheck((sc) => ({ ...sc, [task.id]: ticks.map((t, j) => (j === i ? e.target.checked : t)) }))}
+                      onChange={(e) => setSelfCheck((sc) => ({ ...sc, [key]: ticks.map((t, j) => (j === i ? e.target.checked : t)) }))}
                     />
                     {c}
                   </label>
@@ -101,8 +117,8 @@ export function WritingPractice({ type, content, sampleCount }: { type: Practice
               ))}
             </ul>
           </section>
-          {items.length > 1 && <QuestionNavigation title="Tasks" items={items.map((i) => ({ id: i.id, status: s.statusOf(i.id) }))} current={s.index} onSelect={s.setIndex} />}
-          <SampleSetCard type={type} sampleCount={sampleCount} />
+          {items.length > 1 && <QuestionNavigation title="Tasks" items={unitKeys.map((k) => ({ id: k, status: s.statusOf(k) }))} current={s.index} onSelect={s.setIndex} />}
+          {sidebarExtra}
         </>
       }
       banner={
@@ -114,9 +130,10 @@ export function WritingPractice({ type, content, sampleCount }: { type: Practice
             answered={s.summary.answered}
             onRetry={() => {
               setSelfCheck({});
+              setCoaching({});
               s.reset();
             }}
-            note="Writing is not auto-scored in this demo. AI feedback will be added when the AI service is connected."
+            note="Writing is not auto-scored. Use “Get AI coaching” for feedback on each response."
           />
         )
       }
@@ -129,12 +146,12 @@ export function WritingPractice({ type, content, sampleCount }: { type: Practice
           }
           right={
             <>
-              <Button variant="secondary" size="lg" leftIcon={<Save className="size-4" />} onClick={saveDraft} disabled={!draft.body.trim()}>
+              <Button variant="secondary" size="lg" leftIcon={<Save className="size-4" />} onClick={saveDraft} loading={saving} disabled={!draft.body.trim()}>
                 Save Draft
               </Button>
               {!submitted ? (
-                <Button size="lg" rightIcon={<Send className="size-4" />} onClick={() => s.check(task.id)} disabled={!draft.body.trim()}>
-                  Submit for Feedback
+                <Button size="lg" rightIcon={<Send className="size-4" />} onClick={() => void submit()} loading={s.pending} disabled={!draft.body.trim()}>
+                  Submit
                 </Button>
               ) : !isLast ? (
                 <Button size="lg" rightIcon={<ArrowRight className="size-4" />} onClick={() => s.setIndex(s.index + 1)}>
@@ -142,7 +159,7 @@ export function WritingPractice({ type, content, sampleCount }: { type: Practice
                 </Button>
               ) : (
                 !s.finished && (
-                  <Button size="lg" rightIcon={<ArrowRight className="size-4" />} onClick={s.finish}>
+                  <Button size="lg" rightIcon={<ArrowRight className="size-4" />} onClick={() => void s.finish()}>
                     Finish
                   </Button>
                 )
@@ -153,14 +170,16 @@ export function WritingPractice({ type, content, sampleCount }: { type: Practice
       }
     >
       {isEmail ? (
-        <div className={cn("grid gap-5", task.illustration && "md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]")}>
-          {task.illustration && (
-            <Image
-              src={ILLUSTRATIONS[task.illustration].src}
-              alt="Illustration of a tent and backpack near mountains and a lake"
-              width={ILLUSTRATIONS[task.illustration].width}
-              height={ILLUSTRATIONS[task.illustration].height}
-              className="h-auto w-full rounded-xl object-cover"
+        <div className={cn("grid grid-cols-[minmax(0,1fr)] gap-5", (task.illustration || task.imageAssetId) && "md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]")}>
+          {(task.illustration || task.imageAssetId) && (
+            <ItemImage
+              assetId={task.imageAssetId}
+              alt="Illustration for the email task"
+              fallback={
+                task.illustration ? (
+                  <Image src={ILLUSTRATIONS.emailHiking.src} alt="Illustration of a tent and backpack near mountains and a lake" width={ILLUSTRATIONS.emailHiking.width} height={ILLUSTRATIONS.emailHiking.height} className="h-auto w-full rounded-xl object-cover" />
+                ) : null
+              }
             />
           )}
           <div className="text-[15px] leading-relaxed text-body">
@@ -179,10 +198,8 @@ export function WritingPractice({ type, content, sampleCount }: { type: Practice
       ) : (
         <div className="flex flex-col gap-4">
           <p className="text-[15px] text-body">{task.scenario}</p>
-          {task.professor && (
-            <DiscussionPost name={task.professor.name} role="Professor" text={task.professor.prompt} tone="bg-primary-soft" avatar="bg-primary text-on-primary" />
-          )}
-          {task.students?.map((st, i) => (
+          {task.professor && <DiscussionPost name={task.professor.name} role="Professor" text={task.professor.prompt} tone="bg-primary-soft" avatar="bg-primary text-on-primary" />}
+          {task.students.map((st, i) => (
             <DiscussionPost key={st.name} name={st.name} role="Student" text={st.text} tone={i === 0 ? "bg-listening-soft" : "bg-speaking-soft"} avatar={AVATAR_TONES[(i + 1) % 3]} />
           ))}
         </div>
@@ -212,21 +229,21 @@ export function WritingPractice({ type, content, sampleCount }: { type: Practice
           onChange={(e) => update({ body: e.target.value })}
           readOnly={submitted}
           className="min-h-52"
-          hint={`Aim for at least ${task.minWords} words.`}
+          hint={`Suggested length: at least ${task.minWords} words (a practice guideline).`}
         />
         {submitted && !s.finished && (
-          <button type="button" onClick={() => s.answer(task.id, draft)} className="mt-2 text-sm font-semibold text-primary hover:underline">
+          <button type="button" onClick={() => s.answer(key, draft)} className="mt-2 text-sm font-semibold text-primary hover:underline">
             Edit response
           </button>
         )}
       </section>
 
-      {submitted && (
+      {result && (
         <section aria-label="Feedback" className="rounded-xl border border-line bg-surface-soft p-4 sm:p-5" role="status">
           <h2 className="text-base font-bold text-ink">Automatic writing checks</h2>
-          <p className="mt-0.5 text-xs text-muted">These checks look at length and structure only. They are not AI scoring. AI feedback is not connected yet.</p>
+          <p className="mt-0.5 text-xs text-muted">{result.label ?? "These checks look at length and structure only."}</p>
           <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-            {checks.map((c) => (
+            {(result.checks ?? []).map((c) => (
               <li key={c.id} className="flex gap-2 rounded-lg bg-surface p-3 text-sm">
                 {c.passed ? <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-label="Passed" /> : <CircleAlert className="mt-0.5 size-5 shrink-0 text-warning" aria-label="Needs work" />}
                 <span>
@@ -236,12 +253,14 @@ export function WritingPractice({ type, content, sampleCount }: { type: Practice
               </li>
             ))}
           </ul>
-          <p className="mt-3 flex items-center gap-2 text-sm text-body">
-            <Circle className="size-3 fill-primary text-primary" aria-hidden />
-            Self-check: {ticks.filter(Boolean).length} of {task.checklist.length} task points ticked.
-          </p>
+          {!coaching[key] && (
+            <Button className="mt-4" variant="soft" leftIcon={<Sparkles className="size-4" />} loading={coachBusy} onClick={() => void coach()}>
+              Get AI coaching
+            </Button>
+          )}
         </section>
       )}
+      {coaching[key] && <AiFeedbackPanel feedback={coaching[key].feedback} label={coaching[key].label} />}
     </PracticeLayout>
   );
 }
@@ -251,7 +270,7 @@ function DiscussionPost({ name, role, text, tone, avatar }: { name: string; role
     <article className="flex gap-3 sm:gap-4">
       <div className="flex w-16 shrink-0 flex-col items-center gap-1 text-center sm:w-20">
         <span className={cn("inline-flex size-12 items-center justify-center rounded-full text-base font-bold sm:size-14", avatar)} aria-hidden>
-          {initials(name.replace(/^Dr\.\s*/, ""))}
+          {initials(name.replace(/^(Dr|Prof|Professor)\.?\s*/i, ""))}
         </span>
         <span className="text-sm font-bold text-ink">{name}</span>
         <span className="text-[11px] text-muted">{role}</span>

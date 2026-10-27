@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 export type BadgeTone = "neutral" | "primary" | "success" | "warning" | "danger" | "reading" | "listening" | "writing" | "speaking";
@@ -22,14 +21,5 @@ export function StatusBadge({ tone = "neutral", icon, children, className }: { t
       {icon}
       {children}
     </span>
-  );
-}
-
-/** Marks sample/demo content so learners never mistake it for real results. */
-export function DemoBadge({ children = "Demo data", className }: { children?: ReactNode; className?: string }) {
-  return (
-    <StatusBadge tone="warning" icon={<FlaskConical aria-hidden />} className={className}>
-      {children}
-    </StatusBadge>
   );
 }

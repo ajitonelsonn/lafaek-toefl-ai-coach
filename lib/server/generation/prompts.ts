@@ -1,0 +1,96 @@
+import "server-only";
+import type { PracticeSlug } from "@/lib/config/practice-types";
+
+// Versioned prompt templates. Bump PROMPT_VERSION whenever wording changes;
+// it is stored with every generated item and job for auditability.
+export const PROMPT_VERSION = "gen-2026-10-27.1";
+
+export const SYSTEM_PROMPT = `You write ORIGINAL English practice material for adult learners preparing for the TOEFL iBT (format from January 2026).
+Rules:
+- Create new, original content. Never reproduce or paraphrase official ETS tests or third-party prep books.
+- Use fictional people, places and organisations. No real people, brands or personal data.
+- Content must be appropriate for all ages, culturally neutral and factually sound.
+- Objective questions must have exactly one defensible correct answer; distractors must be clearly wrong but plausible.
+- Every explanation must be supported by the text or script.
+- Never claim official ETS endorsement or exact score equivalence.
+- Return only JSON that matches the provided schema. No Markdown.`;
+
+export interface PromptContext {
+  cefrLevel: string;
+  itemIndex: number;
+  weakAreas: string[];
+  goals: string;
+  avoidTopics: string[];
+}
+
+const TOPIC_POOL = [
+  "campus life", "biology", "astronomy", "history", "art and design", "environmental science", "psychology", "economics",
+  "technology", "health", "geology", "music", "urban planning", "marine life", "education", "food and nutrition",
+  "travel", "sports", "community services", "linguistics", "architecture", "climate", "anthropology", "business",
+];
+
+function suggestedTopic(slug: string, index: number, avoid: string[]): string {
+  let seed = index * 7;
+  for (const ch of slug) seed += ch.charCodeAt(0);
+  const pool = TOPIC_POOL.filter((t) => !avoid.includes(t));
+  return (pool.length ? pool : TOPIC_POOL)[seed % (pool.length || TOPIC_POOL.length)];
+}
+
+const TASK_INSTRUCTIONS: Record<PracticeSlug, string> = {
+  "complete-the-words":
+    "Write one coherent academic paragraph (70–110 words). In it, mark exactly 10 words as C-test blanks: keep the first half of the word and put the missing second half in square brackets, e.g. 'sen[sing]', 'i[n]'. Only mark one word per blank, missing part 1–6 letters, and choose words whose missing letters are unambiguous from context. The first sentence must have no blanks.",
+  "read-in-daily-life":
+    "Write one short everyday text a student might read (email, notice, or group chat) of 90–170 words, and 2–3 multiple-choice questions (purpose, detail, inference). Fill unused document fields with null or empty arrays.",
+  "read-academic-passage":
+    "Write one original academic passage of 3–4 paragraphs (each 60–110 words) and 5 questions covering main idea, detail, inference, vocabulary in context and purpose/organization.",
+  "listen-choose-response":
+    "Write one short spoken statement or question (5–20 words) from everyday or campus life, and four written responses where exactly one is the most natural reply. Distractors should repeat words or misread the intent.",
+  "listen-conversation":
+    "Write a natural conversation (8–12 turns) between two speakers (e.g. a student and a staff member) and 3–4 questions about what was said and implied. Use speaker ids S1 and S2. imagePrompt: a short description of the scene for an illustration, no text in the image.",
+  "listen-announcement":
+    "Write one campus or academic announcement (90–150 words) read by one announcer (speaker id S1), split into 2–4 script lines, and 3 questions. imagePrompt: a short scene description, no text in the image.",
+  "listen-academic-talk":
+    "Write an original mini-lecture (220–320 words) by one lecturer (speaker id S1) with clear structure and consistent terminology, split into 3–6 script lines, and 4–5 questions. imagePrompt: a short description of a simple illustration of the topic, no text in the image.",
+  "build-sentence":
+    "Write a two-person exchange: 'context' is what the first person says; the reply is built by the learner from 5–7 word groups in 'tokens' (in the CORRECT order, lowercase except proper nouns and 'I'). Put fixed words before the tokens in 'prefix' (or null) and fixed ending words plus final punctuation in 'suffix'. The correct order must be the ONLY grammatical order. Prefer indirect questions, relative clauses or reported speech. 'parts' labels the reply's grammatical parts.",
+  "write-email":
+    "Write a realistic email-writing task: a scenario (90–140 words) that tells the learner who to write to and why, the recipient's name, a subject line, exactly 3 things the email must do, and 3–4 short tips. imagePrompt: a short scene description for an illustration, no text in the image, or null.",
+  "academic-discussion":
+    "Write an academic discussion-board task: a course topic, a fictional professor (title and surname) and their question (90–150 words), and two fictional students' posts (50–90 words each) with different views. Add 3–4 tips.",
+  "listen-repeat":
+    "Write a workplace or campus situation (one or two sentences) and exactly 7 short, natural sentences someone in that situation might say, getting slightly longer (from about 5 to about 14 words). imagePrompt: a short description of a simple illustration of the situation, no text, or null.",
+  "take-interview":
+    "Write an interview scenario (a research study or survey the learner joins) and exactly 4 interview questions: personal experience, opinion with reasons, a comparison, and a broader issue.",
+};
+
+export function buildUserPrompt(slug: PracticeSlug, ctx: PromptContext): string {
+  const topic = suggestedTopic(slug, ctx.itemIndex, ctx.avoidTopics);
+  return [
+    `Task type: ${slug}.`,
+    TASK_INSTRUCTIONS[slug],
+    `Learner level: CEFR ${ctx.cefrLevel}. Match vocabulary and sentence length to this level.`,
+    `Suggested topic area: ${topic}.`,
+    ctx.avoidTopics.length ? `Avoid these topics already used: ${ctx.avoidTopics.slice(-8).join("; ")}.` : "",
+    ctx.weakAreas.length ? `The learner wants extra help with: ${ctx.weakAreas.join(", ")}.` : "",
+    ctx.goals ? `Learner goal (context only; do not quote it): ${ctx.goals.slice(0, 200)}` : "",
+    `Set "topic" to a 2–5 word topic label, "cefrLevel" to the level you wrote for, and "difficulty" to easy, medium or hard.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function buildRepairPrompt(original: string, errors: string[]): string {
+  return `${original}\n\nYour previous answer was rejected for these reasons:\n- ${errors.slice(0, 8).join("\n- ")}\nWrite a corrected, complete answer.`;
+}
+
+/** Second-pass check for Build a Sentence: grammatical and a unique correct order. */
+export function buildSentenceCheckPrompt(context: string, prefix: string | null, tokens: string[], suffix: string | null): string {
+  return `Two people are talking. Person A says: "${context}"
+Person B's reply is built from these word groups in this order: ${[prefix, ...tokens.map((t) => `[${t}]`), suffix].filter(Boolean).join(" ")}
+1) Is this reply grammatical, natural, and a sensible response to Person A?
+2) Treating each [bracketed group] as a movable unit (prefix and suffix fixed), is this the ONLY grammatical order? If another order is also grammatical, it is not unique.`;
+}
+
+export function scenePrompt(description: string): string {
+  return `Friendly, clean flat vector illustration for an English-learning app: ${description}. Soft light colours, simple shapes, no text, no letters, no logos, no real people or brands.`;
+}

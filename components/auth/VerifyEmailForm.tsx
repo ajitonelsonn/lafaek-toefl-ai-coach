@@ -3,12 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, Mail } from "lucide-react";
-import { services } from "@/lib/services";
-import { updateDemo, useDemoState, useHydrated } from "@/lib/store/demo-store";
+import { api, errorMessage } from "@/lib/client/api";
+import { clearPendingEmail, getPendingEmail } from "@/lib/client/pending-email";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
 import { formatClock } from "@/lib/utils/format";
-import { AuthHeading, DemoAuthNotice, OrDivider } from "./AuthLayout";
+import { AuthHeading, OrDivider } from "./AuthLayout";
 import { cn } from "@/lib/utils/cn";
 
 const LENGTH = 6;
@@ -16,12 +16,16 @@ const LENGTH = 6;
 export function VerifyEmailForm() {
   const router = useRouter();
   const toast = useToast();
-  const hydrated = useHydrated();
-  const { pendingSignup } = useDemoState();
+  const [hydrated, setHydrated] = useState(false);
+  const [pendingEmail, setPendingEmailState] = useState<string | null>(null);
+  useEffect(() => {
+    setPendingEmailState(getPendingEmail());
+    setHydrated(true);
+  }, []);
   const [digits, setDigits] = useState<string[]>(Array(LENGTH).fill(""));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [resendIn, setResendIn] = useState(45);
+  const [resendIn, setResendIn] = useState(60);
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -61,27 +65,35 @@ export function VerifyEmailForm() {
       inputs.current[digits.findIndex((d) => !d)]?.focus();
       return;
     }
-    if (!pendingSignup) {
+    if (!pendingEmail) {
       setError("We couldn't find your sign-up details. Please sign up again.");
       return;
     }
     setLoading(true);
     try {
-      const user = await services.auth.verifyEmail({ email: pendingSignup.email, code, name: pendingSignup.name });
+      const r = await api<{ next: string }>("/api/auth/verify-email", { body: { email: pendingEmail, code } });
       setDigits(Array(LENGTH).fill(""));
-      updateDemo((s) => ({ ...s, user, pendingSignup: null }));
-      toast(`Welcome, ${user.name}! Your demo account is ready.`);
-      router.push("/dashboard");
+      clearPendingEmail();
+      toast("Your email is verified. Welcome!");
+      router.replace(r.next);
+      router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Verification failed.");
+      setError(errorMessage(err));
+      setDigits(Array(LENGTH).fill(""));
+      inputs.current[0]?.focus();
       setLoading(false);
     }
   };
 
   const resend = async () => {
-    const { resendAfterSeconds } = await services.auth.resendCode(pendingSignup?.email ?? "");
-    setResendIn(resendAfterSeconds);
-    toast("Demo: a new code would be sent now. No email is sent in this preview.", "info");
+    if (!pendingEmail) return;
+    try {
+      const r = await api<{ resendAfterSeconds: number }>("/api/auth/resend-otp", { body: { email: pendingEmail } });
+      setResendIn(r.resendAfterSeconds);
+      toast("If your sign-up is waiting for verification, a new code is on its way.", "info");
+    } catch (err) {
+      toast(errorMessage(err), "warning");
+    }
   };
 
   return (
@@ -92,11 +104,11 @@ export function VerifyEmailForm() {
         subtitle={
           <>
             We have sent a 6-digit code to
-            <span className="mt-1 block font-bold text-ink">{hydrated ? (pendingSignup?.email ?? "your email address") : "…"}</span>
+            <span className="mt-1 block font-bold text-ink">{hydrated ? (pendingEmail ?? "your email address") : "…"}</span>
           </>
         }
       />
-      {hydrated && !pendingSignup && (
+      {hydrated && !pendingEmail && (
         <p className="mb-5 rounded-lg bg-warning-soft p-3 text-sm text-body" role="alert">
           No sign-up is in progress. Please create an account first.
         </p>
@@ -153,7 +165,7 @@ export function VerifyEmailForm() {
       <LinkButton href="/signup" variant="secondary" size="lg" fullWidth leftIcon={<ArrowLeft className="size-4" />}>
         Back to Sign Up
       </LinkButton>
-      <DemoAuthNotice>Demo mode: no email is sent. Enter any 6 digits to continue. Codes are never stored.</DemoAuthNotice>
+      <p className="mt-4 text-center text-xs text-muted">The code expires in 10 minutes. Check your spam folder if you can&apos;t find it.</p>
     </>
   );
 }

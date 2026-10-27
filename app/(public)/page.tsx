@@ -176,9 +176,9 @@ export default function LandingPage() {
               “Lafaek” means crocodile. Our friendly crocodile coach helps learners at every English level prepare for the TOEFL with clear
               instructions and encouraging feedback. {SITE.shortName} is free and open source.
             </p>
-            <p className="mt-3 max-w-2xl rounded-xl bg-warning-soft p-3 text-sm text-body">
-              <span className="font-semibold text-ink">Preview version:</span> this site currently uses hand-written sample questions and simulated
-              sign-in. AI-generated questions and AI feedback are not connected yet. Scores are practice estimates, not official TOEFL scores.
+            <p className="mt-3 max-w-2xl rounded-xl bg-primary-soft/70 p-3 text-sm text-body">
+              Practice questions are created for you by AI and checked before you see them. Scores and feedback are practice estimates, not
+              official TOEFL scores.
             </p>
           </div>
         </section>

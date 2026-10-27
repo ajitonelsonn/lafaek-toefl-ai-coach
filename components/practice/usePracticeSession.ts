@@ -1,90 +1,117 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { PracticeSlug } from "@/lib/config/practice-types";
-import { recordAttempt } from "@/lib/store/demo-store";
+import type { UnitResultDTO } from "@/lib/practice/dto";
+import { api, errorMessage } from "@/lib/client/api";
+import { useToast } from "@/components/ui/Toast";
 
 export type UnitStatus = "unanswered" | "answered" | "correct" | "incorrect";
 
+/** UI key for a unit: `${itemId}:${unitId}`. */
+export const unitKey = (itemId: string, unitId: string) => `${itemId}:${unitId}`;
+const splitKey = (key: string) => {
+  const i = key.lastIndexOf(":");
+  return { itemId: key.slice(0, i), unitId: key.slice(i + 1) };
+};
+
 interface Options {
-  slug: PracticeSlug;
-  unitIds: string[];
-  /** Returns true/false for gradable units, or null when a unit cannot be auto-graded. */
-  grade: (unitId: string, answer: unknown) => boolean | null;
-  /** Maps answered unit ids to the ids stored as progress (defaults to the same ids). */
-  toProgressIds?: (answeredIds: string[]) => string[];
-  /** False for writing/speaking sets that cannot be auto-graded. */
+  unitKeys: string[];
+  /** False for writing/speaking sets that are not auto-scored. */
   gradable?: boolean;
 }
 
-/** Shared state for a practice set: current unit, answers, checks, flags and completion. */
-export function usePracticeSession<A>({ slug, unitIds, grade, toProgressIds, gradable = true }: Options) {
+/**
+ * Practice-set state. Answers live in the browser until checked; checking sends
+ * them to the server, which scores them, stores the attempt and returns the result.
+ * Answer keys never reach the browser before submission.
+ */
+export function usePracticeSession<A>({ unitKeys, gradable = true }: Options) {
+  const toast = useToast();
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, A>>({});
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [results, setResults] = useState<Record<string, UnitResultDTO>>({});
   const [flagged, setFlagged] = useState<Record<string, boolean>>({});
+  const [pending, setPending] = useState(false);
   const [finished, setFinished] = useState(false);
   const [resetKey, setResetKey] = useState(0);
   const startedAt = useRef(Date.now());
 
-  const answer = useCallback((unitId: string, value: A | undefined) => {
+  const answer = useCallback((key: string, value: A | undefined) => {
     setAnswers((prev) => {
       const next = { ...prev };
-      if (value === undefined) delete next[unitId];
-      else next[unitId] = value;
+      if (value === undefined) delete next[key];
+      else next[key] = value;
       return next;
     });
-    setChecked((prev) => (prev[unitId] ? { ...prev, [unitId]: false } : prev));
+    setResults((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }, []);
 
-  const check = useCallback((ids: string | string[]) => {
-    const list = Array.isArray(ids) ? ids : [ids];
-    setChecked((prev) => ({ ...prev, ...Object.fromEntries(list.map((id) => [id, true])) }));
-  }, []);
+  /** Submits the given answered units (grouped per item) and stores the results. */
+  const check = useCallback(
+    async (keys: string | string[], fillEmpty?: A): Promise<boolean> => {
+      const all = Array.isArray(keys) ? keys : [keys];
+      const list = fillEmpty === undefined ? all.filter((k) => k in answers) : all;
+      if (!list.length) return true;
+      const byItem = new Map<string, { unitId: string; response: unknown }[]>();
+      for (const k of list) {
+        const { itemId, unitId } = splitKey(k);
+        byItem.set(itemId, [...(byItem.get(itemId) ?? []), { unitId, response: k in answers ? answers[k] : fillEmpty }]);
+      }
+      setPending(true);
+      try {
+        const merged: Record<string, UnitResultDTO> = {};
+        for (const [itemId, responses] of byItem) {
+          const r = await api<{ results: Record<string, UnitResultDTO> }>(`/api/practice/items/${itemId}/submit`, {
+            body: { responses, durationMs: Date.now() - startedAt.current },
+          });
+          for (const [unitId, res] of Object.entries(r.results)) merged[unitKey(itemId, unitId)] = res;
+        }
+        setResults((prev) => ({ ...prev, ...merged }));
+        return true;
+      } catch (e) {
+        toast(errorMessage(e), "warning");
+        return false;
+      } finally {
+        setPending(false);
+      }
+    },
+    [answers, toast],
+  );
 
-  const toggleFlag = useCallback((unitId: string) => setFlagged((prev) => ({ ...prev, [unitId]: !prev[unitId] })), []);
+  /** Stores results produced elsewhere (e.g. the speaking endpoint). */
+  const addResults = useCallback((r: Record<string, UnitResultDTO>) => setResults((prev) => ({ ...prev, ...r })), []);
+
+  const toggleFlag = useCallback((key: string) => setFlagged((prev) => ({ ...prev, [key]: !prev[key] })), []);
 
   const statusOf = useCallback(
-    (unitId: string): UnitStatus => {
-      if (!(unitId in answers)) return "unanswered";
-      if (!checked[unitId]) return "answered";
-      const result = grade(unitId, answers[unitId]);
-      if (result === null) return "answered";
-      return result ? "correct" : "incorrect";
+    (key: string): UnitStatus => {
+      const r = results[key];
+      if (r) return r.correct === null ? "answered" : r.correct ? "correct" : "incorrect";
+      return key in answers ? "answered" : "unanswered";
     },
-    [answers, checked, grade],
+    [answers, results],
   );
 
   const summary = useMemo(() => {
-    let correct = 0;
-    let answered = 0;
-    for (const id of unitIds) {
-      if (!(id in answers)) continue;
-      answered++;
-      if (gradable && grade(id, answers[id]) === true) correct++;
-    }
-    return { correct: gradable ? correct : null, answered, total: unitIds.length };
-  }, [answers, grade, gradable, unitIds]);
+    const done = unitKeys.filter((k) => k in results || k in answers);
+    const correct = unitKeys.filter((k) => results[k]?.correct === true).length;
+    return { correct: gradable ? correct : null, answered: done.length, total: unitKeys.length };
+  }, [answers, gradable, results, unitKeys]);
 
-  const finish = useCallback(() => {
-    setChecked(Object.fromEntries(unitIds.map((id) => [id, true])));
-    setFinished(true);
-    const answeredIds = unitIds.filter((id) => id in answers);
-    recordAttempt(
-      {
-        slug,
-        correct: summary.correct,
-        answered: summary.answered,
-        total: summary.total,
-        durationSeconds: Math.round((Date.now() - startedAt.current) / 1000),
-      },
-      toProgressIds ? toProgressIds(answeredIds) : answeredIds,
-    );
-  }, [answers, slug, summary, toProgressIds, unitIds]);
+  const finish = useCallback(async () => {
+    const unchecked = unitKeys.filter((k) => k in answers && !(k in results));
+    const ok = await check(unchecked);
+    if (ok) setFinished(true);
+  }, [answers, check, results, unitKeys]);
 
   const reset = useCallback(() => {
     setAnswers({});
-    setChecked({});
+    setResults({});
     setFlagged({});
     setFinished(false);
     setIndex(0);
@@ -92,30 +119,13 @@ export function usePracticeSession<A>({ slug, unitIds, grade, toProgressIds, gra
     startedAt.current = Date.now();
   }, []);
 
-  /** Clears answers for some units only (e.g. the current passage). */
-  const resetUnits = useCallback((ids: string[]) => {
-    const drop = <T,>(obj: Record<string, T>) => Object.fromEntries(Object.entries(obj).filter(([k]) => !ids.includes(k)));
+  const resetUnits = useCallback((keys: string[]) => {
+    const drop = <T,>(obj: Record<string, T>) => Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)));
     setAnswers((a) => drop(a));
-    setChecked((c) => drop(c));
+    setResults((r) => drop(r));
   }, []);
 
-  return {
-    index,
-    setIndex,
-    answers,
-    answer,
-    checked,
-    check,
-    flagged,
-    toggleFlag,
-    statusOf,
-    summary,
-    finished,
-    finish,
-    reset,
-    resetUnits,
-    resetKey,
-  };
+  return { index, setIndex, answers, answer, results, checked: results, check, addResults, pending, flagged, toggleFlag, statusOf, summary, finished, finish, reset, resetUnits, resetKey };
 }
 
 export type PracticeSession<A> = ReturnType<typeof usePracticeSession<A>>;

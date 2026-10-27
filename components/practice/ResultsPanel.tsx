@@ -46,7 +46,7 @@ export function ResultsPanel({ type, correct, total, answered, onRetry, note }: 
           </div>
           <p className="mt-1 text-body">{message}</p>
           {note && <p className="mt-1 text-sm text-muted">{note}</p>}
-          <p className="mt-1 text-xs text-muted">Practice result on sample questions — not an official TOEFL score.</p>
+          <p className="mt-1 text-xs text-muted">Practice result — not an official TOEFL score.</p>
           <div className="mt-4 flex flex-wrap justify-center gap-3 sm:justify-start">
             <Button variant="secondary" leftIcon={<RotateCcw className="size-4" />} onClick={onRetry}>
               Try again

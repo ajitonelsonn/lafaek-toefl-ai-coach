@@ -1,26 +1,42 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowRight, CalendarRange, CheckCircle2, Circle, Pencil, RefreshCw, Trophy } from "lucide-react";
-import { getPracticeType, practiceHref, PRACTICE_TYPES } from "@/lib/config/practice-types";
-import { services } from "@/lib/services";
-import { createInitialJobs } from "@/lib/services/mock/generation";
-import { sampleCount } from "@/lib/mock-data/questions";
-import { todayKey, updateDemo, useDemoState, useHydrated } from "@/lib/store/demo-store";
-import type { StudyPlanInput } from "@/lib/services/types";
+import { getPracticeType, practiceHref, type PracticeSlug } from "@/lib/config/practice-types";
+import type { StudyPlanInputBody } from "@/lib/validation/schemas";
+import type { GenerationBatchDTO } from "@/lib/practice/generation-dto";
+import type { ProgressDTO } from "@/lib/practice/insights-dto";
+import type { StudyPlanDTO } from "@/lib/practice/plan-dto";
+import { api, ApiClientError, errorMessage } from "@/lib/client/api";
+import { todayKey } from "@/lib/utils/dates";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { ProgressRing } from "@/components/ui/ProgressBar";
 import { TipCard } from "@/components/ui/Callouts";
-import { DemoBadge } from "@/components/ui/StatusBadge";
-import { LoadingState } from "@/components/ui/States";
 import { ConfirmDialog } from "@/components/ui/Dialog";
 import { useToast } from "@/components/ui/Toast";
 import { GenerationProgress } from "@/components/generation/GenerationProgress";
 import { SkillIconTile } from "@/components/practice/icons";
 import { StudyPlanWizard } from "./StudyPlanWizard";
 import { cn } from "@/lib/utils/cn";
+
+type PlanDTO = StudyPlanDTO;
+const KEY_STORAGE = "lafaek-toefl:generation-key";
+
+/** Idempotency key for the generation start request; reused on retries so only one batch is created. */
+function generationKey(): string {
+  try {
+    const existing = sessionStorage.getItem(KEY_STORAGE);
+    if (existing) return existing;
+    const k = crypto.randomUUID();
+    sessionStorage.setItem(KEY_STORAGE, k);
+    return k;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
 
 const PHASE_TONES = [
   { box: "border-reading/25 bg-reading-soft", text: "text-reading" },
@@ -29,26 +45,38 @@ const PHASE_TONES = [
   { box: "border-speaking/25 bg-speaking-soft", text: "text-speaking" },
 ];
 
-export function StudyPlanPage() {
-  const hydrated = useHydrated();
-  const { studyPlan, completedUnits, dailyDone } = useDemoState();
+export function StudyPlanPage({ plan: initialPlan, batch, progress }: { plan: PlanDTO | null; batch: GenerationBatchDTO | null; progress: ProgressDTO }) {
+  const router = useRouter();
   const toast = useToast();
+  const [studyPlan, setStudyPlan] = useState(initialPlan);
+  const [currentBatch, setCurrentBatch] = useState(batch);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [justCreated, setJustCreated] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
 
-  if (!hydrated) return <LoadingState label="Loading your study plan…" />;
-
-  const finish = async (input: StudyPlanInput) => {
+  const finish = async (input: StudyPlanInputBody) => {
     setSaving(true);
-    const plan = await services.studyPlans.createPlan(input);
-    updateDemo((s) => ({ ...s, studyPlan: plan, generationJobs: createInitialJobs() }));
-    setSaving(false);
-    setEditing(false);
-    setJustCreated(true);
-    toast("Your study plan is saved in this browser.");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    try {
+      const { plan } = await api<{ plan: PlanDTO }>("/api/study-plan", { body: { input, confirmNewVersion: Boolean(studyPlan) } });
+      setStudyPlan(plan);
+      try {
+        const r = await api<{ batch: GenerationBatchDTO }>("/api/generation/start", { body: { idempotencyKey: generationKey() } });
+        setCurrentBatch(r.batch);
+        toast("Your study plan is saved. Personalised practice is being prepared.");
+      } catch (e) {
+        if (e instanceof ApiClientError && e.code === "FEATURE_NOT_AVAILABLE") toast("Your plan is updated. Your existing practice content stays available.", "info");
+        else toast(errorMessage(e), "warning");
+      }
+      setEditing(false);
+      setJustCreated(true);
+      router.refresh();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) {
+      toast(errorMessage(e), "warning");
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!studyPlan || editing) {
@@ -57,24 +85,25 @@ export function StudyPlanPage() {
         <StudyPlanWizard initial={studyPlan?.input} onFinish={finish} onCancel={studyPlan ? () => setEditing(false) : undefined} saving={saving} />
         <TipCard title="How the plan works">
           <p>We suggest which of the 12 practice types to focus on each week, and give you a short list of tasks for each day.</p>
-          <p>You can always practise anything you like from the Practice Center.</p>
+          <p>After you finish, AI creates personalised questions for every practice type in the background.</p>
         </TipCard>
       </div>
     );
   }
 
   const today = todayKey();
-  const doneToday = dailyDone[today] ?? [];
-  const toggleDaily = (id: string) =>
-    updateDemo((s) => {
-      const list = s.dailyDone[today] ?? [];
-      return { ...s, dailyDone: { ...s.dailyDone, [today]: list.includes(id) ? list.filter((x) => x !== id) : [...list, id] } };
-    });
-
-  const totalSample = PRACTICE_TYPES.reduce((n, t) => n + sampleCount(t.slug), 0);
-  const doneSample = PRACTICE_TYPES.reduce((n, t) => n + Math.min(sampleCount(t.slug), completedUnits[t.slug]?.length ?? 0), 0);
-  const pct = Math.round((doneSample / totalSample) * 100);
+  const byTask = new Map(progress.byTask.map((t) => [t.slug, t]));
+  const practisedToday = (href: string) => {
+    const slug = href.startsWith("/practice/") ? (href.split("/")[2] as PracticeSlug) : null;
+    const last = slug ? byTask.get(slug)?.lastPractisedAt : null;
+    return last ? todayKey(new Date(last)) === today : false;
+  };
+  const completedUnits = Object.fromEntries(progress.byTask.map((t) => [t.slug, t.attemptedUnits]));
+  const total = progress.byTask.reduce((n, t) => n + t.availableUnits, 0);
+  const done = progress.byTask.reduce((n, t) => n + Math.min(t.availableUnits, t.attemptedUnits), 0);
+  const pct = total ? Math.round((done / total) * 100) : 0;
   const { input } = studyPlan;
+  const doneToday = studyPlan.dailyTasks.filter((t) => practisedToday(t.href)).map((t) => t.id);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -83,14 +112,14 @@ export function StudyPlanPage() {
           <Card as="section" aria-labelledby="gen-title" className="border-primary/30">
             <CardHeader
               title={<span id="gen-title">Preparing your personalised practice</span>}
-              description="You don't need to wait. Sample questions are ready now, and new sets will appear as they finish."
+              description="You don't need to wait. Starter questions are ready now, and personalised questions appear as they finish."
               action={
                 <LinkButton href="/practice" size="sm" rightIcon={<ArrowRight className="size-4" />}>
                   Start practising now
                 </LinkButton>
               }
             />
-            <GenerationProgress compact />
+            <GenerationProgress initial={currentBatch} hasPlan compact />
           </Card>
         )}
 
@@ -156,7 +185,7 @@ export function StudyPlanPage() {
                 </div>
                 <ul className="flex-1 space-y-2 bg-surface/70 px-4 py-3 text-sm">
                   {phase.tasks.map((t) => {
-                    const done = t.slug ? (completedUnits[t.slug]?.length ?? 0) > 0 : false;
+                    const done = t.slug ? (completedUnits[t.slug] ?? 0) > 0 : false;
                     return (
                       <li key={t.label} className="flex items-start gap-2">
                         {done ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" aria-label="Tried" /> : <Circle className="mt-0.5 size-4 shrink-0 text-line-strong" aria-label="Not tried yet" />}
@@ -213,13 +242,13 @@ export function StudyPlanPage() {
             Overall Progress
           </h2>
           <div className="flex items-center gap-4">
-            <ProgressRing value={pct} label={`${pct}% of sample questions completed`} size={100}>
+            <ProgressRing value={pct} label={`${pct}% of available questions practised`} size={100}>
               <span className="text-xl font-bold text-ink">{pct}%</span>
             </ProgressRing>
             <div>
-              <p className="text-sm text-muted">Sample questions done</p>
+              <p className="text-sm text-muted">Questions practised</p>
               <p className="text-xl font-bold text-ink tabular-nums">
-                {doneSample} / {totalSample}
+                {done} / {total}
               </p>
             </div>
           </div>
@@ -234,22 +263,24 @@ export function StudyPlanPage() {
             </span>
           </div>
           <ul className="space-y-1">
-            {studyPlan.dailyTasks.map((t) => (
-              <li key={t.id}>
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg p-2 text-sm text-body hover:bg-surface-muted">
-                  <input type="checkbox" checked={doneToday.includes(t.id)} onChange={() => toggleDaily(t.id)} className="size-5 accent-[var(--primary)]" />
-                  <span className={cn(doneToday.includes(t.id) && "text-muted line-through")}>{t.label}</span>
-                </label>
-              </li>
-            ))}
+            {studyPlan.dailyTasks.map((t) => {
+              const isDone = doneToday.includes(t.id);
+              return (
+                <li key={t.id}>
+                  <Link href={t.href} className="flex items-center gap-3 rounded-lg p-2 text-sm text-body hover:bg-surface-muted">
+                    {isDone ? <CheckCircle2 className="size-5 shrink-0 text-success" aria-label="Done today" /> : <Circle className="size-5 shrink-0 text-line-strong" aria-label="Not done yet" />}
+                    <span className={cn(isDone && "text-muted line-through")}>{t.label}</span>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
+          <p className="mt-2 text-xs text-muted">Practice tasks are ticked automatically when you practise them today.</p>
         </Card>
         <TipCard title="Study Tip">
           <p>Try to practise a little every day. Consistent study is the best way to improve your TOEFL score.</p>
         </TipCard>
-        <div className="flex justify-start">
-          <DemoBadge>Plan made by simple rules, not AI</DemoBadge>
-        </div>
+        <p className="text-xs text-muted">The weekly schedule follows simple, transparent rules based on your answers. The practice questions themselves are generated by AI.</p>
       </div>
 
       <ConfirmDialog

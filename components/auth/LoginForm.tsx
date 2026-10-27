@@ -4,34 +4,41 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Lock, Mail } from "lucide-react";
-import { services } from "@/lib/services";
-import { updateDemo } from "@/lib/store/demo-store";
-import { validateLogin, type FieldErrors } from "@/lib/validation/auth";
+import { api, ApiClientError, errorMessage } from "@/lib/client/api";
+import { setPendingEmail } from "@/lib/client/pending-email";
+import { loginSchema } from "@/lib/validation/schemas";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
-import { useToast } from "@/components/ui/Toast";
-import { AuthHeading, DemoAuthNotice, OrDivider } from "./AuthLayout";
+import { AuthHeading, OrDivider } from "./AuthLayout";
 import { GoogleButton } from "./GoogleButton";
+import { fieldErrors } from "./field-errors";
 
 export function LoginForm() {
   const router = useRouter();
-  const toast = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [errors, setErrors] = useState<FieldErrors<"email" | "password">>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const found = validateLogin({ email, password });
-    setErrors(found);
-    if (Object.keys(found).length) return;
+    setFormError("");
+    const parsed = loginSchema.safeParse({ email, password });
+    if (!parsed.success) return setErrors(fieldErrors(parsed.error));
+    setErrors({});
     setLoading(true);
-    const user = await services.auth.signIn({ email: email.trim(), password });
-    setPassword("");
-    updateDemo((s) => ({ ...s, user: s.user?.email === user.email ? s.user : user }));
-    toast(`Welcome back, ${user.name}! (demo sign-in)`);
-    router.push("/dashboard");
+    try {
+      const r = await api<{ next: string; needsVerification?: boolean }>("/api/auth/login", { body: parsed.data });
+      setPassword("");
+      if (r.needsVerification) setPendingEmail(parsed.data.email);
+      router.replace(r.next);
+      router.refresh();
+    } catch (err) {
+      setLoading(false);
+      if (err instanceof ApiClientError && err.fields) setErrors(err.fields);
+      setFormError(errorMessage(err));
+    }
   };
 
   return (
@@ -40,22 +47,18 @@ export function LoginForm() {
       <form onSubmit={submit} noValidate className="flex flex-col gap-5">
         <Input label="Email" type="email" autoComplete="email" placeholder="Enter your email" icon={<Mail />} value={email} onChange={(e) => setEmail(e.target.value)} error={errors.email} />
         <div>
-          <Input
-            label="Password"
-            type="password"
-            autoComplete="current-password"
-            placeholder="Enter your password"
-            icon={<Lock />}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            error={errors.password}
-          />
+          <Input label="Password" type="password" autoComplete="current-password" placeholder="Enter your password" icon={<Lock />} value={password} onChange={(e) => setPassword(e.target.value)} error={errors.password} />
           <div className="mt-2 text-right">
             <Link href="/forgot-password" className="text-sm font-semibold text-primary hover:underline">
               Forgot password?
             </Link>
           </div>
         </div>
+        {formError && (
+          <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger" role="alert">
+            {formError}
+          </p>
+        )}
         <Button type="submit" size="lg" fullWidth loading={loading}>
           Log In
         </Button>
@@ -68,7 +71,6 @@ export function LoginForm() {
           Sign Up
         </Link>
       </p>
-      <DemoAuthNotice>Demo sign-in: any email and password will work. Nothing is checked or stored on a server, and your password is not saved.</DemoAuthNotice>
     </>
   );
 }

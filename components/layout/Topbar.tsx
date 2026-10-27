@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useId, useMemo, useRef, useState } from "react";
-import { Bell, ChevronDown, ChevronRight, FlaskConical, LogOut, Menu, Search, Settings, UserRound } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Bell, ChevronDown, ChevronRight, LogOut, Menu, Search, Settings, UserRound } from "lucide-react";
 import { PAGE_TITLES, PRIMARY_NAV, ACCOUNT_NAV } from "@/lib/config/navigation";
 import { PRACTICE_TYPES, getPracticeType, getSkill } from "@/lib/config/practice-types";
-import { useDemoState, updateDemo } from "@/lib/store/demo-store";
+import { useSession } from "@/components/session/SessionProvider";
+import { api, errorMessage } from "@/lib/client/api";
+import type { GenerationBatchDTO } from "@/lib/practice/generation-dto";
 import { useDismiss } from "@/lib/hooks/useDismiss";
 import { initials } from "@/lib/utils/format";
-import { Dialog } from "@/components/ui/Dialog";
-import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils/cn";
 
@@ -170,25 +170,40 @@ function GlobalSearch() {
 }
 
 function Notifications() {
-  const state = useDemoState();
   const [open, setOpen] = useState(false);
-  const [seen, setSeen] = useState(0);
+  const [seen, setSeen] = useState(false);
+  const [batch, setBatch] = useState<GenerationBatchDTO | null | undefined>(undefined);
   const ref = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(ref, open, close);
 
+  useEffect(() => {
+    let alive = true;
+    api<{ batch: GenerationBatchDTO | null }>("/api/generation/current")
+      .then((r) => alive && setBatch(r.batch))
+      .catch(() => alive && setBatch(null));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const items = useMemo(() => {
     const list: { title: string; body: string; href: string }[] = [];
-    const ready = state.generationJobs.filter((j) => j.state === "ready").length;
-    const failed = state.generationJobs.filter((j) => j.state === "failed").length;
-    if (failed) list.push({ title: "A practice set needs a retry", body: `${failed} demo generation job stopped. You can retry it.`, href: "/dashboard#generation" });
-    if (ready) list.push({ title: "Demo practice sets ready", body: `${ready} of 12 personalised sets are marked ready (simulated).`, href: "/dashboard#generation" });
-    if (!state.studyPlan) list.push({ title: "Create your study plan", body: "Answer a few questions to get a weekly plan.", href: "/study-plan" });
-    list.push({ title: "Welcome to LafaekTOEFL", body: "Sample questions for all 12 task types are ready to try.", href: "/practice" });
+    if (batch) {
+      const ready = batch.tasks.filter((t) => t.state === "ready").length;
+      const failed = batch.tasks.filter((t) => t.state === "failed").length;
+      const working = batch.tasks.filter((t) => t.state === "generating" || t.state === "queued").length;
+      if (failed) list.push({ title: "Some practice content needs a retry", body: `${failed} practice type${failed === 1 ? "" : "s"} could not be generated yet.`, href: "/dashboard#generation" });
+      if (working) list.push({ title: "Your practice content is being prepared", body: `${ready} of 12 practice types are ready. You can practise now.`, href: "/dashboard#generation" });
+      else if (ready) list.push({ title: "Personalised practice is ready", body: `${ready} of 12 practice types have new questions for you.`, href: "/practice" });
+    } else if (batch === null) {
+      list.push({ title: "Create your study plan", body: "Answer a few questions to get a weekly plan and personalised practice.", href: "/study-plan" });
+    }
+    list.push({ title: "Starter set available", body: "Hand-written starter questions for all 12 task types are ready to try.", href: "/practice" });
     return list;
-  }, [state.generationJobs, state.studyPlan]);
+  }, [batch]);
 
-  const unread = Math.max(0, items.length - seen);
+  const unread = !seen && items.length > 1;
 
   return (
     <div ref={ref} className="relative">
@@ -196,15 +211,15 @@ function Notifications() {
         type="button"
         onClick={() => {
           setOpen((o) => !o);
-          setSeen(items.length);
+          setSeen(true);
         }}
         aria-expanded={open}
         aria-haspopup="true"
-        aria-label={unread ? `Notifications, ${unread} new` : "Notifications"}
+        aria-label={unread ? "Notifications, new updates" : "Notifications"}
         className="relative inline-flex size-11 items-center justify-center rounded-full text-ink hover:bg-surface-muted"
       >
         <Bell className="size-[22px]" aria-hidden />
-        {unread > 0 && <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-danger ring-2 ring-surface" aria-hidden />}
+        {unread && <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-danger ring-2 ring-surface" aria-hidden />}
       </button>
       {open && (
         <div className="absolute right-0 top-13 z-40 w-[min(340px,calc(100vw-2rem))] rounded-xl border border-line bg-surface p-2 shadow-xl">
@@ -226,19 +241,26 @@ function Notifications() {
 }
 
 function UserMenu() {
-  const { user } = useDemoState();
+  const { user } = useSession();
   const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(ref, open, close);
-  const name = user?.name ?? "Student";
 
-  const logout = () => {
-    updateDemo((s) => ({ ...s, user: null }));
-    toast("You have been logged out of the demo.", "info");
-    router.push("/login");
+  const logout = async () => {
+    setBusy(true);
+    try {
+      await api("/api/auth/logout", { method: "POST", body: {} });
+      toast("You have been logged out.", "info");
+      router.replace("/login");
+      router.refresh();
+    } catch (e) {
+      toast(errorMessage(e), "warning");
+      setBusy(false);
+    }
   };
 
   return (
@@ -251,17 +273,17 @@ function UserMenu() {
         className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 hover:bg-surface-muted"
       >
         <span className="inline-flex size-10 items-center justify-center rounded-full bg-primary text-base font-bold text-on-primary" aria-hidden>
-          {initials(name)}
+          {initials(user.name)}
         </span>
-        <span className="hidden max-w-32 truncate text-sm font-semibold text-ink sm:inline">{name}</span>
+        <span className="hidden max-w-32 truncate text-sm font-semibold text-ink sm:inline">{user.name}</span>
         <ChevronDown className="hidden size-4 text-muted sm:inline" aria-hidden />
         <span className="sr-only">Open account menu</span>
       </button>
       {open && (
         <div role="menu" className="absolute right-0 top-13 z-40 w-60 rounded-xl border border-line bg-surface p-2 shadow-xl">
           <div className="px-3 py-2">
-            <p className="truncate text-sm font-bold text-ink">{name}</p>
-            <p className="truncate text-xs text-muted">{user?.email ?? "Not signed in (demo)"}</p>
+            <p className="truncate text-sm font-bold text-ink">{user.name}</p>
+            <p className="truncate text-xs text-muted">{user.email}</p>
           </div>
           <div className="my-1 border-t border-line" />
           <Link role="menuitem" href="/profile" onClick={close} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink hover:bg-surface-muted">
@@ -270,48 +292,12 @@ function UserMenu() {
           <Link role="menuitem" href="/settings" onClick={close} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink hover:bg-surface-muted">
             <Settings className="size-4" aria-hidden /> Settings
           </Link>
-          {user ? (
-            <button role="menuitem" type="button" onClick={logout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-danger-soft">
-              <LogOut className="size-4" aria-hidden /> Log out
-            </button>
-          ) : (
-            <Link role="menuitem" href="/login" onClick={close} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-primary hover:bg-primary-soft">
-              <LogOut className="size-4" aria-hidden /> Log in
-            </Link>
-          )}
+          <button role="menuitem" type="button" onClick={logout} disabled={busy} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-danger-soft disabled:opacity-60">
+            <LogOut className="size-4" aria-hidden /> {busy ? "Logging out…" : "Log out"}
+          </button>
         </div>
       )}
     </div>
-  );
-}
-
-function DemoModePill() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="hidden items-center gap-1.5 rounded-full bg-warning-soft px-3 py-1.5 text-xs font-semibold text-warning hover:opacity-90 sm:inline-flex"
-      >
-        <FlaskConical className="size-3.5" aria-hidden />
-        Demo mode
-      </button>
-      <Dialog
-        open={open}
-        onClose={() => setOpen(false)}
-        title="You are using the frontend demo"
-        footer={<Button onClick={() => setOpen(false)}>Got it</Button>}
-      >
-        <ul className="list-disc space-y-2 pl-5 text-sm text-body">
-          <li>Questions are hand-written samples, not AI-generated content.</li>
-          <li>Sign-in is simulated. There is no real account or password check.</li>
-          <li>Audio is read by your browser&apos;s voice; recordings stay on your device.</li>
-          <li>Your progress is saved only in this browser.</li>
-          <li>Usage numbers and generation status are demo data.</li>
-        </ul>
-      </Dialog>
-    </>
   );
 }
 
@@ -338,7 +324,6 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
           >
             <Search className="size-[22px]" aria-hidden />
           </button>
-          <DemoModePill />
           <Notifications />
           <UserMenu />
         </div>
