@@ -1,10 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useMemo, useState } from "react";
 import { BookOpen, Bookmark, BookmarkCheck, Check, ChevronLeft, ChevronRight, List, RotateCcw, Search, Share2, Star, Volume2, Zap } from "lucide-react";
-import { VOCABULARY, VOCAB_CATEGORIES } from "@/lib/content/vocabulary";
-import { ILLUSTRATIONS } from "@/lib/config/assets";
+import { VOCAB_CATEGORIES } from "@/lib/content/vocabulary";
+import { getPracticeType } from "@/lib/config/practice-types";
 import type { VocabCategory, VocabWord } from "@/lib/services/types";
 import { api, errorMessage } from "@/lib/client/api";
 import { useSession } from "@/components/session/SessionProvider";
@@ -13,7 +12,7 @@ export interface VocabProgress {
   status?: "known" | "review";
   bookmarked?: boolean;
 }
-import { Button } from "@/components/ui/Button";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ChipGroup, Tabs } from "@/components/ui/Segmented";
 import { ProgressBar, ProgressRing } from "@/components/ui/ProgressBar";
@@ -23,7 +22,6 @@ import { TipCard } from "@/components/ui/Callouts";
 import { Icon3D } from "@/components/ui/Icon3D";
 import { useToast } from "@/components/ui/Toast";
 import { VocabularyQuiz } from "./VocabularyQuiz";
-import { cn } from "@/lib/utils/cn";
 
 type Tab = "practice" | "list" | "review" | "mine";
 
@@ -50,7 +48,7 @@ function Highlight({ text, word }: { text: string; word: string }) {
   );
 }
 
-export function VocabularyPage({ initialProgress }: { initialProgress: Record<string, VocabProgress> }) {
+export function VocabularyPage({ words, initialProgress, pending, hasPlan }: { words: VocabWord[]; initialProgress: Record<string, VocabProgress>; pending: boolean; hasPlan: boolean }) {
   const { settings } = useSession();
   const toast = useToast();
   const [vocab, setVocabState] = useState(initialProgress);
@@ -77,7 +75,7 @@ export function VocabularyPage({ initialProgress }: { initialProgress: Record<st
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return VOCABULARY.filter((w) => {
+    return words.filter((w) => {
       if (category !== "all" && w.category !== category) return false;
       if (tab === "review" && vocab[w.id]?.status !== "review") return false;
       if (tab === "mine" && !vocab[w.id]?.bookmarked) return false;
@@ -85,11 +83,11 @@ export function VocabularyPage({ initialProgress }: { initialProgress: Record<st
       if (searchable && q && !w.word.toLowerCase().includes(q) && !w.meaning.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [category, query, tab, vocab]);
+  }, [category, query, tab, vocab, words]);
 
-  const known = VOCABULARY.filter((w) => vocab[w.id]?.status === "known").length;
-  const reviewCount = VOCABULARY.filter((w) => vocab[w.id]?.status === "review").length;
-  const bookmarked = VOCABULARY.filter((w) => vocab[w.id]?.bookmarked).length;
+  const known = words.filter((w) => vocab[w.id]?.status === "known").length;
+  const reviewCount = words.filter((w) => vocab[w.id]?.status === "review").length;
+  const bookmarked = words.filter((w) => vocab[w.id]?.bookmarked).length;
   const safeIndex = Math.min(index, Math.max(0, filtered.length - 1));
   const current = filtered[safeIndex];
 
@@ -102,6 +100,24 @@ export function VocabularyPage({ initialProgress }: { initialProgress: Record<st
     setTab(t);
     setIndex(0);
   };
+  const categories = VOCAB_CATEGORIES.filter((c) => words.some((w) => w.category === c.id));
+
+  if (words.length === 0) {
+    return (
+      <EmptyState
+        icon={<Icon3D name="search" size={40} />}
+        title={pending ? "Your vocabulary is being prepared" : "No vocabulary yet"}
+        description={
+          pending
+            ? "Words are taken from your personalised practice questions. They appear here after each practice type is generated. You can leave this page."
+            : hasPlan
+              ? "Words are taken from your personalised practice questions. They will appear when your questions are ready."
+              : "Make a study plan first. Your vocabulary list is created from the personalised questions it generates."
+        }
+        action={!hasPlan && <LinkButton href="/study-plan" size="sm">Make a study plan</LinkButton>}
+      />
+    );
+  }
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -130,7 +146,7 @@ export function VocabularyPage({ initialProgress }: { initialProgress: Record<st
                   setCategory(c);
                   setIndex(0);
                 }}
-                options={[{ value: "all", label: "All" }, ...VOCAB_CATEGORIES.map((c) => ({ value: c.id, label: c.label }))]}
+                options={[{ value: "all", label: "All" }, ...categories.map((c) => ({ value: c.id, label: c.label }))]}
               />
             </div>
             {(tab === "list" || tab === "mine") && (
@@ -202,18 +218,18 @@ export function VocabularyPage({ initialProgress }: { initialProgress: Record<st
             <h2 id="vp-title" className="text-base font-bold text-ink">
               Vocabulary Progress
             </h2>
-            <StatusBadge tone="primary">Curated list</StatusBadge>
+            <StatusBadge tone="primary">From your questions</StatusBadge>
           </div>
           <div className="flex items-center gap-4">
-            <ProgressRing value={known} max={VOCABULARY.length} size={96} label={`${known} of ${VOCABULARY.length} words known`}>
-              <span className="text-lg font-bold text-ink">{Math.round((known / VOCABULARY.length) * 100)}%</span>
+            <ProgressRing value={known} max={words.length} size={96} label={`${known} of ${words.length} words known`}>
+              <span className="text-lg font-bold text-ink">{Math.round((known / words.length) * 100)}%</span>
             </ProgressRing>
             <div className="flex-1">
               <p className="text-sm text-muted">Words learned</p>
               <p className="text-2xl font-bold text-ink tabular-nums">
-                {known} / {VOCABULARY.length}
+                {known} / {words.length}
               </p>
-              <ProgressBar value={known} max={VOCABULARY.length} label="Words learned" size="sm" className="mt-2" />
+              <ProgressBar value={known} max={words.length} label="Words learned" size="sm" className="mt-2" />
             </div>
           </div>
           <dl className="mt-4 grid grid-cols-2 gap-2 text-sm">
@@ -226,6 +242,7 @@ export function VocabularyPage({ initialProgress }: { initialProgress: Record<st
               <dd className="font-bold text-ink">{bookmarked}</dd>
             </div>
           </dl>
+          {pending && <p className="mt-3 text-xs text-muted">More words are added as your practice questions are generated.</p>}
         </Card>
         <TipCard>
           <ul className="list-disc space-y-1 pl-4">
@@ -252,7 +269,7 @@ export function VocabularyPage({ initialProgress }: { initialProgress: Record<st
         </Card>
       </aside>
 
-      <VocabularyQuiz open={quizOpen} onClose={() => setQuizOpen(false)} words={category === "all" ? VOCABULARY : VOCABULARY.filter((w) => w.category === category)} />
+      <VocabularyQuiz open={quizOpen} onClose={() => setQuizOpen(false)} words={category === "all" ? words : words.filter((w) => w.category === category)} />
     </div>
   );
 }
@@ -269,14 +286,14 @@ function Flashcard(props: {
   onBookmark: () => void;
 }) {
   const { word, progress } = props;
-  const image = word.id === "environment" ? ILLUSTRATIONS.vocabularyEnvironment : null;
+  const source = word.taskSlug ? getPracticeType(word.taskSlug)?.title : undefined;
   return (
     <Card as="section" aria-label={`Flashcard: ${word.word}`} aria-live="polite">
       <div className="flex items-center gap-3">
         <button type="button" onClick={props.onPrev} className="hidden size-11 shrink-0 items-center justify-center rounded-full border border-line text-primary hover:border-primary sm:inline-flex" aria-label="Previous word">
           <ChevronLeft className="size-5" />
         </button>
-        <div className={cn("grid min-w-0 flex-1 gap-5", image && "md:grid-cols-[minmax(0,1fr)_240px]")}>
+        <div className="grid min-w-0 flex-1 gap-5">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm font-semibold text-muted">{props.position}</span>
@@ -300,8 +317,8 @@ function Flashcard(props: {
                 <Highlight text={word.example} word={word.word} />
               </p>
             </div>
+            {source && <p className="mt-2 text-xs text-muted">From your “{source}” questions</p>}
           </div>
-          {image && <Image src={image.src} alt="A mountain lake surrounded by forest" width={image.width} height={image.height} className="hidden h-full w-full rounded-xl object-cover md:block" />}
         </div>
         <button type="button" onClick={props.onNext} className="hidden size-11 shrink-0 items-center justify-center rounded-full border border-line text-primary hover:border-primary sm:inline-flex" aria-label="Next word">
           <ChevronRight className="size-5" />

@@ -9,7 +9,6 @@ import type { SentencePart } from "@/lib/services/types";
 import { ILLUSTRATIONS } from "@/lib/config/assets";
 import { Button } from "@/components/ui/Button";
 import { PracticeFooter, PracticeLayout } from "../PracticeLayout";
-import { CountdownTimer } from "../CountdownTimer";
 import { QuestionNavigation } from "../QuestionNavigation";
 import { ResultsPanel } from "../ResultsPanel";
 import { unitKey, usePracticeSession } from "../usePracticeSession";
@@ -68,7 +67,6 @@ export function BuildSentencePractice({ type, view, sidebarExtra }: { type: Prac
     <PracticeLayout
       type={type}
       position={`${s.index + 1} of ${items.length}`}
-      timer={<CountdownTimer key={s.resetKey} totalSeconds={type.timeLimitSeconds} stopped={s.finished} />}
       source={item.source}
       sidebar={
         <>

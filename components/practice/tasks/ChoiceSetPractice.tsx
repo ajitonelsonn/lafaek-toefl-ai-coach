@@ -6,7 +6,6 @@ import type { PracticeType } from "@/lib/config/practice-types";
 import type { ChoiceQuestionDTO, UnitResultDTO } from "@/lib/practice/dto";
 import { Button } from "@/components/ui/Button";
 import { PracticeFooter, PracticeLayout } from "../PracticeLayout";
-import { CountdownTimer } from "../CountdownTimer";
 import { QuestionNavigation } from "../QuestionNavigation";
 import { ResultsPanel } from "../ResultsPanel";
 import { ChoiceList } from "../ChoiceList";
@@ -79,7 +78,6 @@ export function ChoiceSetPractice({ type, groups, stimulus, sidebarExtra, layout
       type={type}
       source={group.source}
       position={`${s.index + 1} of ${questions.length}`}
-      timer={<CountdownTimer key={s.resetKey} totalSeconds={type.timeLimitSeconds} stopped={s.finished} />}
       sidebar={
         <>
           <QuestionNavigation items={questions.map((x) => ({ id: x.key, status: s.statusOf(x.key), flagged: s.flagged[x.key] }))} current={s.index} onSelect={s.setIndex} />

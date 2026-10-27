@@ -9,11 +9,18 @@ const control = { mode: "ok" as "ok" | "transient" | "auth" | "malformed-once" |
 vi.mock("@/lib/server/providers/meta", async () => {
   const { ProviderError } = await import("@/lib/server/providers/http");
   return {
-    generateText: vi.fn(async ({ task }: { task: string }) => {
+    generateText: vi.fn(async ({ task, user }: { task: string; user: string }) => {
       control.calls++;
       const requestId = `req-${control.calls}`;
       const usage = { inputTokens: 100, outputTokens: 200 };
       if (task === "verify:build-sentence") return { data: { grammatical: true, uniqueOrder: true, issue: "" }, usage, model: "muse-spark-1.3", requestId };
+      if (task.startsWith("generate:vocabulary-")) {
+        // Two long words from the given texts, plus one that is not in them (must be dropped).
+        const text = user.split("<<<")[1]?.split(">>>")[0] ?? "";
+        const picks = [...new Set(text.toLowerCase().match(/[a-z]{7,}/g) ?? [])].slice(0, 2);
+        const entry = (word: string) => ({ word, partOfSpeech: "noun", pronunciation: "/test/", meaning: "a test meaning", example: `An example with ${word}.`, category: "academic", related: [] });
+        return { data: { words: [...picks.map(entry), entry("xylophonist")] }, usage, model: "muse-spark-1.3", requestId };
+      }
       const slug = task.replace("generate:", "") as PracticeSlug;
       if (control.failSlug === slug || control.mode === "transient") throw new ProviderError("meta", "server", "meta request failed (503).", 503);
       if (control.mode === "auth") throw new ProviderError("meta", "auth", "meta request failed (401).", 401);
@@ -103,7 +110,13 @@ describe("generation batches", () => {
     expect(control.calls).toBe(callsBefore);
     // Asset jobs wait for storage configuration rather than failing silently.
     expect(await db.generationJob.count({ where: { jobType: { in: ["asset_audio", "asset_image"] }, status: "blocked_configuration" } })).toBeGreaterThan(0);
-  }, 600_000);
+    // Each finished pack produced one vocabulary job; words come only from the learner's questions.
+    expect(await db.generationJob.count({ where: { jobType: "vocabulary_pack", status: "completed" } })).toBe(12);
+    const words = await db.vocabularyWord.findMany({ where: { userId: u.id } });
+    expect(words.length).toBeGreaterThan(0);
+    expect(words.some((w) => w.word === "xylophonist")).toBe(false);
+    expect(new Set(words.map((w) => w.wordNormalized)).size).toBe(words.length);
+  }, 1_500_000); // 12 packs + 12 vocabulary jobs, twice, over a remote database
 
   it("retries transient provider errors with backoff and fails permanent ones", async () => {
     const u = await createUser("a@example.com");
@@ -118,7 +131,8 @@ describe("generation batches", () => {
     control.mode = "auth";
     await db.generationJob.updateMany({ data: { status: "queued", nextAttemptAt: new Date() } });
     await tick("w", 1);
-    expect(await db.generationJob.count({ where: { status: "failed", errorCode: "PROVIDER_AUTH" } })).toBe(1);
+    // A rejected key is a deployment setting: the job waits for setup instead of failing.
+    expect(await db.generationJob.count({ where: { status: "blocked_configuration", errorCode: "PROVIDER_CONFIG" } })).toBe(1);
   });
 
   it("rejects malformed output, repairs once, and never stores invalid content", async () => {

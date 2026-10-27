@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils/cn";
 interface PracticeLayoutProps {
   type: PracticeType;
   position: string;
-  timer: ReactNode;
   sidebar?: ReactNode;
   footer: ReactNode;
   banner?: ReactNode;
@@ -24,7 +23,7 @@ interface PracticeLayoutProps {
   source?: "starter" | "generated";
 }
 
-export function PracticeLayout({ type, position, timer, sidebar, footer, banner, children, instructions, source }: PracticeLayoutProps) {
+export function PracticeLayout({ type, position, sidebar, footer, banner, children, instructions, source }: PracticeLayoutProps) {
   const guide = PRACTICE_GUIDES[type.slug];
   const [showInstructions, setShowInstructions] = useState(true);
   const steps = instructions ?? guide.instructions;
@@ -35,10 +34,9 @@ export function PracticeLayout({ type, position, timer, sidebar, footer, banner,
         <ArrowLeft className="size-4" aria-hidden /> Back to Practice Center
       </Link>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:grid-rows-[auto_1fr]">
-        <div className="order-1 xl:col-start-2 xl:row-start-1">{timer}</div>
-
-        <div className="order-2 min-w-0 xl:col-start-1 xl:row-span-2 xl:row-start-1">
+      {/* No timer in practice: timing is only used in the mock test. */}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0 xl:col-start-1 xl:row-start-1">
           <section className="rounded-[var(--radius-card)] border border-line bg-surface shadow-card">
             <header className="flex flex-wrap items-start gap-4 border-b border-line p-5 sm:p-6">
               <span className="hidden sm:block">
@@ -85,7 +83,7 @@ export function PracticeLayout({ type, position, timer, sidebar, footer, banner,
           <div className="mt-5">{footer}</div>
         </div>
 
-        <div className="order-3 flex flex-col gap-5 xl:col-start-2 xl:row-start-2">
+        <div className="flex flex-col gap-5 xl:col-start-2 xl:row-start-1">
           {sidebar}
           <TipCard>
             <ul className="list-disc space-y-1 pl-4">

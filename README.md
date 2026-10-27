@@ -60,6 +60,10 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
     that period is refused with `PLAN_LIMIT`, and the Study Plan page disables both buttons and shows the date. A
     per-user advisory lock stops concurrent saves from bypassing the limit. A new plan after the period gets its
     own generation batch; earlier questions stay available.
+- **Vocabulary.** There is no fixed word list. When a practice type's questions finish, a `vocabulary_pack` job asks
+  Meta for up to `VOCABULARY_WORDS_PER_TASK` (default 10) useful words from those questions' texts. Words that do not
+  occur in the texts, or that the learner already has, are dropped. They are stored per learner in
+  `vocabulary_words`. Worker housekeeping back-fills vocabulary for packs that finished earlier.
 - **Audio.** Meta has no text-to-speech model, so the owner approved ElevenLabs. There is one MP3 per script line,
   played as a playlist through 5-minute signed URLs. Until an item has audio, the player uses the browser's voice and
   says so; in that case the script is sent to the browser, otherwise it is withheld.
@@ -118,7 +122,7 @@ usually cannot create the shadow database that `migrate dev` needs) and apply it
 
 - **Costs.** Meta text calls return token usage (stored as actual units). The model's reasoning makes output tokens
   large: about 6,000 per item in testing. ElevenLabs returns no usage data, so characters and seconds are stored as
-  _estimates_. No prices are configured, so the app shows no cost figures. `GENERATION_ITEMS_PER_TASK` (optional cap; unset = each task type's full planned count, 390 per plan) and
+  _estimates_. No prices are configured, so the app shows no cost figures. `GENERATION_ITEMS_PER_TASK` (optional cap; unset = the per-type defaults in `lib/config/practice-types.ts`, 208 per plan) and
   `GENERATION_DAILY_USER_LIMIT` are the hard limits.
 - **Score scale.** The app uses the TOEFL iBT 2026 scale: bands from 1 to 6 in 0.5 steps, with CEFR (6 C2,
   5–5.5 C1, 4–4.5 B2, 3–3.5 B1, 2–2.5 A2, 1–1.5 A1). See `lib/config/toefl-scale.ts`. Study-plan targets use it, and

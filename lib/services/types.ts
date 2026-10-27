@@ -253,4 +253,6 @@ export interface VocabWord {
   example: string;
   category: VocabCategory;
   related?: { word: string; partOfSpeech: string; meaning: string }[];
+  /** Practice type whose questions the word was taken from. */
+  taskSlug?: string;
 }

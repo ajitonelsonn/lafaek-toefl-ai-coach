@@ -10,6 +10,7 @@ import { SKILL_ICON_3D, SKILL_TONE } from "@/components/practice/icons";
 import { BRAND } from "@/lib/config/assets";
 import { PRACTICE_TYPES, SKILLS, practiceHref, practiceTypesForSkill } from "@/lib/config/practice-types";
 import { SITE } from "@/lib/config/site";
+import { getAuth } from "@/lib/server/auth/session";
 import { cn } from "@/lib/utils/cn";
 
 const FEATURES = [
@@ -28,21 +29,24 @@ const FEATURES = [
   {
     icon: "feedback",
     title: "AI-powered feedback",
-    body: "Detailed explanations, sample answers and personal feedback on writing and speaking.",
-    status: "Coming soon",
+    body: "Explanations for every answer, plus optional AI coaching on your writing and speaking.",
+    status: "Available",
   },
   {
     icon: "ai-practice",
     title: "AI-generated practice",
     body: "Fresh questions made for your study plan, released step by step as they are ready.",
-    status: "Coming soon",
+    status: "Available",
   },
 ] as const;
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  // Signed-in visitors get links back into the app instead of sign-up prompts.
+  const auth = await getAuth().catch(() => null);
+  const user = auth ? { name: auth.user.displayName?.trim() || "there" } : null;
   return (
     <div className="min-h-dvh bg-surface">
-      <LandingHeader />
+      <LandingHeader user={user} />
       <main id="main">
         {/* Hero */}
         <section className="relative overflow-hidden bg-gradient-to-b from-brand-50 to-surface dark:from-page">
@@ -58,8 +62,8 @@ export default function LandingPage() {
                 Practise all four skills with the 12 TOEFL task types. Build confidence, track your progress, and prepare at your own pace.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <LinkButton href="/signup" size="lg" className="h-14 px-7 text-lg" rightIcon={<ArrowRight className="size-5" />}>
-                  Start Practising
+                <LinkButton href={user ? "/practice" : "/signup"} size="lg" className="h-14 px-7 text-lg" rightIcon={<ArrowRight className="size-5" />}>
+                  {user ? "Continue Practising" : "Start Practising"}
                 </LinkButton>
                 <LinkButton href="/practice" size="lg" variant="secondary" className="h-14 px-7 text-lg" leftIcon={<Compass className="size-5 text-primary" />}>
                   Explore Practice
@@ -73,7 +77,7 @@ export default function LandingPage() {
                   <Code2 className="size-5 text-primary" aria-hidden /> Open source
                 </li>
                 <li className="flex items-center gap-2">
-                  <Sparkles className="size-5 text-primary" aria-hidden /> AI coaching in development
+                  <Sparkles className="size-5 text-primary" aria-hidden /> AI-generated practice
                 </li>
               </ul>
             </div>
@@ -155,8 +159,8 @@ export default function LandingPage() {
               ))}
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
-              <LinkButton href="/signup" rightIcon={<ArrowRight className="size-4" />}>
-                Get Started
+              <LinkButton href={user ? "/dashboard" : "/signup"} rightIcon={<ArrowRight className="size-4" />}>
+                {user ? "Go to Dashboard" : "Get Started"}
               </LinkButton>
               <LinkButton href="/study-plan" variant="secondary">
                 Preview the study plan
@@ -195,8 +199,8 @@ export default function LandingPage() {
             <Link href="/practice" className="hover:text-primary">
               Practice
             </Link>
-            <Link href="/login" className="hover:text-primary">
-              Sign in
+            <Link href={user ? "/dashboard" : "/login"} className="hover:text-primary">
+              {user ? "Dashboard" : "Sign in"}
             </Link>
           </nav>
         </div>

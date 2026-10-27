@@ -59,6 +59,7 @@ enum JobType {
   asset_audio
   reconcile_media
   delete_user_assets
+  vocabulary_pack
 }
 
 enum ItemSource {
@@ -99,20 +100,21 @@ model User {
   updatedAt       DateTime   @updatedAt @map("updated_at")
   lastLoginAt     DateTime?  @map("last_login_at")
 
-  otps               AuthOtp[]
-  sessions           Session[]
-  studyPlans         StudyPlan[]
-  batches            GenerationBatch[]
-  jobs               GenerationJob[]
-  items              PracticeItem[]
-  media              MediaAsset[]
-  attempts           PracticeAttempt[]
-  usageEvents        UsageEvent[]
-  preferences        UserPreferences?
-  vocabulary         VocabularyProgress[]
-  drafts             PracticeDraft[]
-  mockResults        MockTestResult[]
-  adminAuditEvents   AdminAuditEvent[]
+  otps             AuthOtp[]
+  sessions         Session[]
+  studyPlans       StudyPlan[]
+  batches          GenerationBatch[]
+  jobs             GenerationJob[]
+  items            PracticeItem[]
+  media            MediaAsset[]
+  attempts         PracticeAttempt[]
+  usageEvents      UsageEvent[]
+  preferences      UserPreferences?
+  vocabulary       VocabularyProgress[]
+  vocabularyWords  VocabularyWord[]
+  drafts           PracticeDraft[]
+  mockResults      MockTestResult[]
+  adminAuditEvents AdminAuditEvent[]
 
   @@map("users")
 }
@@ -172,6 +174,7 @@ model StudyPlan {
   user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   batches GenerationBatch[]
   items   PracticeItem[]
+  words   VocabularyWord[]
 
   @@unique([userId, version])
   @@map("study_plans")
@@ -387,6 +390,31 @@ model VocabularyProgress {
 
   @@id([userId, wordId])
   @@map("vocabulary_progress")
+}
+
+/// AI vocabulary taken from the learner's own generated questions (one vocabulary_pack job per task type).
+model VocabularyWord {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  studyPlanId     String?  @map("study_plan_id") @db.Uuid
+  generationJobId String?  @map("generation_job_id") @db.Uuid
+  taskSlug        String   @map("task_slug")
+  word            String
+  wordNormalized  String   @map("word_normalized")
+  partOfSpeech    String   @map("part_of_speech")
+  pronunciation   String
+  meaning         String
+  example         String
+  category        String
+  relatedJson     Json?    @map("related_json")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studyPlan StudyPlan? @relation(fields: [studyPlanId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, wordNormalized])
+  @@index([userId, createdAt])
+  @@map("vocabulary_words")
 }
 
 model PracticeDraft {

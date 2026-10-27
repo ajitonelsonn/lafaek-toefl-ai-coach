@@ -7,7 +7,6 @@ import type { CtwSegment, PracticeView } from "@/lib/practice/dto";
 import { Button } from "@/components/ui/Button";
 import { ProgressRing } from "@/components/ui/ProgressBar";
 import { PracticeFooter, PracticeLayout } from "../PracticeLayout";
-import { CountdownTimer } from "../CountdownTimer";
 import { QuestionNavigation } from "../QuestionNavigation";
 import { ResultsPanel } from "../ResultsPanel";
 import { unitKey, usePracticeSession, type UnitStatus } from "../usePracticeSession";
@@ -46,7 +45,6 @@ export function CompleteWordsPractice({ type, view, sidebarExtra }: { type: Prac
       type={type}
       source={passage.source}
       position={`Passage ${s.index + 1} of ${passages.length}`}
-      timer={<CountdownTimer key={s.resetKey} totalSeconds={type.timeLimitSeconds} stopped={s.finished} />}
       sidebar={
         <>
           <section aria-label="Passage progress" className="rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-card">

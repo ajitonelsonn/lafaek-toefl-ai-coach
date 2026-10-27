@@ -7,6 +7,7 @@ import { log } from "../log";
 import { pruneRateLimits } from "../rate-limit";
 import { claimJobs, completeJob, failJob, heartbeat, recoverExpiredLeases, unblockJobs } from "./queue";
 import { JobFailure, reconcileMedia, runAudioAsset, runDeleteUserAssets, runImageAsset, runTaskPack, toJobFailure } from "./handlers";
+import { backfillVocabularyJobs, queueVocabularyFor, runVocabularyPack } from "./vocabulary";
 
 export const workerId = () => `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
 
@@ -31,8 +32,13 @@ export async function processJob(job: GenerationJob, owner: string): Promise<voi
       case "reconcile_media":
         await reconcileMedia();
         break;
+      case "vocabulary_pack":
+        await runVocabularyPack(job);
+        break;
     }
     await completeJob(job, owner, job.jobType === "task_pack" ? { provider: "meta" } : {});
+    // A finished pack feeds the learner's vocabulary list (housekeeping back-fills if this fails).
+    if (job.jobType === "task_pack") await queueVocabularyFor(job).catch(() => undefined);
     log.info("job completed", { jobId: job.id, jobType: job.jobType, taskSlug: job.taskSlug, attempt: job.attemptCount, ms: Date.now() - started });
   } catch (err) {
     const f: JobFailure = toJobFailure(err);
@@ -56,4 +62,6 @@ export async function housekeeping() {
   await pruneRateLimits().catch(() => undefined);
   const r = await reconcileMedia().catch(() => ({ attached: 0, failed: 0 }));
   if (r.attached || r.failed) log.info("media reconciled", r);
+  const vocab = await backfillVocabularyJobs().catch(() => 0);
+  if (vocab) log.info("vocabulary jobs queued for finished packs", { count: vocab });
 }

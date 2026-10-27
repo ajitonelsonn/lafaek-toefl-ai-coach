@@ -10,9 +10,9 @@ import { ApiError } from "../http";
 // worker's lease expires and the job becomes due again.
 
 const ACTIVE: JobStatus[] = ["running", "validating", "storing"];
-export const ALL_JOB_TYPES: JobType[] = ["task_pack", "asset_image", "asset_audio", "reconcile_media", "delete_user_assets"];
-/** Job types that call Meta (text generation and images). */
-export const META_JOB_TYPES: JobType[] = ["task_pack", "asset_image"];
+export const ALL_JOB_TYPES: JobType[] = ["task_pack", "asset_image", "asset_audio", "reconcile_media", "delete_user_assets", "vocabulary_pack"];
+/** Job types that call Meta (text generation, vocabulary and images). */
+export const META_JOB_TYPES: JobType[] = ["task_pack", "asset_image", "vocabulary_pack"];
 export const leaseMs = () => env().GENERATION_TIMEOUT_SECONDS * 1000 * 3;
 
 /**

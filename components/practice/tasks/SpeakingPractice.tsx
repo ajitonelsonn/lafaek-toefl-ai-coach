@@ -12,7 +12,6 @@ import { useSession } from "@/components/session/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
 import { PracticeFooter, PracticeLayout } from "../PracticeLayout";
-import { CountdownTimer } from "../CountdownTimer";
 import { QuestionNavigation } from "../QuestionNavigation";
 import { ResultsPanel } from "../ResultsPanel";
 import { AudioPlayer } from "../AudioPlayer";
@@ -177,7 +176,6 @@ export function SpeakingPractice({ type, view, sidebarExtra }: { type: PracticeT
       type={type}
       source={unit.source}
       position={`${s.index + 1} of ${units.length}`}
-      timer={<CountdownTimer key={s.resetKey} totalSeconds={type.timeLimitSeconds} stopped={s.finished} />}
       sidebar={
         <>
           <QuestionNavigation items={units.map((u) => ({ id: u.key, status: s.statusOf(u.key) }))} current={s.index} onSelect={s.setIndex} />

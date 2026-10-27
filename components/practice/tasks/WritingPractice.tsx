@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import { PracticeFooter, PracticeLayout } from "../PracticeLayout";
-import { CountdownTimer } from "../CountdownTimer";
 import { QuestionNavigation } from "../QuestionNavigation";
 import { ResultsPanel } from "../ResultsPanel";
 import { unitKey, usePracticeSession } from "../usePracticeSession";
@@ -88,7 +87,6 @@ export function WritingPractice({ type, view, sidebarExtra }: { type: PracticeTy
       type={type}
       source={task.source}
       position={`${s.index + 1} of ${items.length}`}
-      timer={<CountdownTimer key={s.resetKey} totalSeconds={type.timeLimitSeconds} stopped={s.finished} />}
       sidebar={
         <>
           <section aria-label="Task checklist" className="rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-card">
