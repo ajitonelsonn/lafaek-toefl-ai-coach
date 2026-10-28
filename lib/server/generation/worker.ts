@@ -59,10 +59,10 @@ export async function processJob(job: GenerationJob, owner: string): Promise<voi
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function claimNext(owner: string, limit: number, jobTypes?: JobType[]): Promise<GenerationJob[]> {
+async function claimNext(owner: string, limit: number, jobTypes?: JobType[], perUser?: number): Promise<GenerationJob[]> {
   await recoverExpiredLeases();
   if (features.storage()) await unblockJobs(["asset_audio", "asset_image", "delete_user_assets"]);
-  return claimJobs(owner, limit, jobTypes);
+  return claimJobs(owner, limit, jobTypes, perUser);
 }
 
 /**
@@ -74,7 +74,7 @@ async function claimNext(owner: string, limit: number, jobTypes?: JobType[]): Pr
 export async function runPool(
   owner: string,
   concurrency: number,
-  opts: { jobTypes: () => JobType[]; stopping: () => boolean; beforeClaim?: () => Promise<void>; once?: boolean },
+  opts: { jobTypes: () => JobType[]; stopping: () => boolean; beforeClaim?: () => Promise<void>; once?: boolean; perUser?: number },
 ): Promise<void> {
   const running = new Set<Promise<void>>();
   while (!opts.stopping()) {
@@ -82,7 +82,7 @@ export async function runPool(
     try {
       await opts.beforeClaim?.();
       const free = concurrency - running.size;
-      const jobs = free > 0 ? await claimNext(owner, free, opts.jobTypes()) : [];
+      const jobs = free > 0 ? await claimNext(owner, free, opts.jobTypes(), opts.perUser) : [];
       for (const job of jobs) {
         const p: Promise<void> = processJob(job, owner)
           .catch((e) => log.error("job crashed", { jobId: job.id, error: e instanceof Error ? e.message.slice(0, 200) : "unknown" }))

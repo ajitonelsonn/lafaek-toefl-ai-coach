@@ -5,10 +5,13 @@ import type { JobType } from "@prisma/client";
 import { log } from "../lib/server/log";
 import { env } from "../lib/server/env";
 import { housekeeping, runPool, workerId } from "../lib/server/generation/worker";
-import { ALL_JOB_TYPES, META_JOB_TYPES, unblockJobs } from "../lib/server/generation/queue";
+import { LONG_JOB_TYPES, META_JOB_TYPES, QUICK_JOB_TYPES, unblockJobs } from "../lib/server/generation/queue";
 
 const owner = workerId();
+/** Slots for the long lane (question packs). */
 const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 3);
+/** Slots for the quick lane (audio, pictures, vocabulary, schedule, mock test rating). */
+const quickConcurrency = Number(process.env.WORKER_QUICK_CONCURRENCY ?? 6);
 let stopping = false;
 
 process.on("SIGTERM", () => (stopping = true));
@@ -41,28 +44,38 @@ async function metaConfigCheck(quiet: boolean): Promise<boolean> {
 }
 
 async function main() {
-  log.info("worker started", { owner, concurrency });
+  log.info("worker started", { owner, concurrency, quickConcurrency });
   let metaOk = await metaConfigCheck(false).catch(() => true);
-  const jobTypesFor = (ok: boolean): JobType[] => (ok ? ALL_JOB_TYPES : ALL_JOB_TYPES.filter((t) => !META_JOB_TYPES.includes(t)));
-  if (!metaOk) log.warn("meta models not visible from this network; skipping text and image jobs", { jobTypes: jobTypesFor(false) });
+  const typesFor = (lane: JobType[], ok: boolean): JobType[] => (ok ? lane : lane.filter((t) => !META_JOB_TYPES.includes(t)));
+  if (!metaOk) log.warn("meta models not visible from this network; skipping text and image jobs", { jobTypes: typesFor(QUICK_JOB_TYPES, false) });
   // Settings changes restart the worker, so retry jobs that were waiting on provider setup once.
   // Re-queued Meta jobs left by a worker that cannot reach Meta wait for one that can.
   const requeued = await unblockJobs(["task_pack", "asset_audio", "asset_image", "vocabulary_pack", "study_schedule", "mock_scoring"], "PROVIDER_CONFIG").catch(() => 0);
   if (requeued) log.info("requeued jobs waiting on provider setup", { count: requeued });
   let lastHousekeeping = 0;
-  await runPool(owner, concurrency, {
-    jobTypes: () => jobTypesFor(metaOk),
-    stopping: () => stopping,
-    once: process.argv.includes("--once"),
-    beforeClaim: async () => {
-      if (Date.now() - lastHousekeeping < 10 * 60_000) return;
-      lastHousekeeping = Date.now();
-      await housekeeping();
-      const ok = await metaConfigCheck(true).catch(() => metaOk);
-      if (ok !== metaOk) log.info("meta availability changed", { metaOk: ok, jobTypes: jobTypesFor(ok) });
-      metaOk = ok;
-    },
-  });
+  const once = process.argv.includes("--once");
+  // Two pools side by side, so quick jobs never wait behind long question packs.
+  await Promise.all([
+    runPool(owner, concurrency, {
+      jobTypes: () => typesFor(LONG_JOB_TYPES, metaOk),
+      stopping: () => stopping,
+      once,
+      beforeClaim: async () => {
+        if (Date.now() - lastHousekeeping < 10 * 60_000) return;
+        lastHousekeeping = Date.now();
+        await housekeeping();
+        const ok = await metaConfigCheck(true).catch(() => metaOk);
+        if (ok !== metaOk) log.info("meta availability changed", { metaOk: ok });
+        metaOk = ok;
+      },
+    }),
+    runPool(owner, quickConcurrency, {
+      jobTypes: () => typesFor(QUICK_JOB_TYPES, metaOk),
+      perUser: env().GENERATION_MAX_QUICK_CONCURRENCY_PER_USER,
+      stopping: () => stopping,
+      once,
+    }),
+  ]);
   log.info("worker stopped", { owner });
   process.exit(0);
 }

@@ -42,6 +42,8 @@ const schema = z.object({
   ELEVENLABS_MODEL_ID: modelId("eleven_multilingual_v2"),
   ADMIN_CONTACT_EMAIL: optional,
   GENERATION_MAX_CONCURRENCY_PER_USER: int(1),
+  /** Per-learner limit in the quick lane (audio, pictures, vocabulary, schedule, mock rating). */
+  GENERATION_MAX_QUICK_CONCURRENCY_PER_USER: int(4),
   GENERATION_MAX_RETRIES: int(3),
   GENERATION_TIMEOUT_SECONDS: int(120),
   // Optional cap. Unset: each task type gets its full planned count (PRACTICE_TYPES referenceCount, 390 in total).

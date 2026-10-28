@@ -13,6 +13,13 @@ const ACTIVE: JobStatus[] = ["running", "validating", "storing"];
 export const ALL_JOB_TYPES: JobType[] = ["task_pack", "asset_image", "asset_audio", "reconcile_media", "delete_user_assets", "vocabulary_pack", "study_schedule", "mock_scoring"];
 /** Job types that call Meta (text generation, vocabulary, study schedules and images). */
 export const META_JOB_TYPES: JobType[] = ["task_pack", "asset_image", "vocabulary_pack", "study_schedule", "mock_scoring"];
+/**
+ * Two lanes, each with its own worker slots and per-learner limit: long question packs, and quick
+ * jobs (audio, pictures, vocabulary, the schedule, mock test rating) that would otherwise wait
+ * minutes behind the packs although each takes seconds.
+ */
+export const LONG_JOB_TYPES: JobType[] = ["task_pack"];
+export const QUICK_JOB_TYPES: JobType[] = ALL_JOB_TYPES.filter((t) => !LONG_JOB_TYPES.includes(t));
 export const leaseMs = () => env().GENERATION_TIMEOUT_SECONDS * 1000 * 3;
 /** Task packs that take longest (batched AI calls); a new batch claims them first, slowest first. */
 const SLOW_FIRST = ["build-sentence", "listen-choose-response"];
@@ -101,14 +108,13 @@ export async function enqueueJob(data: {
 }
 
 /**
- * Atomically claims up to `limit` due jobs for this worker, never giving one user
- * more than GENERATION_MAX_CONCURRENCY_PER_USER running jobs. Claims are serialised
+ * Atomically claims up to `limit` due jobs of `jobTypes` for this worker, never giving one user
+ * more than `perUser` running jobs of those types (default GENERATION_MAX_CONCURRENCY_PER_USER). Claims are serialised
  * with a transaction-scoped advisory lock so concurrent workers cannot both see
  * the same free slot. `jobTypes` limits what this worker takes (e.g. a worker that
  * cannot reach Meta leaves Meta jobs for one that can).
  */
-export async function claimJobs(workerId: string, limit: number, jobTypes: JobType[] = ALL_JOB_TYPES): Promise<GenerationJob[]> {
-  const perUser = env().GENERATION_MAX_CONCURRENCY_PER_USER;
+export async function claimJobs(workerId: string, limit: number, jobTypes: JobType[] = ALL_JOB_TYPES, perUser = env().GENERATION_MAX_CONCURRENCY_PER_USER): Promise<GenerationJob[]> {
   const leaseUntil = new Date(Date.now() + leaseMs());
   const types = jobTypes.join(",");
   const ids = await db.$transaction(async (tx) => {
@@ -117,6 +123,7 @@ export async function claimJobs(workerId: string, limit: number, jobTypes: JobTy
       WITH running AS (
         SELECT user_id, count(*)::int AS n FROM generation_jobs
         WHERE status IN ('running', 'validating', 'storing') AND lease_expires_at > now() AND user_id IS NOT NULL
+          AND job_type::text = ANY(string_to_array(${types}, ','))
         GROUP BY user_id
       ),
       candidates AS (

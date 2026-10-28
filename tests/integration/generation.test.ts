@@ -61,7 +61,7 @@ vi.mock("@/lib/server/providers/meta", async () => {
 
 import { db } from "@/lib/server/db";
 import { savePlan } from "@/lib/server/study-plan";
-import { ALL_JOB_TYPES, claimJobs, recoverExpiredLeases, startInitialBatch } from "@/lib/server/generation/queue";
+import { ALL_JOB_TYPES, LONG_JOB_TYPES, QUICK_JOB_TYPES, claimJobs, enqueueJob, recoverExpiredLeases, startInitialBatch } from "@/lib/server/generation/queue";
 import { runPool, tick } from "@/lib/server/generation/worker";
 import { queueStudySchedule } from "@/lib/server/generation/study-schedule";
 import { getActivePlan } from "@/lib/server/study-plan";
@@ -347,6 +347,21 @@ describe("generation batches", () => {
     await startInitialBatch(u.id, randomUUID());
     const claimed = await claimJobs("w", 5);
     expect(claimed).toHaveLength(1);
+  });
+
+  it("runs quick jobs in their own lane, so they never wait behind long question packs", async () => {
+    const u = await createUser("a@example.com");
+    await savePlan(u.id, { ...INPUT }, false);
+    await startInitialBatch(u.id, randomUUID());
+    // The long lane is full for this learner (limit 1 in tests)…
+    expect(await claimJobs("w", 5, LONG_JOB_TYPES)).toHaveLength(1);
+    expect(await claimJobs("w", 5, LONG_JOB_TYPES)).toHaveLength(0);
+    // …but audio still starts at once, up to the quick lane's own per-learner limit.
+    for (let n = 0; n < 6; n++) await enqueueJob({ idempotencyKey: `lane-test:${n}`, jobType: "asset_audio", userId: u.id, payload: {} });
+    const quick = await claimJobs("w", 10, QUICK_JOB_TYPES, 4);
+    expect(quick).toHaveLength(4);
+    expect(quick.every((j) => j.jobType === "asset_audio")).toBe(true);
+    expect(await claimJobs("w", 10, QUICK_JOB_TYPES, 4)).toHaveLength(0);
   });
 });
 
