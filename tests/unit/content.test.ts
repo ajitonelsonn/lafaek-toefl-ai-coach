@@ -34,9 +34,12 @@ describe("validation rejects malformed AI output", () => {
     const q = conv.questions.map((x, i) => (i === 0 ? { ...x, options: ["a", "a", "b", "c"] } : x));
     expect(validateGenerated("listen-conversation", { ...conv, questions: q }).ok).toBe(false);
   });
-  it("rejects Complete the Words passages with the wrong number of blanks", () => {
+  it("rejects marked Complete the Words passages with the wrong number of blanks", () => {
     const ctw = starterEntries().find((e) => e.slug === "complete-the-words")!.output as { passage: string };
-    expect(validateGenerated("complete-the-words", { ...ctw, passage: ctw.passage.replace(/\[([^\]]+)\]/g, "$1") }).ok).toBe(false);
+    let kept = 0;
+    // Keep only the first 3 blanks marked (plain paragraphs are blanked automatically, see c-test.test.ts).
+    const fewBlanks = ctw.passage.replace(/\[([^\]]+)\]/g, (m, letters: string) => (kept++ < 3 ? m : letters));
+    expect(validateGenerated("complete-the-words", { ...ctw, passage: fewBlanks }).ok).toBe(false);
   });
   it("rejects non-unique Build a Sentence word groups", () => {
     const bs = starterEntries().find((e) => e.slug === "build-sentence")!.output as { tokens: string[] };

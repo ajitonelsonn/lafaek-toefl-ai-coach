@@ -156,6 +156,8 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
   const [uploadState, setUploadState] = useState<Record<string, UploadState>>({});
   // Each audio plays once in the whole test, also when several questions share it.
   const [played, setPlayed] = useState<Record<string, boolean>>({});
+  // Listening questions appear only after their audio has been heard to the end, like the real test.
+  const [heard, setHeard] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
@@ -333,6 +335,8 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
                 upload={uploadState[unit.key]}
                 played={!!played[audioKey(unit)]}
                 onPlayStart={() => setPlayed((p) => ({ ...p, [audioKey(unit)]: true }))}
+                heard={!!heard[audioKey(unit)]}
+                onHeard={() => setHeard((h) => ({ ...h, [audioKey(unit)]: true }))}
               />
             </div>
           </div>
@@ -407,16 +411,21 @@ interface UnitViewProps {
   upload?: UploadState;
   played: boolean;
   onPlayStart: () => void;
+  heard: boolean;
+  onHeard: () => void;
 }
 
 // Test conditions: audio plays once with no stop or replay, and a saved spoken answer cannot be re-recorded.
-function UnitView({ unit, answer, onAnswer, onRecorded, upload, played, onPlayStart }: UnitViewProps) {
+function UnitView({ unit, answer, onAnswer, onRecorded, upload, played, onPlayStart, heard, onHeard }: UnitViewProps) {
+  // Played on an earlier visit but not to the end (the learner moved on): the audio cannot be replayed, so show the question.
+  const [playedOnMount] = useState(played);
   if (unit.kind === "choice") {
+    const showQuestion = !unit.audio || heard || playedOnMount;
     return (
       <div className={cn("grid grid-cols-[minmax(0,1fr)] gap-5", (unit.document || unit.passage) && "lg:grid-cols-2")}>
         {(unit.document || unit.passage || unit.audio) && (
           <div className="min-w-0">
-            {unit.audio && <AudioPlayer audio={unit.audio} label="Play audio" transcript={false} testMode played={played} onPlayStart={onPlayStart} />}
+            {unit.audio && <AudioPlayer audio={unit.audio} label="Play audio" transcript={false} testMode played={played} onPlayStart={onPlayStart} onEnded={onHeard} />}
             {/* Every document type (email, notice, text messages), the same view as in practice. */}
             {unit.document && <DocumentView doc={unit.document} />}
             {unit.passage && (
@@ -431,7 +440,13 @@ function UnitView({ unit, answer, onAnswer, onRecorded, upload, played, onPlaySt
             )}
           </div>
         )}
-        <ChoiceList question={unit.question} value={typeof answer === "string" ? answer : undefined} onChange={onAnswer} />
+        {showQuestion ? (
+          <ChoiceList question={unit.question} value={typeof answer === "string" ? answer : undefined} onChange={onAnswer} />
+        ) : (
+          <p className="rounded-xl border border-dashed border-line-strong bg-surface-soft p-5 text-center text-sm text-body" role="status">
+            Play the audio and listen carefully. The question appears when it finishes, like on the real test. You can take notes.
+          </p>
+        )}
       </div>
     );
   }

@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import type { PracticeSlug } from "@/lib/config/practice-types";
+import { addCTestBlanks } from "./c-test";
 
 // Generation output schemas (what the model must return) and the stored item
 // format. Schemas use strictObject + nullable (never optional) so they map to
@@ -61,7 +62,7 @@ export const GEN_SCHEMAS = {
     answerIndex: z.number().int().min(0).max(3),
     explanation: z.string().min(10).max(400),
   }),
-  "listen-conversation": listeningSet(2, 3, 6, 16),
+  "listen-conversation": listeningSet(2, 3, 4, 16),
   "listen-announcement": listeningSet(1, 1, 1, 6),
   "listen-academic-talk": listeningSet(1, 2, 1, 10),
   "build-sentence": z.strictObject({
@@ -136,7 +137,12 @@ const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 /** Structural checks beyond the schema. Returns human-readable problems (empty = valid). */
 export function validateGenerated(slug: PracticeSlug, raw: unknown): { ok: true; value: unknown } | { ok: false; errors: string[] } {
-  const parsed = GEN_SCHEMAS[slug].safeParse(raw);
+  // Complete the Words: the model writes a plain paragraph and the blanks are made here, as on the real test.
+  const input =
+    slug === "complete-the-words" && raw && typeof raw === "object" && typeof (raw as { passage?: unknown }).passage === "string"
+      ? { ...raw, passage: addCTestBlanks((raw as { passage: string }).passage) }
+      : raw;
+  const parsed = GEN_SCHEMAS[slug].safeParse(input);
   if (!parsed.success) return { ok: false, errors: parsed.error.issues.slice(0, 8).map((i) => `${i.path.join(".")}: ${i.message}`) };
   const v = parsed.data as Record<string, unknown>;
   const errors: string[] = [];
@@ -148,7 +154,11 @@ export function validateGenerated(slug: PracticeSlug, raw: unknown): { ok: true;
   switch (slug) {
     case "complete-the-words": {
       const blanks = [...String(v.passage).matchAll(/(\S*?)\[([^\]]*)\]/g)];
-      if (blanks.length < 8 || blanks.length > 12) errors.push(`expected 8–12 blanks, found ${blanks.length}`);
+      // Blanks made here must number exactly 10; already-marked passages (starter set) may have 8–12.
+      const madeHere = !String((raw as { passage?: unknown } | null)?.passage ?? "").includes("[");
+      if (madeHere ? blanks.length !== 10 : blanks.length < 8 || blanks.length > 12) {
+        errors.push(madeHere ? `only ${blanks.length} of 10 blanks fit after the first sentence; write a longer paragraph with more common words` : `expected 8–12 blanks, found ${blanks.length}`);
+      }
       blanks.forEach((m, i) => {
         if (!/^[A-Za-z]{1,6}$/.test(m[2])) errors.push(`blank ${i + 1}: missing letters must be 1–6 letters`);
         if (!/[A-Za-z]$/.test(m[1])) errors.push(`blank ${i + 1}: needs at least one visible letter before it`);
@@ -195,7 +205,7 @@ export function validateGenerated(slug: PracticeSlug, raw: unknown): { ok: true;
       break;
     }
     case "listen-repeat":
-      (v.sentences as string[]).forEach((s, i) => (words(s) < 3 || words(s) > 18) && errors.push(`sentence ${i + 1}: use 3–18 words`));
+      (v.sentences as string[]).forEach((s, i) => (words(s) < 3 || words(s) > 20) && errors.push(`sentence ${i + 1}: use 3–20 words`));
       break;
   }
   return errors.length ? { ok: false, errors } : { ok: true, value: v };
@@ -313,7 +323,7 @@ export function toStoredItem(slug: PracticeSlug, value: unknown): StoredItem {
         },
         answerKey: {},
         explanation: {},
-        rubric: WRITING_RUBRIC,
+        rubric: DISCUSSION_RUBRIC,
       };
     }
     case "listen-repeat": {
@@ -361,14 +371,26 @@ export function deterministicShuffle<T>(arr: T[], seedText: string): T[] {
   return out;
 }
 
+// Practice rubrics built on the scoring dimensions ETS describes for the 2026 tasks (content and
+// coherence, sentence variety, vocabulary and collocations, politeness for emails, accuracy; for
+// the interview, relevance, organization and language use). Not the official ETS rubrics.
 export const WRITING_RUBRIC = {
-  version: "writing-rubric-1",
-  dimensions: ["Task fulfilment", "Organization", "Clarity", "Grammar", "Vocabulary", "Register"],
+  version: "writing-rubric-2",
+  dimensions: ["Covers every point", "Coherence and transitions", "Sentence variety", "Vocabulary and collocations", "Politeness and tone", "Grammar and mechanics"],
+  note: "Practice rubric. Not an official ETS scoring rubric.",
+};
+
+export const DISCUSSION_RUBRIC = {
+  version: "discussion-rubric-1",
+  dimensions: ["Clear opinion that adds to the discussion", "Reason and example", "Coherence and transitions", "Sentence variety", "Vocabulary and collocations", "Grammar and mechanics"],
   note: "Practice rubric. Not an official ETS scoring rubric.",
 };
 
 export const SPEAKING_RUBRIC = {
-  version: "speaking-rubric-1",
-  dimensions: ["Relevance", "Clarity", "Organization", "Fluency indicators", "Language use"],
+  version: "speaking-rubric-2",
+  dimensions: ["Answers the question", "Development with an example", "Organization and connectives", "Vocabulary range", "Grammar", "Fluency indicators"],
   note: "Practice rubric. Not an official ETS scoring rubric.",
 };
+
+/** The current rubric for a task (items keep the version they were made with; coaching uses this one). */
+export const rubricFor = (slug: PracticeSlug) => (slug === "take-interview" ? SPEAKING_RUBRIC : slug === "academic-discussion" ? DISCUSSION_RUBRIC : WRITING_RUBRIC);

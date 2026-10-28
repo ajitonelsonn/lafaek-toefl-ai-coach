@@ -97,6 +97,10 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
   - At start-up and every 10 minutes, the worker checks whether Meta lists our models from its network. If not, it
     skips Meta jobs and still runs audio and clean-up jobs.
   - Usage events are idempotent by provider request ID.
+- **Question formats.** Generated questions follow the TOEFL iBT 2026 formats (lengths, question counts and
+  question types), checked against published practice tests; the content is always original. Complete the Words
+  blanks are made in code like the real task (`lib/server/content/c-test.ts`). See `BACKEND_PROGRESS.md` →
+  *Question formats match the real test*.
 - **Vocabulary.** There is no fixed word list. When a practice type's questions finish, a `vocabulary_pack` job asks
   Meta for up to `VOCABULARY_WORDS_PER_TASK` (default 10) useful words from those questions' texts. Words that do not
   occur in the texts, or that the learner already has, are dropped. They are stored per learner in

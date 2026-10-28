@@ -15,8 +15,8 @@ export const MOCK_BLUEPRINT: Record<SkillId, { slug: PracticeSlug; items: number
   ],
   listening: [
     { slug: "listen-choose-response", items: 5, about: 1 },
-    { slug: "listen-conversation", items: 2, about: 4 },
-    { slug: "listen-announcement", items: 2, about: 3 },
+    { slug: "listen-conversation", items: 2, about: 2 },
+    { slug: "listen-announcement", items: 2, about: 2 },
     { slug: "listen-academic-talk", items: 2, about: 4 },
   ],
   writing: [

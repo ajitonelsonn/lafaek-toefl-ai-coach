@@ -7,6 +7,7 @@ import { getOwnedItem } from "@/lib/server/practice";
 import { FEEDBACK_LABEL, FEEDBACK_VERSION, coachResponse } from "@/lib/server/feedback";
 import { ProviderError } from "@/lib/server/providers/http";
 import { getPracticeType, type PracticeSlug } from "@/lib/config/practice-types";
+import { rubricFor } from "@/lib/server/content/schemas";
 
 const body = z.object({ unitId: z.string().regex(/^[a-z]\d{0,2}$/), text: z.string().trim().min(20, "Write a little more first.").max(8000) });
 
@@ -27,7 +28,7 @@ export const POST = route<{ itemId: string }>(async (req, { params }) => {
       : slug === "academic-discussion"
         ? `${(c.professor as { prompt: string }).prompt}\nClassmates: ${(c.students as { name: string; text: string }[]).map((s) => `${s.name}: ${s.text}`).join("\n")}`
         : `${c.scenario}\nQuestion: ${((c.questions as { id: string; text: string }[]).find((q) => q.id === input.unitId) ?? { text: "" }).text}`;
-  const rubric = (item.rubricJson as { dimensions?: string[] } | null)?.dimensions ?? ["Task fulfilment", "Organization", "Clarity", "Grammar", "Vocabulary"];
+  const rubric = rubricFor(slug).dimensions;
 
   let feedback;
   try {
