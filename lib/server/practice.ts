@@ -1,7 +1,7 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { PRACTICE_TYPES, getPracticeType, type PracticeSlug } from "@/lib/config/practice-types";
-import type { PracticeSetDTO, UnitResultDTO } from "@/lib/practice/dto";
+import type { AudioDTO, PracticeSetDTO, UnitResultDTO } from "@/lib/practice/dto";
 import { db } from "./db";
 import { ApiError } from "./http";
 import { buildView, unitIdsOf, type ItemWithMedia } from "./content/view";
@@ -111,4 +111,27 @@ export async function getCatalog(userId: string) {
 export function assertSlug(slug: string): PracticeSlug {
   if (!getPracticeType(slug)) throw new ApiError(404, "NOT_FOUND", "Unknown practice type.");
   return slug as PracticeSlug;
+}
+
+/**
+ * Audio files for one segment of an item, read fresh from the database. The page may have loaded
+ * before the audio job finished; the player asks here before falling back to the browser voice.
+ * Returns file ids only (never the script).
+ */
+export async function currentAudio(userId: string, itemId: string, role: string): Promise<{ assetIds: string[]; provider: string | null }> {
+  const item = await getOwnedItem(userId, itemId);
+  const view = buildView(item.taskSlug as PracticeSlug, [item]);
+  let found: AudioDTO | null = null;
+  const walk = (v: unknown) => {
+    if (found || !v || typeof v !== "object") return;
+    const a = v as Partial<AudioDTO>;
+    if (a.source?.itemId === itemId && a.source.role === role && Array.isArray(a.assetIds)) {
+      found = a as AudioDTO;
+      return;
+    }
+    Object.values(v).forEach(walk);
+  };
+  walk(view);
+  const audio = found as AudioDTO | null;
+  return { assetIds: audio?.assetIds ?? [], provider: audio?.provider ?? null };
 }

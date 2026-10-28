@@ -9,9 +9,15 @@ type Json = Record<string, unknown>;
 
 /** Ready audio for a segment role, in playback order, or [] if any segment is missing. */
 function audioFor(item: ItemWithMedia, role: string, lines: Line[]): AudioDTO {
-  const ready = item.media
-    .filter((m) => m.kind === "audio" && m.status === "ready" && m.role.startsWith(`audio:${role}:`))
-    .sort((a, b) => Number(a.role.split(":")[2]) - Number(b.role.split(":")[2]));
+  // One file per line. If a line was stored twice (e.g. a job retried after a worker restart),
+  // use the newest copy instead of treating the audio as incomplete.
+  const byLine = new Map<string, ItemWithMedia["media"][number]>();
+  for (const m of item.media) {
+    if (m.kind !== "audio" || m.status !== "ready" || !m.role.startsWith(`audio:${role}:`)) continue;
+    const prev = byLine.get(m.role);
+    if (!prev || new Date(m.createdAt ?? 0).getTime() > new Date(prev.createdAt ?? 0).getTime()) byLine.set(m.role, m);
+  }
+  const ready = [...byLine.values()].sort((a, b) => Number(a.role.split(":")[2]) - Number(b.role.split(":")[2]));
   const complete = ready.length === lines.length && lines.length > 0;
   const words = lines.map((l) => l.text).join(" ").split(/\s+/).length;
   return {
@@ -20,6 +26,7 @@ function audioFor(item: ItemWithMedia, role: string, lines: Line[]): AudioDTO {
     // The script is withheld whenever real audio exists (exam-like listening).
     script: complete ? null : lines.map((l) => ({ speaker: l.speaker.name, text: l.text })),
     estimatedSeconds: Math.max(2, Math.round(words / 2.4)),
+    source: { itemId: item.id, role },
   };
 }
 

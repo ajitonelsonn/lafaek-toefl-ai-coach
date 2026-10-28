@@ -72,6 +72,16 @@ describe("answer keys never reach the browser before submission", () => {
     expect(v.items[0].audio.assetIds).toEqual(["a1"]);
     expect(v.items[0].audio.script).toBeNull();
   });
+  it("uses the newest file when a line's audio was stored twice (not the browser voice)", () => {
+    const item = bySlug("listen-choose-response")[0];
+    const media = [
+      { id: "old", kind: "audio", status: "ready", role: "audio:main:0", provider: "elevenlabs", createdAt: new Date("2026-10-28T10:00:00Z") },
+      { id: "new", kind: "audio", status: "ready", role: "audio:main:0", provider: "elevenlabs", createdAt: new Date("2026-10-28T10:05:00Z") },
+    ] as never[];
+    const v = buildView("listen-choose-response", [{ ...item, media }]) as Extract<ReturnType<typeof buildView>, { kind: "listen-choose-response" }>;
+    expect(v.items[0].audio.assetIds).toEqual(["new"]);
+    expect(v.items[0].audio.script).toBeNull();
+  });
 });
 
 describe("objective scoring", () => {

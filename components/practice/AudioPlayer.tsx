@@ -28,7 +28,9 @@ const PROVIDER_LABEL: Record<string, string> = { elevenlabs: "ElevenLabs voice" 
 
 /**
  * Plays generated audio files (one per script segment, via short-lived signed URLs).
- * When no file exists yet, it reads the script with the browser's voice and says so.
+ * If the page loaded before the files were ready, it asks the server again (on load and on Play)
+ * and uses the S3 audio as soon as it exists. Only when there is still no file does it read the
+ * script with the browser's voice, and it says so.
  */
 export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio", compact, revealedScript, transcript = true }: AudioPlayerProps) {
   const session = useOptionalSession();
@@ -47,7 +49,34 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
   }, [onEnded]);
   useEffect(() => setHydrated(true), []);
 
-  const hasFiles = audio.assetIds.length > 0;
+  // Files can appear after the page loaded (audio is generated in the background).
+  const [files, setFiles] = useState(audio.assetIds);
+  const [provider, setProvider] = useState(audio.provider);
+  const sourceKey = audio.source ? `${audio.source.itemId}:${audio.source.role}` : "";
+  useEffect(() => {
+    setFiles(audio.assetIds);
+    setProvider(audio.provider);
+  }, [audio.assetIds, audio.provider, sourceKey]);
+
+  /** Asks the server for this segment's files now; returns their ids (empty if still not ready). */
+  const fetchFiles = useCallback(async (): Promise<string[]> => {
+    if (!audio.source) return [];
+    const { itemId, role } = audio.source;
+    const r = await api<{ assetIds: string[]; provider: string | null }>(`/api/practice/items/${itemId}/audio?role=${encodeURIComponent(role)}`);
+    if (r.assetIds.length) {
+      setFiles(r.assetIds);
+      setProvider(r.provider);
+    }
+    return r.assetIds;
+  }, [audio.source]);
+
+  // Check once on load, so the label and the Play button use S3 audio when it already exists.
+  useEffect(() => {
+    if (!hydrated || audio.assetIds.length || !audio.source) return;
+    void fetchFiles().catch(() => undefined);
+  }, [hydrated, audio.assetIds.length, audio.source, fetchFiles]);
+
+  const hasFiles = files.length > 0;
   const speechSupported = hydrated && typeof window !== "undefined" && "speechSynthesis" in window;
   const available = hasFiles || (speechSupported && Boolean(audio.script?.length));
   const limitReached = maxPlays !== null && plays >= maxPlays;
@@ -56,9 +85,9 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
 
   const bars = useMemo(() => {
     let seed = 0;
-    for (const ch of `${audio.assetIds.join("")}${audio.script?.[0]?.text ?? ""}`) seed = (seed * 31 + ch.charCodeAt(0)) % 9973;
+    for (const ch of `${sourceKey}${audio.script?.[0]?.text ?? ""}`) seed = (seed * 31 + ch.charCodeAt(0)) % 9973;
     return Array.from({ length: compact ? 32 : 48 }, (_, i) => 30 + Math.round(70 * Math.abs(Math.sin(seed + i * 0.7))));
-  }, [audio, compact]);
+  }, [sourceKey, audio.script, compact]);
 
   const finish = useCallback(() => {
     setStatus("ended");
@@ -81,10 +110,10 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
     [],
   );
 
-  const playFiles = async () => {
+  const playFiles = async (ids: string[]) => {
     setStatus("loading");
     try {
-      const urls = await Promise.all(audio.assetIds.map((id) => api<{ url: string }>(`/api/media/${id}/url`).then((r) => r.url)));
+      const urls = await Promise.all(ids.map((id) => api<{ url: string }>(`/api/media/${id}/url`).then((r) => r.url)));
       const player = el.current ?? new Audio();
       el.current = player;
       cancelled.current = false;
@@ -134,8 +163,15 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
     setError(null);
     setElapsed(0);
     setPlays((p) => p + 1);
-    if (hasFiles) void playFiles();
-    else playSpeech();
+    if (hasFiles) {
+      void playFiles(files);
+      return;
+    }
+    // No file when the page loaded: check S3 first, and use the browser voice only if still missing.
+    setStatus("loading");
+    void fetchFiles()
+      .catch(() => [] as string[])
+      .then((ids) => (ids.length ? playFiles(ids) : playSpeech()));
   };
 
   const stop = () => {
@@ -178,7 +214,7 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
         <span className="inline-flex items-center gap-1.5">
           <Volume2 className="size-3.5" aria-hidden />
-          {hasFiles ? `Audio · ${PROVIDER_LABEL[audio.provider ?? ""] ?? "generated voice"}` : "Browser voice preview — recorded audio is not available yet"}
+          {hasFiles ? `Audio · ${PROVIDER_LABEL[provider ?? ""] ?? "generated voice"}` : "Browser voice preview — recorded audio is not available yet"}
         </span>
         <span className="flex items-center gap-3">
           {maxPlays !== null && <span>{limitReached ? "Played once, like the real test." : `Plays left: ${maxPlays - plays}`}</span>}
