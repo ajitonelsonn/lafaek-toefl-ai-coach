@@ -14,12 +14,20 @@ vi.mock("@/lib/server/providers/meta", async () => {
       control.calls++;
       const requestId = `req-${control.calls}`;
       const usage = { inputTokens: 100, outputTokens: 200 };
-      if (task === "verify:build-sentence") {
-        if (control.rejectSentenceChecks > 0) {
-          control.rejectSentenceChecks--;
-          return { data: { grammatical: true, uniqueOrder: false, issue: "Another grammatical order exists." }, usage, model: "muse-spark-1.3", requestId };
-        }
-        return { data: { grammatical: true, uniqueOrder: true, issue: "" }, usage, model: "muse-spark-1.3", requestId };
+      if (task === "verify:build-sentence-batch") {
+        // One verdict per numbered item; `rejectSentenceChecks` turns the next N verdicts into rejections.
+        const count = (user.match(/^Item \d+\./gm) ?? []).length;
+        const results = Array.from({ length: count }, (_, i) => {
+          const reject = control.rejectSentenceChecks > 0;
+          if (reject) control.rejectSentenceChecks--;
+          return { n: i + 1, grammatical: true, uniqueOrder: !reject, issue: reject ? "Another grammatical order exists." : "" };
+        });
+        return { data: { results }, usage, model: "muse-spark-1.3", requestId };
+      }
+      if (task === "generate:build-sentence-batch" && control.mode === "ok") {
+        const want = Number(/Write (\d+) different items/.exec(user)?.[1] ?? 1);
+        const fixture = starterEntries().find((e) => e.slug === "build-sentence")!.output;
+        return { data: { items: Array.from({ length: want }, () => fixture) }, usage, model: "muse-spark-1.3", requestId };
       }
       if (task === "generate:study-schedule") {
         return { data: { weeks: [{ week: 1, theme: "AI warm-up week", focusSkills: ["speaking"], priorityTasks: ["take-interview", "listen-repeat"], mockTestDate: null, tip: "Speak for one full minute every day." }] }, usage, model: "muse-spark-1.3", requestId };
@@ -176,17 +184,31 @@ describe("generation batches", () => {
     expect(await db.generationJob.count({ where: { status: "blocked_configuration", errorCode: "PROVIDER_CONFIG" } })).toBe(1);
   });
 
-  it("replaces a question that keeps failing its checks instead of failing the whole pack", async () => {
+  it("replaces Build a Sentence items that fail the check instead of failing the whole pack", async () => {
     const u = await createUser("a@example.com");
     await savePlan(u.id, { ...INPUT }, false);
     await startInitialBatch(u.id, randomUUID());
     await db.generationJob.updateMany({ where: { jobType: "task_pack", NOT: { taskSlug: "build-sentence" } }, data: { status: "cancelled" } });
-    control.rejectSentenceChecks = 3; // the first slot fails the uniqueness check on every repair attempt
+    control.rejectSentenceChecks = 3; // the first three sentences fail the uniqueness check
     await drain();
     const job = await db.generationJob.findFirstOrThrow({ where: { jobType: "task_pack", taskSlug: "build-sentence" } });
     expect(job.status).toBe("completed");
     const items = await db.practiceItem.findMany({ where: { userId: u.id, taskSlug: "build-sentence" }, select: { itemIndex: true } });
-    expect(items.map((i) => i.itemIndex)).toEqual([1]); // slot 0 skipped, replaced by slot 1
+    expect(items.map((i) => i.itemIndex)).toEqual([0]); // rejected ones never take a slot
+  });
+
+  it("generates and checks Build a Sentence in batches of five", async () => {
+    const u = await createUser("a@example.com");
+    await savePlan(u.id, { ...INPUT }, false);
+    await startInitialBatch(u.id, randomUUID());
+    await db.generationJob.updateMany({ where: { jobType: "task_pack", NOT: { taskSlug: "build-sentence" } }, data: { status: "cancelled" } });
+    const job = await db.generationJob.findFirstOrThrow({ where: { jobType: "task_pack", taskSlug: "build-sentence" } });
+    await db.generationJob.update({ where: { id: job.id }, data: { payloadJson: { ...(job.payloadJson as object), items: 6 }, progressTotal: 6 } });
+    const before = control.calls;
+    await drain();
+    expect(await db.practiceItem.count({ where: { userId: u.id, taskSlug: "build-sentence" } })).toBe(6);
+    expect(control.calls - before).toBe(4); // 5 + 1 sentences: 2 generation calls and 2 check calls (was at least 12)
+    expect((await db.generationJob.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("completed");
   });
 
   it("rejects malformed output, repairs once, and never stores invalid content", async () => {

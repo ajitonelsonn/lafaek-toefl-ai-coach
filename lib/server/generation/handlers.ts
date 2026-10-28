@@ -14,7 +14,7 @@ import { pickVoices, synthesizeSpeech } from "../providers/elevenlabs";
 import { bucketName, deleteObject, objectExists, objectKeyFor, putObject } from "../storage/s3";
 import { GEN_SCHEMAS, toStoredItem, validateGenerated, type StoredItem } from "../content/schemas";
 import { cefrForLevel } from "../study-plan";
-import { PROMPT_VERSION, SYSTEM_PROMPT, buildRepairPrompt, buildSentenceCheckPrompt, buildUserPrompt, scenePrompt } from "./prompts";
+import { PROMPT_VERSION, SYSTEM_PROMPT, buildRepairPrompt, buildSentenceBatchCheckPrompt, buildSentenceBatchPrompt, buildUserPrompt, scenePrompt } from "./prompts";
 import { enqueueJob, heartbeat, setStage } from "./queue";
 
 export class JobFailure extends Error {
@@ -55,11 +55,12 @@ export async function runTaskPack(job: GenerationJob, workerId: string): Promise
   const input = (plan.answersJson as unknown as { input: StudyPlanInputBody }).input;
 
   await enforceDailyLimit(job.userId);
+  // Build a Sentence is generated and checked in batches (much faster; see below).
+  if (slug === "build-sentence") return runBuildSentenceBatches(job, workerId, plan, input, items);
 
-  // A question that still fails its checks after repairs is skipped and replaced at the next slot,
-  // so one bad question cannot hold up the whole pack. Build a Sentence has a strict second check
-  // (about 12% rejected in production), so it gets 25% spare slots; other types 10%; at least 2.
-  const spareSlots = Math.max(2, Math.ceil(items * (slug === "build-sentence" ? 0.25 : 0.1)));
+  // A question that still fails its checks after repairs is skipped and replaced at the next slot
+  // (up to 10% extra slots, at least 2), so one bad question cannot hold up the whole pack.
+  const spareSlots = Math.max(2, Math.ceil(items * 0.1));
   let storedCount = await db.practiceItem.count({ where: { studyPlanId: plan.id, taskSlug: slug, userId: job.userId } });
   let lastRejection: string[] = [];
   for (let index = 0; storedCount < items && index < items + spareSlots; index++) {
@@ -108,15 +109,7 @@ export async function runTaskPack(job: GenerationJob, workerId: string): Promise
         lastErrors = v.errors;
         continue;
       }
-      const candidate = toStoredItem(slug, v.value);
-      if (slug === "build-sentence") {
-        const check = await verifyBuildSentence(job, index, v.value as z.infer<(typeof GEN_SCHEMAS)["build-sentence"]>);
-        if (!check.ok) {
-          lastErrors = [check.issue];
-          continue;
-        }
-      }
-      stored = candidate;
+      stored = toStoredItem(slug, v.value);
     }
 
     if (!stored) {
@@ -126,27 +119,7 @@ export async function runTaskPack(job: GenerationJob, workerId: string): Promise
     }
 
     await setStage(job.id, workerId, "storing");
-    const item = await db.practiceItem.create({
-      data: {
-        contentKey,
-        userId: job.userId,
-        studyPlanId: plan.id,
-        generationJobId: job.id,
-        source: "generated",
-        taskSlug: slug,
-        itemIndex: index,
-        difficulty: stored.difficulty,
-        cefrLevel: stored.cefrLevel,
-        topic: stored.topic,
-        contentJson: { ...stored.content, ...(stored.imagePrompt ? { imagePrompt: stored.imagePrompt } : {}) } as Prisma.InputJsonValue,
-        answerKeyJson: stored.answerKey as Prisma.InputJsonValue,
-        explanationJson: stored.explanation as Prisma.InputJsonValue,
-        rubricJson: (stored.rubric ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-        provenanceJson: { source: "generated", provider: "meta", modelId, promptVersion: PROMPT_VERSION, generationJobId: job.id, requestId, createdAt: new Date().toISOString() },
-        validationStatus: "valid",
-      },
-    });
-    await queueAssetsFor(job, item.id, slug, stored, input.accents);
+    await saveItem(job, plan.id, slug, index, stored, { modelId, requestId }, input.accents);
     storedCount++;
     await setStage(job.id, workerId, "running", Math.min(storedCount, items));
   }
@@ -157,11 +130,141 @@ export async function runTaskPack(job: GenerationJob, workerId: string): Promise
   await db.generationJob.update({ where: { id: job.id }, data: { provider: "meta", modelId: env().META_TEXT_MODEL, promptVersion: PROMPT_VERSION } });
 }
 
-async function verifyBuildSentence(job: GenerationJob, index: number, v: z.infer<(typeof GEN_SCHEMAS)["build-sentence"]>): Promise<{ ok: true } | { ok: false; issue: string }> {
-  const schema = z.strictObject({ grammatical: z.boolean(), uniqueOrder: z.boolean(), issue: z.string().max(300) });
-  const r = await generateText({ task: "verify:build-sentence", schema, system: "You are a careful English grammar checker. Return JSON only.", user: buildSentenceCheckPrompt(v.context, v.prefix, v.tokens, v.suffix), temperature: 0 });
+/** Stores one validated item at slot `index` and queues its audio/images. */
+async function saveItem(job: GenerationJob, studyPlanId: string, slug: PracticeSlug, index: number, stored: StoredItem, meta: { modelId: string; requestId: string | null }, accents: string[]) {
+  const item = await db.practiceItem.create({
+    data: {
+      contentKey: `plan:${studyPlanId}:${slug}:${index}:v1`,
+      userId: job.userId,
+      studyPlanId,
+      generationJobId: job.id,
+      source: "generated",
+      taskSlug: slug,
+      itemIndex: index,
+      difficulty: stored.difficulty,
+      cefrLevel: stored.cefrLevel,
+      topic: stored.topic,
+      contentJson: { ...stored.content, ...(stored.imagePrompt ? { imagePrompt: stored.imagePrompt } : {}) } as Prisma.InputJsonValue,
+      answerKeyJson: stored.answerKey as Prisma.InputJsonValue,
+      explanationJson: stored.explanation as Prisma.InputJsonValue,
+      rubricJson: (stored.rubric ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+      provenanceJson: { source: "generated", provider: "meta", modelId: meta.modelId, promptVersion: PROMPT_VERSION, generationJobId: job.id, requestId: meta.requestId, createdAt: new Date().toISOString() },
+      validationStatus: "valid",
+    },
+  });
+  await queueAssetsFor(job, item.id, slug, stored, accents);
+}
+
+// ---------------------------------------------------------------------------
+// Build a Sentence in batches: one call writes up to 5 items, one call checks them all (grammar and
+// a unique word order). Passing items fill the next free slots; rejected ones are simply replaced by
+// the next batch, within a budget of about twice the target so a bad run cannot loop forever.
+// ---------------------------------------------------------------------------
+
+const SENTENCE_BATCH = 5;
+// A real batch took about 33 s to write and 96 s to check (2026-10-28), so allow more than the default.
+const BATCH_TIMEOUT_SECONDS = 240;
+type SentenceItem = z.infer<(typeof GEN_SCHEMAS)["build-sentence"]>;
+
+async function runBuildSentenceBatches(job: GenerationJob, workerId: string, plan: { id: string }, input: StudyPlanInputBody, items: number): Promise<void> {
+  const slug = "build-sentence" as const;
+  const existing = await db.practiceItem.findMany({ where: { studyPlanId: plan.id, taskSlug: slug, userId: job.userId }, select: { itemIndex: true } });
+  const taken = new Set(existing.map((i) => i.itemIndex));
+  let storedCount = taken.size;
+  let nextSlot = 0;
+  const claimSlot = () => {
+    while (taken.has(nextSlot)) nextSlot++;
+    taken.add(nextSlot);
+    return nextSlot;
+  };
+  const budget = Math.ceil(items * 2) + SENTENCE_BATCH;
+  let requested = 0;
+  let lastIssues: string[] = [];
+  const batchSchema = z.strictObject({ items: z.array(GEN_SCHEMAS[slug]).min(1).max(SENTENCE_BATCH) });
+
+  for (let batch = 0; storedCount < items && requested < budget; batch++) {
+    if (!(await heartbeat(job.id, workerId))) throw new JobFailure("LEASE_LOST", "Lease lost.", true);
+    const want = Math.min(SENTENCE_BATCH, items - storedCount);
+    requested += want;
+    const usedTopics = (await db.practiceItem.findMany({ where: { userId: job.userId, taskSlug: slug }, select: { topic: true } })).map((t) => t.topic);
+    const ctx = { cefrLevel: cefrForLevel(input.level), itemIndex: storedCount + batch, weakAreas: input.weakAreas, goals: input.goals, avoidTopics: usedTopics };
+
+    let raw: unknown;
+    let meta: { modelId: string; requestId: string | null };
+    try {
+      const r = await generateText({ task: "generate:build-sentence-batch", schema: batchSchema as z.ZodType, system: SYSTEM_PROMPT, user: buildSentenceBatchPrompt(ctx, want), timeoutSeconds: BATCH_TIMEOUT_SECONDS });
+      raw = r.data;
+      meta = { modelId: r.model, requestId: r.requestId };
+      await recordUsage({
+        idempotencyKey: `meta:${r.requestId ?? `${job.id}:bs-batch:${job.attemptCount}:${batch}`}`,
+        userId: job.userId,
+        eventType: "text_generation",
+        provider: "meta",
+        modelId: r.model,
+        inputUnits: r.usage.inputTokens,
+        outputUnits: r.usage.outputTokens,
+        generationJobId: job.id,
+        metadata: { taskSlug: slug, batch, count: want },
+      });
+    } catch (e) {
+      if (e instanceof ProviderError && e.kind === "invalid_output") {
+        lastIssues = [e.message];
+        continue;
+      }
+      throw e;
+    }
+
+    await setStage(job.id, workerId, "validating");
+    const list = (raw as { items?: unknown[] } | null)?.items;
+    const valid: { value: SentenceItem; stored: StoredItem }[] = [];
+    for (const candidate of Array.isArray(list) ? list.slice(0, want) : []) {
+      const v = validateGenerated(slug, candidate);
+      if (v.ok) valid.push({ value: v.value as SentenceItem, stored: toStoredItem(slug, v.value) });
+      else lastIssues = v.errors;
+    }
+    if (!valid.length) continue;
+
+    const verdicts = await verifyBuildSentences(job, batch, valid.map((x) => x.value));
+    const rejected: string[] = [];
+    await setStage(job.id, workerId, "storing");
+    for (const [i, x] of valid.entries()) {
+      const verdict = verdicts.get(i + 1);
+      if (!verdict?.ok) {
+        rejected.push(verdict?.issue ?? "No verdict returned for this item.");
+        continue;
+      }
+      if (storedCount >= items) break;
+      await saveItem(job, plan.id, slug, claimSlot(), x.stored, meta, input.accents);
+      storedCount++;
+    }
+    if (rejected.length) {
+      lastIssues = rejected;
+      log.warn("sentences rejected by the check; the next batch replaces them", { jobId: job.id, taskSlug: slug, batch, rejected: rejected.length, of: valid.length, issues: rejected.slice(0, 2) });
+    }
+    await setStage(job.id, workerId, "running", Math.min(storedCount, items));
+  }
+
+  if (storedCount < items) {
+    throw new JobFailure("INVALID_OUTPUT", `Only ${storedCount} of ${items} questions passed the checks. Last issue: ${lastIssues.slice(0, 2).join("; ")}`.slice(0, 280), true);
+  }
+  await db.generationJob.update({ where: { id: job.id }, data: { provider: "meta", modelId: env().META_TEXT_MODEL, promptVersion: PROMPT_VERSION } });
+}
+
+/** Checks several Build a Sentence items in one call; returns a verdict per item number (1-based). */
+async function verifyBuildSentences(job: GenerationJob, batch: number, items: SentenceItem[]): Promise<Map<number, { ok: boolean; issue: string }>> {
+  const schema = z.strictObject({
+    results: z.array(z.strictObject({ n: z.number().int().min(1), grammatical: z.boolean(), uniqueOrder: z.boolean(), issue: z.string().max(300) })).min(1).max(SENTENCE_BATCH),
+  });
+  const r = await generateText({
+    task: "verify:build-sentence-batch",
+    schema,
+    system: "You are a careful English grammar checker. Return JSON only.",
+    user: buildSentenceBatchCheckPrompt(items),
+    temperature: 0,
+    timeoutSeconds: BATCH_TIMEOUT_SECONDS,
+  });
   await recordUsage({
-    idempotencyKey: `meta:${r.requestId ?? `${job.id}:${index}:verify:${job.attemptCount}`}`,
+    idempotencyKey: `meta:${r.requestId ?? `${job.id}:bs-verify:${job.attemptCount}:${batch}`}`,
     userId: job.userId,
     eventType: "content_validation",
     provider: "meta",
@@ -170,8 +273,9 @@ async function verifyBuildSentence(job: GenerationJob, index: number, v: z.infer
     outputUnits: r.usage.outputTokens,
     generationJobId: job.id,
   });
-  if (r.data.grammatical && r.data.uniqueOrder) return { ok: true };
-  return { ok: false, issue: `Sentence check failed (grammatical=${r.data.grammatical}, unique=${r.data.uniqueOrder}): ${r.data.issue}` };
+  return new Map(
+    r.data.results.map((x) => [x.n, { ok: x.grammatical && x.uniqueOrder, issue: `Sentence check failed (grammatical=${x.grammatical}, unique=${x.uniqueOrder}): ${x.issue}` }]),
+  );
 }
 
 async function enforceDailyLimit(userId: string) {

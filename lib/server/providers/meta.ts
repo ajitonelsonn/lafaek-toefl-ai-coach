@@ -75,13 +75,15 @@ export async function generateText<T>(args: {
   system: string;
   user: string;
   temperature?: number;
+  /** Longer limit for heavy calls (e.g. batched Build a Sentence); default GENERATION_TIMEOUT_SECONDS. */
+  timeoutSeconds?: number;
 }): Promise<TextResult<T>> {
   return withModel(env().META_TEXT_MODEL, env().META_TEXT_FALLBACK_MODEL, (model) => generateTextWith(model, args));
 }
 
 async function generateTextWith<T>(
   model: string,
-  args: { task: TextTask; schema: ZodType<T>; system: string; user: string; temperature?: number },
+  args: { task: TextTask; schema: ZodType<T>; system: string; user: string; temperature?: number; timeoutSeconds?: number },
 ): Promise<TextResult<T>> {
   const res = await providerFetch(
     `${base()}/chat/completions`,
@@ -101,7 +103,7 @@ async function generateTextWith<T>(
         },
       }),
     },
-    { provider: PROVIDER, timeoutMs: timeoutMs(), retries: 2 },
+    { provider: PROVIDER, timeoutMs: args.timeoutSeconds ? args.timeoutSeconds * 1000 : timeoutMs(), retries: 2 },
   );
   const requestId = res.headers.get("x-request-id");
   const body = chatResponse.safeParse(await res.json());

@@ -83,12 +83,26 @@ export function buildRepairPrompt(original: string, errors: string[]): string {
   return `${original}\n\nYour previous answer was rejected for these reasons:\n- ${errors.slice(0, 8).join("\n- ")}\nWrite a corrected, complete answer.`;
 }
 
-/** Second-pass check for Build a Sentence: grammatical and a unique correct order. */
-export function buildSentenceCheckPrompt(context: string, prefix: string | null, tokens: string[], suffix: string | null): string {
-  return `Two people are talking. Person A says: "${context}"
-Person B's reply is built from these word groups in this order: ${[prefix, ...tokens.map((t) => `[${t}]`), suffix].filter(Boolean).join(" ")}
-1) Is this reply grammatical, natural, and a sensible response to Person A?
-2) Treating each [bracketed group] as a movable unit (prefix and suffix fixed), is this the ONLY grammatical order? If another order is also grammatical, it is not unique.`;
+/** Several Build a Sentence items in one call (each must still pass the per-item checks). */
+export function buildSentenceBatchPrompt(ctx: PromptContext, count: number): string {
+  return [
+    buildUserPrompt("build-sentence", ctx),
+    `Write ${count} different items in "items". Use a different topic, situation and sentence pattern for each, and make sure every reply has exactly one grammatical order of its word groups.`,
+  ].join("\n");
+}
+
+/** Second-pass check for several Build a Sentence items at once (one verdict per numbered item). */
+export function buildSentenceBatchCheckPrompt(items: { context: string; prefix: string | null; tokens: string[]; suffix: string | null }[]): string {
+  const list = items
+    .map((v, i) => `Item ${i + 1}. Person A says: "${v.context}"\nPerson B's reply, in order: ${[v.prefix, ...v.tokens.map((t) => `[${t}]`), v.suffix].filter(Boolean).join(" ")}`)
+    .join("\n\n");
+  return `Check each item. Two people are talking; Person B's reply is built from word groups.
+${list}
+
+For EVERY item, answer with its number "n":
+1) grammatical: is the reply grammatical, natural, and a sensible response to Person A?
+2) uniqueOrder: treating each [bracketed group] as a movable unit (prefix and suffix fixed), is this the ONLY grammatical order? If another order is also grammatical, it is not unique.
+Give a short "issue" when either answer is false, otherwise an empty string.`;
 }
 
 export function scenePrompt(description: string): string {
