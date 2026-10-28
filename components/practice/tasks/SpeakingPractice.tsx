@@ -226,7 +226,14 @@ export function SpeakingPractice({ type, view, sidebarExtra }: { type: PracticeT
           </div>
           <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <figure className="relative overflow-hidden rounded-xl bg-[#eef4ff]">
-              <Image src={BACKGROUNDS.profile.src} alt="The LafaekTOEFL crocodile mascot at a laptop, acting as the interviewer" width={BACKGROUNDS.profile.width} height={BACKGROUNDS.profile.height} className="mx-auto h-64 w-auto object-contain sm:h-72" />
+              <Image
+                src={BACKGROUNDS.interviewer.src}
+                alt="The LafaekTOEFL crocodile mascot in a suit, holding a microphone and a clipboard, asking you a question"
+                width={BACKGROUNDS.interviewer.width}
+                height={BACKGROUNDS.interviewer.height}
+                sizes="(min-width: 1024px) 40vw, 100vw"
+                className="aspect-[4/3] w-full object-cover object-[center_20%]"
+              />
               <figcaption className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-lg bg-brand-950/80 px-2.5 py-1 text-xs font-semibold text-white">
                 <UserRound className="size-3.5" aria-hidden /> Interviewer (mascot)
               </figcaption>

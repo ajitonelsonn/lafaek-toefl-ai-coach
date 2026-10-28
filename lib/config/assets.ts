@@ -27,6 +27,7 @@ export const BACKGROUNDS = {
   resources: img("/assets/backgrounds/resources.png", 263, 388),
   profile: img("/assets/backgrounds/profile.png", 303, 388),
   settings: img("/assets/backgrounds/settings.png", 319, 388),
+  interviewer: img("/assets/backgrounds/Interview_Mascot.webp", 1254, 1254),
 } as const;
 
 export const ILLUSTRATIONS = {

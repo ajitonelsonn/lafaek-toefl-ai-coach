@@ -39,7 +39,8 @@ Panel gutters were measured programmatically (rows/columns that are >97% white).
 | `dashboard.png` | 0–327, 489–881 | Catalogued, not currently shown (see README) |
 | `progress.png` | 335–731, 489–881 | `/progress` empty state |
 | `resources.png` | 742–1009, 489–881 | Catalogued, not currently shown |
-| `profile.png` | 1020–1327, 489–881 | `/profile` side panel; "Interviewer (mascot)" on Take an Interview |
+| `profile.png` | 1020–1327, 489–881 | `/profile` side panel |
+| `Interview_Mascot.webp` | Owner-supplied, 1254 × 1254 (not cropped) | "Interviewer (mascot)" on Take an Interview |
 | `settings.png` | 1339–1662, 489–881 | `/settings` side panel |
 
 `*-scene.png` crops start below the baked-in "LafaekTOEFL" wordmark, because the auth layout renders
