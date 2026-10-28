@@ -3,7 +3,7 @@ import type { PracticeSlug } from "@/lib/config/practice-types";
 
 // Versioned prompt templates. Bump PROMPT_VERSION whenever wording changes;
 // it is stored with every generated item and job for auditability.
-export const PROMPT_VERSION = "gen-2026-10-27.1";
+export const PROMPT_VERSION = "gen-2026-10-28.1";
 
 export const SYSTEM_PROMPT = `You write ORIGINAL English practice material for adult learners preparing for the TOEFL iBT (format from January 2026).
 Rules:
@@ -51,8 +51,17 @@ const TASK_INSTRUCTIONS: Record<PracticeSlug, string> = {
     "Write one campus or academic announcement (90–150 words) read by one announcer (speaker id S1), split into 2–4 script lines, and 3 questions. imagePrompt: a short scene description, no text in the image.",
   "listen-academic-talk":
     "Write an original mini-lecture (220–320 words) by one lecturer (speaker id S1) with clear structure and consistent terminology, split into 3–6 script lines, and 4–5 questions. imagePrompt: a short description of a simple illustration of the topic, no text in the image.",
-  "build-sentence":
-    "Write a two-person exchange: 'context' is what the first person says; the reply is built by the learner from 5–7 word groups in 'tokens' (in the CORRECT order, lowercase except proper nouns and 'I'). Put fixed words before the tokens in 'prefix' (or null) and fixed ending words plus final punctuation in 'suffix'. The correct order must be the ONLY grammatical order. Prefer indirect questions, relative clauses or reported speech. 'parts' labels the reply's grammatical parts.",
+  "build-sentence": [
+    "Write a two-person exchange: 'context' is what the first person says; the reply is built by the learner from 5–6 word groups in 'tokens' (in the CORRECT order, lowercase except proper nouns and 'I'). Put fixed words before the tokens in 'prefix' (or null) and fixed ending words plus final punctuation in 'suffix'. 'parts' labels the reply's grammatical parts.",
+    "The correct order must be the ONLY grammatical order. Follow these rules, which prevent the most common mistakes:",
+    "1. The reply answers EXACTLY what the first person asked (if they ask how X helps Y, the reply says how X helps Y), and the pronouns fit who is speaking (the reply is the second person's words: 'your' for the first person's things, 'my' for the second person's).",
+    "2. Never make any prepositional phrase its own group: not time, place, frequency or purpose phrases ('for lunch', 'on weekends', 'for years', 'near the library', 'for my flight') and not 'of/with/from/into/about + noun' phrases ('of the rock club', 'with my friend'). Keep each one in the same group as the word it belongs to, or put it in the fixed suffix.",
+    "3. Never make a movable adverb its own group or start a group with one (also, really, usually, often, just, still, maybe).",
+    "4. Do not use words that could be left out, such as an optional 'that' after know, think, say or hope; join such a word to the start of its clause in the same group.",
+    "5. Lock every group into one place: start groups with a verb, 'to + verb', a question word or clause word (where, when, why, how, whether, if, who, which) joined to what follows, or a preposition joined to its noun. Use subject–verb agreement (singular vs plural) so swapped nouns would be ungrammatical.",
+    "6. Use one main clause plus one embedded clause (indirect question, relative clause or reported speech). Each group has 2–4 words.",
+    "7. Before answering, try other orders of the groups. If any other order is also grammatical, or the reply does not answer the first person, change the groups until only one order works.",
+  ].join(" "),
   "write-email":
     "Write a realistic email-writing task: a scenario (90–140 words) that tells the learner who to write to and why, the recipient's name, a subject line, exactly 3 things the email must do, and 3–4 short tips. imagePrompt: a short scene description for an illustration, no text in the image, or null.",
   "academic-discussion":
@@ -84,11 +93,19 @@ export function buildRepairPrompt(original: string, errors: string[]): string {
 }
 
 /** Several Build a Sentence items in one call (each must still pass the per-item checks). */
-export function buildSentenceBatchPrompt(ctx: PromptContext, count: number): string {
+export function buildSentenceBatchPrompt(ctx: PromptContext, count: number, toFix: { item: { context: string; prefix: string | null; tokens: string[]; suffix: string | null }; issue: string }[] = []): string {
+  const fixes = toFix.slice(0, count);
   return [
     buildUserPrompt("build-sentence", ctx),
-    `Write ${count} different items in "items". Use a different topic, situation and sentence pattern for each, and make sure every reply has exactly one grammatical order of its word groups.`,
-  ].join("\n");
+    `Write ${count} different items in "items". Use a different topic, situation and sentence pattern for each. Apply every rule above to EACH item separately, including the final check of other orders; quality matters more than speed.`,
+    fixes.length
+      ? `A careful checker rejected these earlier items. Start "items" with a corrected version of each (same idea; fix exactly the problem named, and re-check the rules), then add new items to reach ${count}:\n${fixes
+          .map((f, i) => `${i + 1}. Person A: "${f.item.context}" / Reply groups: ${[f.item.prefix, ...f.item.tokens.map((t) => `[${t}]`), f.item.suffix].filter(Boolean).join(" ")}\n   Problem: ${f.issue.replace(/^Sentence check failed \([^)]*\):\s*/, "")}`)
+          .join("\n")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** Second-pass check for several Build a Sentence items at once (one verdict per numbered item). */

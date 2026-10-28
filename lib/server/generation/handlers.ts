@@ -180,6 +180,8 @@ async function runBuildSentenceBatches(job: GenerationJob, workerId: string, pla
   const budget = Math.ceil(items * 2) + SENTENCE_BATCH;
   let requested = 0;
   let lastIssues: string[] = [];
+  // Rejected items go back with the checker's reason, to be corrected in the next batch (like repairs).
+  let toFix: { item: SentenceItem; issue: string }[] = [];
   const batchSchema = z.strictObject({ items: z.array(GEN_SCHEMAS[slug]).min(1).max(SENTENCE_BATCH) });
 
   for (let batch = 0; storedCount < items && requested < budget; batch++) {
@@ -192,7 +194,7 @@ async function runBuildSentenceBatches(job: GenerationJob, workerId: string, pla
     let raw: unknown;
     let meta: { modelId: string; requestId: string | null };
     try {
-      const r = await generateText({ task: "generate:build-sentence-batch", schema: batchSchema as z.ZodType, system: SYSTEM_PROMPT, user: buildSentenceBatchPrompt(ctx, want), timeoutSeconds: BATCH_TIMEOUT_SECONDS });
+      const r = await generateText({ task: "generate:build-sentence-batch", schema: batchSchema as z.ZodType, system: SYSTEM_PROMPT, user: buildSentenceBatchPrompt(ctx, want, toFix), timeoutSeconds: BATCH_TIMEOUT_SECONDS });
       raw = r.data;
       meta = { modelId: r.model, requestId: r.requestId };
       await recordUsage({
@@ -226,20 +228,24 @@ async function runBuildSentenceBatches(job: GenerationJob, workerId: string, pla
 
     const verdicts = await verifyBuildSentences(job, batch, valid.map((x) => x.value));
     const rejected: string[] = [];
+    const nextFix: { item: SentenceItem; issue: string }[] = [];
     await setStage(job.id, workerId, "storing");
     for (const [i, x] of valid.entries()) {
       const verdict = verdicts.get(i + 1);
       if (!verdict?.ok) {
-        rejected.push(verdict?.issue ?? "No verdict returned for this item.");
+        const issue = verdict?.issue ?? "No verdict returned for this item.";
+        rejected.push(issue);
+        nextFix.push({ item: x.value, issue });
         continue;
       }
       if (storedCount >= items) break;
       await saveItem(job, plan.id, slug, claimSlot(), x.stored, meta, input.accents);
       storedCount++;
     }
+    toFix = nextFix;
     if (rejected.length) {
       lastIssues = rejected;
-      log.warn("sentences rejected by the check; the next batch replaces them", { jobId: job.id, taskSlug: slug, batch, rejected: rejected.length, of: valid.length, issues: rejected.slice(0, 2) });
+      log.warn("sentences rejected by the check; the next batch corrects them", { jobId: job.id, taskSlug: slug, batch, rejected: rejected.length, of: valid.length, issues: rejected.slice(0, 2) });
     }
     await setStage(job.id, workerId, "running", Math.min(storedCount, items));
   }
