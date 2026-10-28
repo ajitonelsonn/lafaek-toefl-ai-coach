@@ -5,6 +5,7 @@ import { getPracticeSet, resetPractice, submitResponses } from "@/lib/server/pra
 import { getProgress } from "@/lib/server/insights";
 import { createUser, resetTestDb } from "../support/db";
 import { bySlug } from "../support/items";
+import { shownLetter } from "@/lib/server/content/choice-order";
 
 beforeEach(async () => {
   await resetTestDb();
@@ -16,7 +17,7 @@ describe("practice continues where the learner stopped", () => {
     const { media: _m, ...fake } = bySlug("read-in-daily-life")[0];
     void _m;
     const item = await db.practiceItem.create({ data: { ...(fake as Prisma.PracticeItemUncheckedCreateInput), userId: u.id, source: "generated", contentKey: "progress-test:1" } });
-    const key = (item.answerKeyJson as Record<string, string>).q1;
+    const key = shownLetter(item.id, "q1", (item.answerKeyJson as Record<string, string>).q1);
 
     await submitResponses(u.id, item.id, [{ unitId: "q1", response: key }], 1000);
 

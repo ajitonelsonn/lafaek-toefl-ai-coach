@@ -24,6 +24,11 @@ interface AudioPlayerProps {
   revealedScript?: { speaker: string; text: string }[] | null;
   /** Allow the transcript toggle before submission (only works when no audio file exists). */
   transcript?: boolean;
+  /** Test conditions (mock test): no stop, replay or transcript; a failed load can be tried again. */
+  testMode?: boolean;
+  /** Already played earlier in this test (e.g. for another question about the same audio). */
+  played?: boolean;
+  onPlayStart?: () => void;
 }
 
 const PROVIDER_LABEL: Record<string, string> = { elevenlabs: "ElevenLabs voice" };
@@ -34,12 +39,12 @@ const PROVIDER_LABEL: Record<string, string> = { elevenlabs: "ElevenLabs voice" 
  * and uses the S3 audio as soon as it exists. Only when there is still no file does it read the
  * script with the browser's voice, and it says so.
  */
-export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio", compact, revealedScript, transcript = true }: AudioPlayerProps) {
+export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio", compact, revealedScript, transcript = true, testMode = false, played = false, onPlayStart }: AudioPlayerProps) {
   const session = useOptionalSession();
   const sound = session?.settings.sound ?? true;
   const [hydrated, setHydrated] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
-  const [plays, setPlays] = useState(0);
+  const [plays, setPlays] = useState(played ? 1 : 0);
   const [elapsed, setElapsed] = useState(0);
   const [showTranscript, setShowTranscript] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +154,8 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
     } catch {
       setError("The audio could not be played. Please try again.");
       setStatus("idle");
+      // Nothing was heard, so the play does not count.
+      setPlays((p) => Math.max(0, p - 1));
     }
   };
 
@@ -181,6 +188,7 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
     setError(null);
     setElapsed(0);
     setPlays((p) => p + 1);
+    onPlayStart?.();
     if (hasFiles) {
       void playFiles(files);
       return;
@@ -204,7 +212,11 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
   return (
     <div className={cn("rounded-xl border border-line bg-surface-soft", compact ? "p-3" : "p-4")}>
       <div className="flex items-center gap-3 sm:gap-4">
-        {status === "playing" || status === "loading" ? (
+        {(status === "playing" || status === "loading") && testMode ? (
+          <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow" role="img" aria-label={status === "loading" ? "Loading audio" : "Audio playing"}>
+            {status === "loading" ? <Loader2 className="size-5 animate-spin" /> : <Volume2 className="size-5" />}
+          </span>
+        ) : status === "playing" || status === "loading" ? (
           <button type="button" onClick={stop} className="inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow hover:bg-primary-hover" aria-label="Stop audio">
             {status === "loading" ? <Loader2 className="size-5 animate-spin" /> : <Square className="size-5 fill-current" />}
           </button>
@@ -247,13 +259,13 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
           </span>
         )}
         <span className="flex items-center gap-3">
-          {maxPlays !== null && <span>{limitReached ? "Played once, like the real test." : `Plays left: ${maxPlays - plays}`}</span>}
-          {limitReached && status !== "playing" && (
+          {maxPlays !== null && <span>{limitReached ? "Played once, like the real test." : testMode ? "You can play this once." : `Plays left: ${maxPlays - plays}`}</span>}
+          {limitReached && status !== "playing" && !testMode && (
             <button type="button" onClick={() => play(true)} className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
               <RotateCcw className="size-3.5" aria-hidden /> Replay (practice only)
             </button>
           )}
-          {transcript && script && (
+          {transcript && !testMode && script && (
             <button type="button" onClick={() => setShowTranscript((s) => !s)} aria-expanded={showTranscript} className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
               <FileText className="size-3.5" aria-hidden /> {showTranscript ? "Hide transcript" : "Show transcript"}
             </button>

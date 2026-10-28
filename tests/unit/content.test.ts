@@ -5,6 +5,7 @@ import { buildView, unitIdsOf } from "@/lib/server/content/view";
 import { scoreUnit, isValidResponse } from "@/lib/server/content/scoring";
 import { starterEntries } from "@/prisma/starter/convert";
 import { bySlug, fakeItems } from "../support/items";
+import { relabelExplanation, shownLetter, shuffleOptions } from "@/lib/server/content/choice-order";
 
 describe("task catalog", () => {
   it("has exactly the 12 TOEFL 2026 task slugs, with only two speaking tasks", () => {
@@ -84,11 +85,28 @@ describe("answer keys never reach the browser before submission", () => {
   });
 });
 
+describe("shuffled choices", () => {
+  it("show each question's options in a fixed order that spreads the correct answer over A–D", () => {
+    const opts = ["A", "B", "C", "D"].map((id) => ({ id, text: `option ${id}` }));
+    expect(shuffleOptions("item-1", "q1", opts)).toEqual(shuffleOptions("item-1", "q1", opts)); // same every time
+    const shown = Array.from({ length: 400 }, (_, n) => shownLetter(`item-${n}`, "q1", "A"));
+    for (const l of ["A", "B", "C", "D"]) expect(shown.filter((x) => x === l).length).toBeGreaterThan(60);
+    // Texts stay with their letters' new positions, and the original correct text is under the shown letter.
+    const s = shuffleOptions("item-7", "q2", opts);
+    expect(s.map((o) => o.id)).toEqual(["A", "B", "C", "D"]);
+    expect(s.find((o) => o.id === shownLetter("item-7", "q2", "C"))!.text).toBe("option C");
+  });
+  it("relabel letter references in explanations", () => {
+    const b = shownLetter("item-7", "q2", "B");
+    expect(relabelExplanation("item-7", "q2", "Option B is right; (B) says so.")).toBe(`Option ${b} is right; (${b}) says so.`);
+  });
+});
+
 describe("objective scoring", () => {
   const all = fakeItems();
-  it("multiple choice: correct and incorrect", () => {
+  it("multiple choice: correct and incorrect, by the letter shown on screen", () => {
     const item = all.find((i) => i.taskSlug === "read-in-daily-life")!;
-    const key = (item.answerKeyJson as Record<string, string>).q1;
+    const key = shownLetter(item.id, "q1", (item.answerKeyJson as Record<string, string>).q1);
     expect(scoreUnit("read-in-daily-life", item, "q1", key)).toMatchObject({ correct: true, answer: key });
     const wrong = ["A", "B", "C", "D"].find((l) => l !== key)!;
     expect(scoreUnit("read-in-daily-life", item, "q1", wrong).correct).toBe(false);

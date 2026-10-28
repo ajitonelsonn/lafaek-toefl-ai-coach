@@ -5,8 +5,8 @@ import type { SkillId } from "./practice-types";
 // /verify/<ID>; the record in our database is what makes it genuine. They are practice
 // certificates, never official TOEFL scores.
 
-/** Lowest estimated band (1–6) that earns a certificate: upper B2. */
-export const CERTIFICATE_MIN_BAND = 4.5;
+/** Lowest overall band (1–6) that earns a certificate: 4.0, the start of B2. */
+export const CERTIFICATE_MIN_BAND = 4;
 
 interface ResultLike {
   estimatedBand: number | null;

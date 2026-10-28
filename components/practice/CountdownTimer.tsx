@@ -13,10 +13,12 @@ interface CountdownTimerProps {
   stopped?: boolean;
   title?: string;
   compact?: boolean;
+  /** False under test conditions (mock test): the timer cannot be paused. */
+  pausable?: boolean;
 }
 
 /** Practice countdown. Remount (change `key`) to restart it. */
-export function CountdownTimer({ totalSeconds, onExpire, stopped, title = "Time Remaining", compact }: CountdownTimerProps) {
+export function CountdownTimer({ totalSeconds, onExpire, stopped, title = "Time Remaining", compact, pausable = true }: CountdownTimerProps) {
   const [remaining, setRemaining] = useState(totalSeconds);
   const [paused, setPaused] = useState(false);
   const expired = useRef(false);
@@ -50,7 +52,7 @@ export function CountdownTimer({ totalSeconds, onExpire, stopped, title = "Time 
           <Clock className="size-5 text-primary" aria-hidden />
           {title}
         </h2>
-        {!stopped && remaining > 0 && (
+        {pausable && !stopped && remaining > 0 && (
           <button
             type="button"
             onClick={() => setPaused((p) => !p)}

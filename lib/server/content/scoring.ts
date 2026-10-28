@@ -2,6 +2,7 @@ import "server-only";
 import type { PracticeItem } from "@prisma/client";
 import type { PracticeSlug } from "@/lib/config/practice-types";
 import type { UnitResultDTO } from "@/lib/practice/dto";
+import { relabelExplanation, shownLetter } from "./choice-order";
 import { runWritingChecks } from "./writing-checks";
 
 // Deterministic, versioned scoring for objective tasks. Answer keys stay on the server
@@ -10,7 +11,7 @@ export const SCORING_VERSION = "objective-1";
 
 type Json = Record<string, unknown>;
 
-export function scoreUnit(slug: PracticeSlug, item: Pick<PracticeItem, "contentJson" | "answerKeyJson" | "explanationJson">, unitId: string, response: unknown): UnitResultDTO {
+export function scoreUnit(slug: PracticeSlug, item: Pick<PracticeItem, "id" | "contentJson" | "answerKeyJson" | "explanationJson">, unitId: string, response: unknown): UnitResultDTO {
   const key = item.answerKeyJson as Json;
   const expl = item.explanationJson as Json;
   const content = item.contentJson as Json;
@@ -44,13 +45,14 @@ export function scoreUnit(slug: PracticeSlug, item: Pick<PracticeItem, "contentJ
     case "take-interview":
       return { correct: null };
     default: {
-      const expected = String(key[unitId] ?? "");
+      // Choices are shown shuffled (see choice-order.ts): the learner answers with the shown letter.
+      const expected = shownLetter(item.id, unitId, String(key[unitId] ?? ""));
       const given = typeof response === "string" ? response : "";
       const script = content.script as { speaker: { name: string }; text: string }[] | undefined;
       return {
         correct: given === expected,
         answer: expected,
-        explanation: String(expl[unitId] ?? ""),
+        explanation: relabelExplanation(item.id, unitId, String(expl[unitId] ?? "")),
         ...(script ? { script: script.map((l) => ({ speaker: l.speaker.name, text: l.text })) } : {}),
       };
     }

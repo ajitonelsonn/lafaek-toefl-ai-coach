@@ -2,6 +2,7 @@ import "server-only";
 import type { MediaAsset, PracticeItem } from "@prisma/client";
 import type { PracticeSlug } from "@/lib/config/practice-types";
 import type { AudioDTO, PracticeView } from "@/lib/practice/dto";
+import { shuffleOptions } from "./choice-order";
 
 export type ItemWithMedia = PracticeItem & { media: MediaAsset[] };
 type Line = { speaker: { id: string; role: string; name: string }; text: string };
@@ -51,7 +52,7 @@ export function buildView(slug: PracticeSlug, items: ItemWithMedia[], drafts: Ma
           title: String(c(i).title),
           document: c(i).document as never,
           paragraphs: c(i).paragraphs as never,
-          questions: (c(i).questions as { id: string; prompt: string; options: { id: string; text: string }[] }[]).map((q) => ({ unitId: q.id, prompt: q.prompt, options: q.options })),
+          questions: (c(i).questions as { id: string; prompt: string; options: { id: string; text: string }[] }[]).map((q) => ({ unitId: q.id, prompt: q.prompt, options: shuffleOptions(i.id, q.id, q.options) })),
         })),
       };
     case "listen-choose-response":
@@ -59,7 +60,7 @@ export function buildView(slug: PracticeSlug, items: ItemWithMedia[], drafts: Ma
         kind: slug,
         items: items.map((i) => {
           const q = c(i).question as { id: string; prompt: string; options: { id: string; text: string }[] };
-          return { ...base(i), audio: audioFor(i, "main", c(i).script as Line[]), question: { unitId: q.id, prompt: q.prompt, options: q.options } };
+          return { ...base(i), audio: audioFor(i, "main", c(i).script as Line[]), question: { unitId: q.id, prompt: q.prompt, options: shuffleOptions(i.id, q.id, q.options) } };
         }),
       };
     case "listen-conversation":
@@ -73,7 +74,7 @@ export function buildView(slug: PracticeSlug, items: ItemWithMedia[], drafts: Ma
           scene: c(i).scene as "conversation" | "announcement" | "lecture",
           imageAssetId: imageOf(i),
           audio: audioFor(i, "main", c(i).script as Line[]),
-          questions: (c(i).questions as { id: string; prompt: string; options: { id: string; text: string }[] }[]).map((q) => ({ unitId: q.id, prompt: q.prompt, options: q.options })),
+          questions: (c(i).questions as { id: string; prompt: string; options: { id: string; text: string }[] }[]).map((q) => ({ unitId: q.id, prompt: q.prompt, options: shuffleOptions(i.id, q.id, q.options) })),
         })),
       };
     case "build-sentence":

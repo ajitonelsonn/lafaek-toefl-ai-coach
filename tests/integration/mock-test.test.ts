@@ -9,6 +9,7 @@ import { runMockScoring } from "@/lib/server/mock-scoring";
 import { findCertificate, issueCertificate } from "@/lib/server/certificates";
 import { createUser, resetTestDb } from "../support/db";
 import { fakeItems } from "../support/items";
+import { shownLetter } from "@/lib/server/content/choice-order";
 
 // Meta and S3 are replaced: the AI rates every answer band 5, and recordings live in memory.
 const objects = vi.hoisted(() => new Map<string, Buffer>());
@@ -61,7 +62,7 @@ async function perfectAnswers(items: Form["items"]) {
     const itemId = f.view.items[0].itemId;
     const row = await db.practiceItem.findUniqueOrThrow({ where: { id: itemId } });
     for (const unitId of f.units) {
-      if (f.skill === "reading" || f.skill === "listening") out.push({ itemId, unitId, response: (row.answerKeyJson as Record<string, string>)[unitId] });
+      if (f.skill === "reading" || f.skill === "listening") out.push({ itemId, unitId, response: shownLetter(itemId, unitId, (row.answerKeyJson as Record<string, string>)[unitId]) });
       else if (f.skill === "writing") out.push({ itemId, unitId, response: { body: "Hi Sam, thank you for your email. I would like to join the trip. I can bring food for everyone. Could you tell me the time? I hope the weather is good. Best wishes, Alex" } });
       else out.push({ itemId, unitId, response: null });
     }

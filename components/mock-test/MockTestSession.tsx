@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Bookmark, BookmarkCheck, Check, Send } from "lucide-react";
 import { getSkill, type SkillId } from "@/lib/config/practice-types";
 import { MOCK_DEMO_MINUTES } from "@/lib/config/mock-test";
+import { MockTestSubmitting, type SubmitStage } from "./MockTestSubmitting";
 import type { AudioDTO, ChoiceQuestionDTO, PracticeView } from "@/lib/practice/dto";
 import type { DailyLifeDocument } from "@/lib/services/types";
 import { api, errorMessage } from "@/lib/client/api";
@@ -104,11 +105,14 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
   const [flagged, setFlagged] = useState<Record<string, boolean>>({});
   const [confirm, setConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [stage, setStage] = useState<SubmitStage>(0);
   const startedAt = useRef(Date.now());
   const submitted = useRef(false);
   // Speaking answers upload as soon as they are recorded; submit waits for any still uploading.
   const uploads = useRef(new Map<string, Promise<void>>());
   const [uploadState, setUploadState] = useState<Record<string, UploadState>>({});
+  // Each audio plays once in the whole test, also when several questions share it.
+  const [played, setPlayed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
@@ -184,16 +188,27 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
     if (submitted.current) return;
     submitted.current = true;
     setSubmitting(true);
+    setStage(0);
+    let scoring: number | undefined;
     try {
       await Promise.all(uploads.current.values());
+      setStage(1);
       // Speaking recordings are already uploaded; the answer only marks them as given.
       const payload = units
         .filter((u) => isAnswered(u))
         .map((u) => ({ itemId: u.itemId, unitId: u.unitId, response: u.kind === "speaking" ? null : answers[u.key] }));
+      // The server scores Reading and Listening while the request runs.
+      scoring = window.setTimeout(() => setStage(2), 700);
       await api("/api/mock-test/submit", { body: { token, durationSeconds: Math.round((Date.now() - startedAt.current) / 1000), answers: payload } });
+      window.clearTimeout(scoring);
+      setStage(3);
+      await new Promise((r) => setTimeout(r, 700));
+      setStage(4);
+      await new Promise((r) => setTimeout(r, 900));
       router.push("/mock-test/results");
       router.refresh();
     } catch (e) {
+      window.clearTimeout(scoring);
       submitted.current = false;
       toast(errorMessage(e), "warning");
       setSubmitting(false);
@@ -242,7 +257,7 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:grid-rows-[auto_1fr]">
         <div className="order-1 xl:col-start-2 xl:row-start-1">
-          <CountdownTimer key={section} totalSeconds={MOCK_DEMO_MINUTES[section] * 60} title={`${getSkill(section).title} time`} stopped={submitting} onExpire={() => endSection(true)} />
+          <CountdownTimer key={section} totalSeconds={MOCK_DEMO_MINUTES[section] * 60} title={`${getSkill(section).title} time`} stopped={submitting} pausable={false} onExpire={() => endSection(true)} />
         </div>
 
         <section aria-label={`Question ${index + 1}`} className="order-2 min-w-0 xl:col-start-1 xl:row-span-2 xl:row-start-1">
@@ -257,7 +272,16 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
               </span>
             </header>
             <div className="flex flex-col gap-5 p-5">
-              <UnitView key={unit.key} unit={unit} answer={answers[unit.key]} onAnswer={set} onRecorded={(r) => recordSpeaking(unit, r)} upload={uploadState[unit.key]} />
+              <UnitView
+                key={unit.key}
+                unit={unit}
+                answer={answers[unit.key]}
+                onAnswer={set}
+                onRecorded={(r) => recordSpeaking(unit, r)}
+                upload={uploadState[unit.key]}
+                played={!!played[audioKey(unit)]}
+                onPlayStart={() => setPlayed((p) => ({ ...p, [audioKey(unit)]: true }))}
+              />
             </div>
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
@@ -308,19 +332,37 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
         onCancel={() => setConfirm(false)}
         onConfirm={() => endSection(false)}
       />
+      {submitting && <MockTestSubmitting stage={stage} />}
     </div>
   );
 }
 
 type UploadState = "uploading" | "saved" | "failed";
 
-function UnitView({ unit, answer, onAnswer, onRecorded, upload }: { unit: Unit; answer: unknown; onAnswer: (a: unknown) => void; onRecorded: (r: RecordingResult) => void; upload?: UploadState }) {
+/** One key per audio clip, shared by the questions about it. */
+const audioKey = (u: Unit) => {
+  const audio = u.kind === "writing" ? undefined : u.audio;
+  return audio?.source ? `${audio.source.itemId}:${audio.source.role}` : u.key;
+};
+
+interface UnitViewProps {
+  unit: Unit;
+  answer: unknown;
+  onAnswer: (a: unknown) => void;
+  onRecorded: (r: RecordingResult) => void;
+  upload?: UploadState;
+  played: boolean;
+  onPlayStart: () => void;
+}
+
+// Test conditions: audio plays once with no stop or replay, and a saved spoken answer cannot be re-recorded.
+function UnitView({ unit, answer, onAnswer, onRecorded, upload, played, onPlayStart }: UnitViewProps) {
   if (unit.kind === "choice") {
     return (
       <div className={cn("grid grid-cols-[minmax(0,1fr)] gap-5", (unit.document || unit.passage) && "lg:grid-cols-2")}>
         {(unit.document || unit.passage || unit.audio) && (
           <div className="min-w-0">
-            {unit.audio && <AudioPlayer audio={unit.audio} label="Play audio" transcript={false} />}
+            {unit.audio && <AudioPlayer audio={unit.audio} label="Play audio" transcript={false} testMode played={played} onPlayStart={onPlayStart} />}
             {unit.document?.type === "email" && (
               <article className="rounded-xl border border-line bg-surface-soft p-4 text-[15px] leading-relaxed text-body">
                 <p className="text-sm text-muted">
@@ -368,7 +410,7 @@ function UnitView({ unit, answer, onAnswer, onRecorded, upload }: { unit: Unit; 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[15px] text-body">Listen to the interviewer&apos;s question, then record your answer. After you submit, your answers are transcribed and rated by AI. The recordings are deleted once rated.</p>
-      <AudioPlayer audio={unit.audio} label="Play question" transcript={false} />
+      <AudioPlayer audio={unit.audio} label="Play question" transcript={false} testMode played={played} onPlayStart={onPlayStart} />
       {upload === "uploading" && (
         <p className="flex items-center gap-2 rounded-lg bg-primary-soft p-3 text-sm font-semibold text-primary" role="status">
           <LoadingWave label="Saving" /> Saving your answer…
@@ -376,7 +418,7 @@ function UnitView({ unit, answer, onAnswer, onRecorded, upload }: { unit: Unit; 
       )}
       {upload !== "uploading" && answer !== undefined && (
         <p className="rounded-lg bg-success-soft p-3 text-sm font-semibold text-success" role="status">
-          Your answer is saved. Recording again replaces it.
+          Your answer is saved. Like the real test, it cannot be recorded again.
         </p>
       )}
       {upload === "failed" && answer === undefined && (
@@ -384,9 +426,11 @@ function UnitView({ unit, answer, onAnswer, onRecorded, upload }: { unit: Unit; 
           Your last answer could not be saved. Please record it again.
         </p>
       )}
-      <div className="rounded-xl bg-speaking-soft/60 p-4">
-        <RecordingControl maxSeconds={unit.responseSeconds} onRecorded={onRecorded} onCleared={() => onAnswer(undefined)} />
-      </div>
+      {answer === undefined && (
+        <div className="rounded-xl bg-speaking-soft/60 p-4">
+          <RecordingControl maxSeconds={unit.responseSeconds} onRecorded={onRecorded} onCleared={() => onAnswer(undefined)} testMode />
+        </div>
+      )}
     </div>
   );
 }

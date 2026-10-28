@@ -22,6 +22,8 @@ interface RecordingControlProps {
   onCleared?: () => void;
   disabled?: boolean;
   disabledReason?: string;
+  /** Test conditions (mock test): no listening back, no "Record again" and no timer-only mode. */
+  testMode?: boolean;
 }
 
 /**
@@ -29,7 +31,7 @@ interface RecordingControlProps {
  * The parent decides whether to upload it. When the microphone is unavailable,
  * a clearly labelled timer-only mode is offered (nothing is captured).
  */
-export function RecordingControl({ maxSeconds, onRecorded, onCleared, disabled, disabledReason }: RecordingControlProps) {
+export function RecordingControl({ maxSeconds, onRecorded, onCleared, disabled, disabledReason, testMode = false }: RecordingControlProps) {
   const [state, setState] = useState<RecState>("idle");
   const [remaining, setRemaining] = useState(maxSeconds);
   const [simulated, setSimulated] = useState(false);
@@ -150,11 +152,13 @@ export function RecordingControl({ maxSeconds, onRecorded, onCleared, disabled, 
             <Mic className="size-4" aria-hidden />
             {simulated ? "Answer timed (not recorded)" : "Response recorded"}
           </div>
-          {url && <audio controls src={url} className="w-full max-w-xs" aria-label="Your recorded response" />}
+          {url && !testMode && <audio controls src={url} className="w-full max-w-xs" aria-label="Your recorded response" />}
           <p className="text-xs text-muted">{simulated ? "No audio was captured." : "Your recording is sent securely for transcription."}</p>
-          <Button variant="secondary" size="sm" leftIcon={<RotateCcw className="size-4" />} onClick={clear}>
-            Record again
-          </Button>
+          {!testMode && (
+            <Button variant="secondary" size="sm" leftIcon={<RotateCcw className="size-4" />} onClick={clear}>
+              Record again
+            </Button>
+          )}
         </>
       ) : (
         <>
@@ -174,10 +178,16 @@ export function RecordingControl({ maxSeconds, onRecorded, onCleared, disabled, 
           {state === "blocked" && (
             <div className="w-full max-w-sm rounded-xl bg-warning-soft p-3 text-sm text-body" role="alert">
               <p className="font-semibold text-ink">{blockedReason}</p>
-              <p className="mt-1">Allow microphone access in your browser and try again, or practise speaking aloud with the timer only (no transcript or feedback).</p>
-              <Button variant="secondary" size="sm" className="mt-2" leftIcon={<Timer className="size-4" />} onClick={() => beginCountdown(true)}>
-                Practise with timer only
-              </Button>
+              {testMode ? (
+                <p className="mt-1">Allow microphone access in your browser, then click the microphone again. Answers without a recording count as band 1.</p>
+              ) : (
+                <>
+                  <p className="mt-1">Allow microphone access in your browser and try again, or practise speaking aloud with the timer only (no transcript or feedback).</p>
+                  <Button variant="secondary" size="sm" className="mt-2" leftIcon={<Timer className="size-4" />} onClick={() => beginCountdown(true)}>
+                    Practise with timer only
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </>
