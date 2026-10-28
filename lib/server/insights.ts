@@ -25,6 +25,19 @@ export async function getProgress(userId: string): Promise<ProgressDTO> {
     orderBy: { submittedAt: "desc" },
     take: 5000,
   });
+  // Latest AI score per question (emails, discussion posts and interview answers).
+  const rated = await db.practiceAttempt.findMany({
+    where: { userId, scoringVersion: FEEDBACK_VERSION },
+    select: { practiceItemId: true, unitId: true, taskSlug: true, scoreJson: true },
+    orderBy: { submittedAt: "desc" },
+    take: 2000,
+  });
+  const latestBand = new Map<string, { slug: string; band: number }>();
+  for (const r of rated) {
+    const band = (r.scoreJson as { band?: number } | null)?.band;
+    const k = `${r.practiceItemId}:${r.unitId}`;
+    if (typeof band === "number" && !latestBand.has(k)) latestBand.set(k, { slug: r.taskSlug, band });
+  }
   const [items, resets] = await Promise.all([
     db.practiceItem.findMany({
       where: { archivedAt: null, validationStatus: "valid", OR: [{ source: "starter", userId: null }, { userId }] },
@@ -86,7 +99,14 @@ export async function getProgress(userId: string): Promise<ProgressDTO> {
     bySkill: SKILLS.map((s) => {
       const list = objective.filter((u) => getPracticeType(u.taskSlug)?.skill === s.id);
       const c = list.filter((u) => correctOf(u)).length;
-      return { skill: s.id, accuracy: list.length ? Math.round((c / list.length) * 100) : null, answered: units.filter((u) => getPracticeType(u.taskSlug)?.skill === s.id).length };
+      const bands = [...latestBand.values()].filter((b) => getPracticeType(b.slug)?.skill === s.id).map((b) => b.band);
+      return {
+        skill: s.id,
+        accuracy: list.length ? Math.round((c / list.length) * 100) : null,
+        answered: units.filter((u) => getPracticeType(u.taskSlug)?.skill === s.id).length,
+        aiBand: bands.length ? Math.round((bands.reduce((a, b) => a + b, 0) / bands.length) * 2) / 2 : null,
+        aiRated: bands.length,
+      };
     }),
     byTask: PRACTICE_TYPES.map((t) => ({
       slug: t.slug,

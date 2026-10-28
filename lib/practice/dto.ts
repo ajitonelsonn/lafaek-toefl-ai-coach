@@ -80,9 +80,21 @@ export interface WritingCheckDTO {
   detail: string;
 }
 
+/** AI score (band 1–6, absent on coaching saved before scores were added) and coaching for an open answer. */
+export interface AiFeedbackDTO {
+  band?: number;
+  summary: string;
+  strengths: string[];
+  improvements: string[];
+  dimensions: { dimension: string; comment: string }[];
+  improvedSentence: string | null;
+}
+
 export interface UnitResultDTO {
   /** true/false for objective units; null when not auto-scored. */
   correct: boolean | null;
+  /** Latest AI score and coaching for an email, discussion post or interview answer. */
+  ai?: { feedback: AiFeedbackDTO; label: string };
   /** Revealed only after submission. Shape depends on the task. */
   answer?: unknown;
   explanation?: string;

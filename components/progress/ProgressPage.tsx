@@ -59,12 +59,18 @@ export function ProgressPage({ progress, targetScore }: { progress: ProgressDTO;
             )}
           </Card>
           <Card as="section" aria-labelledby="skill-title">
-            <CardHeader title={<span id="skill-title">Accuracy by skill</span>} description="Auto-scored practice: Build a Sentence counts for Writing and Listen and Repeat for Speaking. Emails, discussion posts and interviews get AI coaching and are rated in the mock test." icon={<Target className="size-6 text-primary" aria-hidden />} />
+            <CardHeader title={<span id="skill-title">Accuracy by skill</span>} description="Accuracy counts auto-scored answers (Build a Sentence for Writing, Listen and Repeat for Speaking). Emails, discussion posts and interview answers get an AI score from 1 to 6." icon={<Target className="size-6 text-primary" aria-hidden />} />
             <BarList rows={progress.bySkill.map((s) => ({ label: getSkill(s.skill).title, value: s.accuracy ?? 0, detail: `${s.answered} answered` }))} formatValue={(v) => `${v}%`} />
             <ul className="mt-4 grid grid-cols-2 gap-2 text-xs text-muted">
               {progress.bySkill.map((s) => (
                 <li key={s.skill}>
-                  {getSkill(s.skill).title}: {s.accuracy === null ? (s.answered ? `${s.answered} answered (not scored)` : "not tried") : `${s.answered} answered`}
+                  {getSkill(s.skill).title}: {s.accuracy === null ? (s.answered ? `${s.answered} answered` : "not tried") : `${s.answered} answered`}
+                  {s.aiBand !== null && (
+                    <span className="font-semibold text-ink">
+                      {" "}
+                      · AI score {formatBand(s.aiBand)} ({s.aiRated} rated)
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

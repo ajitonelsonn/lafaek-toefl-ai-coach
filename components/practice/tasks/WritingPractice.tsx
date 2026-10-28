@@ -16,7 +16,7 @@ import { QuestionNavigation } from "../QuestionNavigation";
 import { ResultsPanel } from "../ResultsPanel";
 import { unitKey, usePracticeSession } from "../usePracticeSession";
 import { ItemImage } from "./ListeningPractice";
-import { AiFeedbackPanel, type AiFeedback } from "./AiFeedbackPanel";
+import { AiFeedbackPanel, AiScoring, type AiFeedback } from "./AiFeedbackPanel";
 import { cn } from "@/lib/utils/cn";
 
 interface Draft {
@@ -65,11 +65,6 @@ export function WritingPractice({ type, view, sidebarExtra }: { type: PracticeTy
     }
   };
 
-  const submit = async () => {
-    if (!(key in s.answers)) s.answer(key, draft);
-    await s.check(key, draft);
-  };
-
   const coach = async () => {
     setCoachBusy(true);
     try {
@@ -81,6 +76,19 @@ export function WritingPractice({ type, view, sidebarExtra }: { type: PracticeTy
       setCoachBusy(false);
     }
   };
+
+  // Checking an answer also gets its AI score (a new score after each edit and re-check).
+  const submit = async () => {
+    if (!(key in s.answers)) s.answer(key, draft);
+    setCoaching((c) => {
+      const next = { ...c };
+      delete next[key];
+      return next;
+    });
+    await s.check(key, draft);
+    if (draft.body.trim().length >= 20) await coach();
+  };
+  const ai = coaching[key] ?? result?.ai;
 
   return (
     <PracticeLayout
@@ -131,7 +139,7 @@ export function WritingPractice({ type, view, sidebarExtra }: { type: PracticeTy
               setCoaching({});
               s.reset();
             }}
-            note="Writing is not auto-scored. Use “Get AI coaching” for feedback on each response."
+            note="Each checked response gets an AI score (1–6, a practice estimate) and coaching."
           />
         )
       }
@@ -251,14 +259,15 @@ export function WritingPractice({ type, view, sidebarExtra }: { type: PracticeTy
               </li>
             ))}
           </ul>
-          {!coaching[key] && (
-            <Button className="mt-4" variant="soft" leftIcon={<Sparkles className="size-4" />} loading={coachBusy} onClick={() => void coach()}>
-              Get AI coaching
+          {!ai && !coachBusy && (
+            <Button className="mt-4" variant="soft" leftIcon={<Sparkles className="size-4" />} onClick={() => void coach()}>
+              Get AI score
             </Button>
           )}
         </section>
       )}
-      {coaching[key] && <AiFeedbackPanel feedback={coaching[key].feedback} label={coaching[key].label} />}
+      {coachBusy && <AiScoring />}
+      {ai && !coachBusy && <AiFeedbackPanel feedback={ai.feedback} label={ai.label} />}
     </PracticeLayout>
   );
 }

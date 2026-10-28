@@ -10,7 +10,8 @@ export interface ProgressDTO {
   typesTried: number;
   practisedDates: string[];
   trend: { date: string; accuracy: number; answered: number }[];
-  bySkill: { skill: SkillId; accuracy: number | null; answered: number }[];
+  /** aiBand: average AI score (1–6) of the latest rated email, discussion post or interview answers. */
+  bySkill: { skill: SkillId; accuracy: number | null; answered: number; aiBand: number | null; aiRated: number }[];
   byTask: { slug: PracticeSlug; attemptedUnits: number; doneUnits: number; availableUnits: number; lastPractisedAt: string | null }[];
   recent: { date: string; slug: PracticeSlug; topic: string; correct: number | null; total: number; minutes: number | null }[];
 }

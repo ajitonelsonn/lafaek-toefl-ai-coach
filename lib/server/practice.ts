@@ -153,16 +153,23 @@ async function savedProgress(userId: string, slug: PracticeSlug, items: ItemWith
   const attempts = await db.practiceAttempt.findMany({
     where: { userId, practiceItemId: { in: items.map((i) => i.id) }, ...(since ? { submittedAt: { gt: since } } : {}) },
     orderBy: { submittedAt: "asc" },
-    select: { practiceItemId: true, unitId: true, responseJson: true, scoreJson: true },
+    select: { practiceItemId: true, unitId: true, responseJson: true, scoreJson: true, feedbackJson: true },
   });
   const byId = new Map(items.map((i) => [i.id, i]));
   const answers: Record<string, unknown> = {};
   const results: Record<string, UnitResultDTO> = {};
+  // Latest AI score and coaching per question (requests are stored as attempts of their own).
+  const ai = new Map<string, UnitResultDTO["ai"]>();
   for (const a of attempts) {
     const item = byId.get(a.practiceItemId);
     const response = a.responseJson as Record<string, unknown> | unknown;
-    if (!item || (response && typeof response === "object" && (response as { kind?: string }).kind === "ai_feedback_request")) continue;
     const key = `${a.practiceItemId}:${a.unitId}`;
+    if (response && typeof response === "object" && (response as { kind?: string }).kind === "ai_feedback_request") {
+      const f = a.feedbackJson as { ai?: NonNullable<UnitResultDTO["ai"]>["feedback"]; label?: string } | null;
+      if (f?.ai) ai.set(key, { feedback: f.ai, label: f.label ?? "" });
+      continue;
+    }
+    if (!item) continue;
     if (slug === "listen-repeat" || slug === "take-interview") {
       const r = response as { transcript?: string };
       const score = a.scoreJson as { similarity?: number | null };
@@ -178,6 +185,7 @@ async function savedProgress(userId: string, slug: PracticeSlug, items: ItemWith
       results[key] = scoreUnit(slug, item, a.unitId, response);
     }
   }
+  for (const [key, value] of ai) if (results[key]) results[key] = { ...results[key], ai: value };
   return { answers, results };
 }
 

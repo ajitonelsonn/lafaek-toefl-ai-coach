@@ -18,7 +18,7 @@ import { AudioPlayer } from "../AudioPlayer";
 import { RecordingControl, type RecordingResult } from "../RecordingControl";
 import { unitKey, usePracticeSession } from "../usePracticeSession";
 import { ItemImage } from "./ListeningPractice";
-import { AiFeedbackPanel, type AiFeedback } from "./AiFeedbackPanel";
+import { AiFeedbackPanel, AiScoring, type AiFeedback } from "./AiFeedbackPanel";
 
 type SpeakingView = Extract<PracticeView, { kind: "listen-repeat" | "take-interview" }>;
 
@@ -82,6 +82,9 @@ export function SpeakingPractice({ type, view, sidebarExtra }: { type: PracticeT
       form.append("keepRecording", String(settings.recordingConsent));
       const res = await api<{ results: Record<string, UnitResultDTO> }>(`/api/practice/items/${unit.itemId}/speaking`, { form });
       s.addResults(Object.fromEntries(Object.entries(res.results).map(([u, v]) => [unitKey(unit.itemId, u), v])));
+      // An interview answer gets its AI score straight after transcription.
+      const transcript = res.results[unit.unitId]?.transcript ?? "";
+      if (isInterview && transcript.trim().length >= 20) void coach(unit, transcript);
     } catch (e) {
       toast(errorMessage(e), "warning");
     } finally {
@@ -89,18 +92,18 @@ export function SpeakingPractice({ type, view, sidebarExtra }: { type: PracticeT
     }
   };
 
-  const coach = async () => {
-    if (!result?.transcript) return;
+  const coach = async (u: Unit, text: string) => {
     setCoachBusy(true);
     try {
-      const r = await api<{ feedback: AiFeedback; label: string }>(`/api/practice/items/${unit.itemId}/feedback`, { body: { unitId: unit.unitId, text: result.transcript } });
-      setCoaching((c) => ({ ...c, [unit.key]: r }));
+      const r = await api<{ feedback: AiFeedback; label: string }>(`/api/practice/items/${u.itemId}/feedback`, { body: { unitId: u.unitId, text } });
+      setCoaching((c) => ({ ...c, [u.key]: r }));
     } catch (e) {
       toast(errorMessage(e), "warning");
     } finally {
       setCoachBusy(false);
     }
   };
+  const ai = coaching[unit.key] ?? result?.ai;
 
   const recorder = (
     <div className="rounded-xl bg-speaking-soft/60 p-4 text-center">
@@ -145,9 +148,9 @@ export function SpeakingPractice({ type, view, sidebarExtra }: { type: PracticeT
           )}
           {result.explanation && <p className="mt-1 text-body">{result.explanation}</p>}
           <p className="mt-2 text-xs text-muted">{result.label}</p>
-          {isInterview && result.transcript && !coaching[unit.key] && (
-            <Button className="mt-3" size="sm" variant="soft" leftIcon={<Sparkles className="size-4" />} loading={coachBusy} onClick={() => void coach()}>
-              Get AI coaching
+          {isInterview && result.transcript && !ai && !coachBusy && (
+            <Button className="mt-3" size="sm" variant="soft" leftIcon={<Sparkles className="size-4" />} onClick={() => void coach(unit, result.transcript ?? "")}>
+              Get AI score
             </Button>
           )}
         </div>
@@ -251,7 +254,8 @@ export function SpeakingPractice({ type, view, sidebarExtra }: { type: PracticeT
             </div>
           </div>
           {recorder}
-          {coaching[unit.key] && <AiFeedbackPanel feedback={coaching[unit.key].feedback} label={coaching[unit.key].label} />}
+          {isInterview && coachBusy && <AiScoring />}
+          {ai && !coachBusy && <AiFeedbackPanel feedback={ai.feedback} label={ai.label} />}
         </>
       ) : (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-2">

@@ -114,8 +114,13 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
 - **Speaking.** The browser converts recordings to 16 kHz mono WAV. Meta `muse-voice-transcribe-1.0` transcribes them.
   Listen and Repeat shows a word-alignment similarity score. Recordings are discarded after transcription unless the
   learner turns on _Keep my speaking recordings_ and S3 is configured.
-- **Writing.** Mechanical checks (length, structure, greeting/closing, opinion, reasons) are labelled "not AI scoring".
-  AI coaching is optional, needs a click, is rate-limited, and is labelled practice feedback.
+- **Writing and interview scores.** Emails, discussion posts and interview answers get an **AI score (band 1–6)**
+  plus coaching right after they are checked or transcribed (`POST /api/practice/items/:id/feedback`, about 10–15 s
+  with low model reasoning, rate-limited, labelled a practice estimate). The criteria are shared with the mock test
+  (`lib/server/rating-criteria.ts`, based on ETS's 2026 scoring dimensions). The latest score per answer comes back
+  on reload, and the progress page shows the average AI score per skill. Mechanical writing checks (length,
+  structure, greeting/closing) are still shown. Listen and Repeat counts as correct when at least 80% of the words
+  match.
 - **Plans and upgrades** (`lib/config/pricing.ts`, `lib/server/credits.ts`). There is no subscription; credits are
   lifetime and never expire.
   - **Starter**, free for life: 1 study plan and 1 mock test. These are the column defaults on `users`.
@@ -264,9 +269,9 @@ See `BACKEND_PROGRESS.md` → _Blockers_. In short:
 - The ElevenLabs key cannot list voices, so a fixed set of premade voices (`ELEVENLABS_VOICE_IDS`) is used and accent
   selection isn't applied.
 - Starter-set items have no generated audio yet; they use the browser-voice fallback.
-- AI writing coaching and speaking transcription run in Vercel route handlers. Vercel's default region is in the US,
-  where Meta has not served models to cloud servers, so they may fail in production until Meta allows it. A Vercel
-  function region near Singapore should work, but it makes every database call cross the Pacific.
+- Practice AI scores and speaking transcription run in Vercel route handlers. Transcription works in production, so
+  Meta is reachable from Vercel. If AI scores ever time out (limit 60 s; usually 10–15 s), move them to the worker
+  queue as the mock test rating does.
 - No self-service password reset.
 - Google sign-in is not implemented.
 - The mock test uses the starter set and is a short practice test.
