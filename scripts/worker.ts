@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import type { JobType } from "@prisma/client";
 import { log } from "../lib/server/log";
 import { env } from "../lib/server/env";
-import { housekeeping, tick, workerId } from "../lib/server/generation/worker";
+import { housekeeping, runPool, workerId } from "../lib/server/generation/worker";
 import { ALL_JOB_TYPES, META_JOB_TYPES, unblockJobs } from "../lib/server/generation/queue";
 
 const owner = workerId();
@@ -13,8 +13,6 @@ let stopping = false;
 
 process.on("SIGTERM", () => (stopping = true));
 process.on("SIGINT", () => (stopping = true));
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Logs the Meta settings this process actually sees (never the key, only a short fingerprint)
@@ -52,24 +50,19 @@ async function main() {
   const requeued = await unblockJobs(["task_pack", "asset_audio", "asset_image", "vocabulary_pack", "study_schedule"], "PROVIDER_CONFIG").catch(() => 0);
   if (requeued) log.info("requeued jobs waiting on provider setup", { count: requeued });
   let lastHousekeeping = 0;
-  const once = process.argv.includes("--once");
-  while (!stopping) {
-    try {
-      if (Date.now() - lastHousekeeping > 10 * 60_000) {
-        await housekeeping();
-        const ok = await metaConfigCheck(true).catch(() => metaOk);
-        if (ok !== metaOk) log.info("meta availability changed", { metaOk: ok, jobTypes: jobTypesFor(ok) });
-        metaOk = ok;
-        lastHousekeeping = Date.now();
-      }
-      const n = await tick(owner, concurrency, jobTypesFor(metaOk));
-      if (once && n === 0) break;
-      if (n === 0) await sleep(3000);
-    } catch (e) {
-      log.error("worker loop error", { error: e instanceof Error ? e.message.slice(0, 200) : "unknown" });
-      await sleep(5000);
-    }
-  }
+  await runPool(owner, concurrency, {
+    jobTypes: () => jobTypesFor(metaOk),
+    stopping: () => stopping,
+    once: process.argv.includes("--once"),
+    beforeClaim: async () => {
+      if (Date.now() - lastHousekeeping < 10 * 60_000) return;
+      lastHousekeeping = Date.now();
+      await housekeeping();
+      const ok = await metaConfigCheck(true).catch(() => metaOk);
+      if (ok !== metaOk) log.info("meta availability changed", { metaOk: ok, jobTypes: jobTypesFor(ok) });
+      metaOk = ok;
+    },
+  });
   log.info("worker stopped", { owner });
   process.exit(0);
 }

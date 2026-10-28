@@ -53,11 +53,55 @@ export async function processJob(job: GenerationJob, owner: string): Promise<voi
   }
 }
 
-/** One bounded pass: housekeeping, then claim and process up to `concurrency` jobs. */
-export async function tick(owner: string, concurrency = 3, jobTypes?: JobType[]): Promise<number> {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function claimNext(owner: string, limit: number, jobTypes?: JobType[]): Promise<GenerationJob[]> {
   await recoverExpiredLeases();
   if (features.storage()) await unblockJobs(["asset_audio", "asset_image", "delete_user_assets"]);
-  const jobs = await claimJobs(owner, concurrency, jobTypes);
+  return claimJobs(owner, limit, jobTypes);
+}
+
+/**
+ * The long-running worker: keeps up to `concurrency` jobs running and claims the next one as soon
+ * as any job finishes, so one long pack (e.g. Build a Sentence) never holds up the others.
+ * `beforeClaim` runs before each claim (housekeeping); returns when `stopping()` is true and all
+ * running jobs have finished, or with `once` when there is nothing left to do.
+ */
+export async function runPool(
+  owner: string,
+  concurrency: number,
+  opts: { jobTypes: () => JobType[]; stopping: () => boolean; beforeClaim?: () => Promise<void>; once?: boolean },
+): Promise<void> {
+  const running = new Set<Promise<void>>();
+  while (!opts.stopping()) {
+    let claimed = 0;
+    try {
+      await opts.beforeClaim?.();
+      const free = concurrency - running.size;
+      const jobs = free > 0 ? await claimNext(owner, free, opts.jobTypes()) : [];
+      for (const job of jobs) {
+        const p: Promise<void> = processJob(job, owner)
+          .catch((e) => log.error("job crashed", { jobId: job.id, error: e instanceof Error ? e.message.slice(0, 200) : "unknown" }))
+          .finally(() => running.delete(p));
+        running.add(p);
+      }
+      claimed = jobs.length;
+    } catch (e) {
+      log.error("worker loop error", { error: e instanceof Error ? e.message.slice(0, 200) : "unknown" });
+      await Promise.race([sleep(5000), ...running]);
+      continue;
+    }
+    if (opts.once && !claimed && !running.size) break;
+    // All slots busy: wait for one to free. Nothing to claim: look again in 3 s (or when a job ends).
+    if (running.size >= concurrency) await Promise.race(running);
+    else if (!claimed) await Promise.race([sleep(3000), ...running]);
+  }
+  await Promise.allSettled(running);
+}
+
+/** One bounded pass (tests and scripts): claim up to `concurrency` jobs and wait for all of them. */
+export async function tick(owner: string, concurrency = 3, jobTypes?: JobType[]): Promise<number> {
+  const jobs = await claimNext(owner, concurrency, jobTypes);
   await Promise.all(jobs.map((j) => processJob(j, owner)));
   return jobs.length;
 }

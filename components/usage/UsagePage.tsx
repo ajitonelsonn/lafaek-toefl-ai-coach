@@ -14,6 +14,9 @@ import { ColumnChart } from "@/components/charts/Charts";
 import { UsageMetricCard, type UsageMetricView } from "./UsageMetricCard";
 import { PlanCard, type AccountPlanDTO } from "./PlanCard";
 import { planName } from "@/lib/config/pricing";
+import { PRACTICE_TYPES } from "@/lib/config/practice-types";
+
+const QUESTIONS_PER_PLAN = PRACTICE_TYPES.reduce((n, t) => n + t.referenceCount, 0);
 
 type Range = UsageDTO["range"];
 const RANGE_LABEL: Record<Range, string> = { "7d": "Last 7 days", "30d": "Last 30 days", all: "All time" };
@@ -134,7 +137,7 @@ export function UsagePage({ usage, plan }: { usage: Record<Range, UsageDTO>; pla
               Study plans and mock tests use lifetime credits: you have {plan.planCredits} study plan{plan.planCredits === 1 ? "" : "s"} and {plan.mockCredits} mock test
               {plan.mockCredits === 1 ? "" : "s"} left.
             </li>
-            <li>Each study plan creates about 158 personalised questions, plus vocabulary and an AI schedule.</li>
+            <li>Each study plan creates about {QUESTIONS_PER_PLAN} personalised questions, plus vocabulary and an AI schedule.</li>
             {u.dailyItemLimit ? <li>Up to {u.dailyItemLimit} new questions can be generated for you per day.</li> : null}
             <li>AI coaching: up to 10 requests per hour. New word pronunciations: up to 120 per hour.</li>
           </ul>

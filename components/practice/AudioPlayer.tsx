@@ -7,6 +7,8 @@ import type { AudioDTO } from "@/lib/practice/dto";
 import { api } from "@/lib/client/api";
 import { useOptionalSession } from "@/components/session/SessionProvider";
 import { formatClock } from "@/lib/utils/format";
+import { gsap, useMotion } from "@/lib/client/motion";
+import { LoadingWave } from "@/components/ui/MediaLoading";
 import { cn } from "@/lib/utils/cn";
 
 type Status = "idle" | "loading" | "playing" | "ended";
@@ -71,10 +73,25 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
   }, [audio.source]);
 
   // Check once on load, so the label and the Play button use S3 audio when it already exists.
+  const [checking, setChecking] = useState(false);
   useEffect(() => {
     if (!hydrated || audio.assetIds.length || !audio.source) return;
-    void fetchFiles().catch(() => undefined);
+    setChecking(true);
+    void fetchFiles()
+      .catch(() => undefined)
+      .finally(() => setChecking(false));
   }, [hydrated, audio.assetIds.length, audio.source, fetchFiles]);
+
+  // While audio loads from S3, the waveform bars bounce in a wave.
+  const wave = useRef<HTMLDivElement>(null);
+  useMotion(
+    wave,
+    () => {
+      if (status !== "loading") return;
+      gsap.fromTo("[data-bar]", { scaleY: 0.25 }, { scaleY: 1, duration: 0.45, ease: "sine.inOut", stagger: { each: 0.035, repeat: -1, yoyo: true } });
+    },
+    [status === "loading"],
+  );
 
   const hasFiles = files.length > 0;
   const speechSupported = hydrated && typeof window !== "undefined" && "speechSynthesis" in window;
@@ -117,11 +134,12 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
       const player = el.current ?? new Audio();
       el.current = player;
       cancelled.current = false;
-      setStatus("playing");
       for (const url of urls) {
         if (cancelled.current) return;
         player.src = url;
+        // Stays "loading" (animated) while the first clip buffers; "playing" once sound starts.
         await player.play();
+        if (!cancelled.current) setStatus("playing");
         await new Promise<void>((resolve, reject) => {
           player.onended = () => resolve();
           player.onerror = () => reject(new Error("playback"));
@@ -201,9 +219,14 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
             <Play className="ml-0.5 size-5 fill-current" />
           </button>
         )}
-        <div className="flex h-10 min-w-0 flex-1 items-center gap-[3px] overflow-hidden" aria-hidden>
+        <div ref={wave} className="flex h-10 min-w-0 flex-1 items-center gap-[3px] overflow-hidden" aria-hidden>
           {bars.map((h, i) => (
-            <span key={i} className={cn("w-[3px] shrink-0 rounded-full transition-colors", i / bars.length < progress ? "bg-primary" : "bg-primary/25")} style={{ height: `${h}%` }} />
+            <span
+              key={i}
+              data-bar
+              className={cn("w-[3px] shrink-0 rounded-full transition-colors", status === "loading" ? "bg-primary/60" : i / bars.length < progress ? "bg-primary" : "bg-primary/25")}
+              style={{ height: `${h}%` }}
+            />
           ))}
         </div>
         <span className="shrink-0 rounded-lg bg-surface px-2 py-1 text-sm font-semibold text-ink tabular-nums">
@@ -212,10 +235,17 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-        <span className="inline-flex items-center gap-1.5">
-          <Volume2 className="size-3.5" aria-hidden />
-          {hasFiles ? `Audio · ${PROVIDER_LABEL[provider ?? ""] ?? "generated voice"}` : "Browser voice preview — recorded audio is not available yet"}
-        </span>
+        {status === "loading" || checking ? (
+          <span className="inline-flex items-center gap-1.5 font-semibold text-primary">
+            <LoadingWave className="h-3.5" label="" />
+            {status === "loading" ? "Loading audio…" : "Checking for recorded audio…"}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5">
+            <Volume2 className="size-3.5" aria-hidden />
+            {hasFiles ? `Audio · ${PROVIDER_LABEL[provider ?? ""] ?? "generated voice"}` : "Browser voice preview — recorded audio is not available yet"}
+          </span>
+        )}
         <span className="flex items-center gap-3">
           {maxPlays !== null && <span>{limitReached ? "Played once, like the real test." : `Plays left: ${maxPlays - plays}`}</span>}
           {limitReached && status !== "playing" && (
@@ -246,7 +276,7 @@ export function AudioPlayer({ audio, maxPlays = 1, onEnded, label = "Play audio"
         </p>
       )}
       <span className="sr-only" aria-live="polite">
-        {status === "playing" ? "Audio playing." : status === "ended" ? "Audio finished." : ""}
+        {status === "loading" ? "Loading audio." : status === "playing" ? "Audio playing." : status === "ended" ? "Audio finished." : ""}
       </span>
 
       {showTranscript && script && (

@@ -14,6 +14,8 @@ export const ALL_JOB_TYPES: JobType[] = ["task_pack", "asset_image", "asset_audi
 /** Job types that call Meta (text generation, vocabulary, study schedules and images). */
 export const META_JOB_TYPES: JobType[] = ["task_pack", "asset_image", "vocabulary_pack", "study_schedule"];
 export const leaseMs = () => env().GENERATION_TIMEOUT_SECONDS * 1000 * 3;
+/** Task packs that take longest (batched AI calls); a new batch claims them first, slowest first. */
+const SLOW_FIRST = ["build-sentence", "listen-choose-response"];
 
 /**
  * Creates the batch for the user's active plan version once; repeated calls return it.
@@ -29,6 +31,12 @@ export async function startInitialBatch(userId: string, idempotencyKey: string) 
   if (existing) return existing;
 
   const perTask = env().GENERATION_ITEMS_PER_TASK ?? Number.POSITIVE_INFINITY;
+  // The slowest packs are claimed first, so they run alongside the quick ones instead of after them.
+  const now = Date.now();
+  const startAt = (slug: string) => {
+    const i = SLOW_FIRST.indexOf(slug);
+    return new Date(i < 0 ? now : now - (SLOW_FIRST.length - i) * 1000);
+  };
   try {
     return await db.$transaction(async (tx) => {
       const batch = await tx.generationBatch.create({
@@ -44,6 +52,7 @@ export async function startInitialBatch(userId: string, idempotencyKey: string) 
           payloadJson: { studyPlanId: plan.id, items: Math.min(perTask, t.referenceCount) },
           progressTotal: Math.min(perTask, t.referenceCount),
           maxAttempts: env().GENERATION_MAX_RETRIES,
+          nextAttemptAt: startAt(t.slug),
         })),
       });
       return batch;

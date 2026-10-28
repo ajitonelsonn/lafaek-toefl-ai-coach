@@ -21,6 +21,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/States";
 import { TipCard } from "@/components/ui/Callouts";
 import { Icon3D } from "@/components/ui/Icon3D";
+import { LoadingWave } from "@/components/ui/MediaLoading";
 import { useToast } from "@/components/ui/Toast";
 import { VocabularyQuiz } from "./VocabularyQuiz";
 
@@ -223,6 +224,7 @@ export function VocabularyPage({ words, initialProgress, pending, hasPlan }: { w
                 setIndex((i) => (i + 1) % filtered.length);
               }}
               onPronounce={() => pronounce(current)}
+              audioLoading={loadingWord === current.id}
               onKnow={() => {
                 setDirection(1);
                 setVocab(current.id, { status: "known" });
@@ -240,7 +242,7 @@ export function VocabularyPage({ words, initialProgress, pending, hasPlan }: { w
               }}
             />
           ) : (
-            <WordList words={filtered} vocab={vocab} onPronounce={pronounce} setVocab={setVocab} />
+            <WordList words={filtered} vocab={vocab} onPronounce={pronounce} loadingWord={loadingWord} setVocab={setVocab} />
           )}
         </div>
       </div>
@@ -315,6 +317,8 @@ function Flashcard(props: {
   onPrev: () => void;
   onNext: () => void;
   onPronounce: () => void;
+  /** The word's voice is loading from S3. */
+  audioLoading: boolean;
   onKnow: () => void;
   onReview: () => void;
   onBookmark: () => void;
@@ -347,9 +351,16 @@ function Flashcard(props: {
               </div>
             </div>
             <h2 className="mt-2 break-words text-4xl font-extrabold text-ink">{word.word}</h2>
-            <button type="button" onClick={props.onPronounce} className="mt-2 inline-flex items-center gap-2 rounded-lg px-1 text-primary hover:bg-primary-soft" aria-label={`Listen to “${word.word}”`}>
-              <Volume2 className="size-5" aria-hidden />
+            <button
+              type="button"
+              onClick={props.onPronounce}
+              aria-busy={props.audioLoading}
+              className="mt-2 inline-flex items-center gap-2 rounded-lg px-1 text-primary hover:bg-primary-soft"
+              aria-label={`Listen to “${word.word}”`}
+            >
+              {props.audioLoading ? <LoadingWave className="h-5 w-5 justify-center" /> : <Volume2 className="size-5" aria-hidden />}
               <span className="font-mono text-base text-body">{word.pronunciation}</span>
+              {props.audioLoading && <span className="text-xs font-semibold text-primary">Loading voice…</span>}
             </button>
             <p className="mt-4 text-lg text-body">{word.meaning}</p>
             <div className="mt-4 rounded-xl bg-primary-soft/70 p-4">
@@ -415,7 +426,19 @@ function Flashcard(props: {
   );
 }
 
-function WordList({ words, vocab, onPronounce, setVocab }: { words: VocabWord[]; vocab: Record<string, VocabProgress>; onPronounce: (w: VocabWord) => void; setVocab: (id: string, patch: VocabProgress) => void }) {
+function WordList({
+  words,
+  vocab,
+  onPronounce,
+  loadingWord,
+  setVocab,
+}: {
+  words: VocabWord[];
+  vocab: Record<string, VocabProgress>;
+  onPronounce: (w: VocabWord) => void;
+  loadingWord: string | null;
+  setVocab: (id: string, patch: VocabProgress) => void;
+}) {
   return (
     <ul className="grid gap-3 md:grid-cols-2">
       {words.map((w) => {
@@ -427,8 +450,8 @@ function WordList({ words, vocab, onPronounce, setVocab }: { words: VocabWord[];
               <StatusBadge tone="primary" className="capitalize">
                 {w.partOfSpeech}
               </StatusBadge>
-              <button type="button" onClick={() => onPronounce(w)} className="rounded-full p-1 text-primary hover:bg-primary-soft" aria-label={`Listen to “${w.word}”`}>
-                <Volume2 className="size-4" />
+              <button type="button" onClick={() => onPronounce(w)} aria-busy={loadingWord === w.id} className="rounded-full p-1 text-primary hover:bg-primary-soft" aria-label={`Listen to “${w.word}”`}>
+                {loadingWord === w.id ? <LoadingWave className="size-4 justify-center" /> : <Volume2 className="size-4" />}
               </button>
               <span className="ml-auto flex gap-1.5">
                 {p?.status === "known" && <StatusBadge tone="success">Known</StatusBadge>}

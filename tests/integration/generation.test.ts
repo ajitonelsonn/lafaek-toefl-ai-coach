@@ -6,7 +6,14 @@ import { starterEntries } from "@/prisma/starter/convert";
 import type { StudyPlanInputBody } from "@/lib/validation/schemas";
 
 // Deterministic provider fixtures (tests only). Behaviour can be switched per test.
-const control = { mode: "ok" as "ok" | "transient" | "auth" | "malformed-once" | "malformed", calls: 0, failSlug: null as string | null, rejectSentenceChecks: 0 };
+const control = {
+  mode: "ok" as "ok" | "transient" | "auth" | "malformed-once" | "malformed",
+  calls: 0,
+  failSlug: null as string | null,
+  rejectSentenceChecks: 0,
+  // Calls for this task type wait until `until` resolves (a slow pack).
+  hold: null as { slug: string; until: Promise<void> } | null,
+};
 vi.mock("@/lib/server/providers/meta", async () => {
   const { ProviderError } = await import("@/lib/server/providers/http");
   return {
@@ -40,6 +47,7 @@ vi.mock("@/lib/server/providers/meta", async () => {
         return { data: { words: [...picks.map(entry), entry("xylophonist")] }, usage, model: "muse-spark-1.3", requestId };
       }
       const slug = task.replace("generate:", "").replace(/-batch$/, "") as PracticeSlug;
+      if (control.hold?.slug === slug) await control.hold.until;
       if (control.failSlug === slug || control.mode === "transient") throw new ProviderError("meta", "server", "meta request failed (503).", 503);
       if (control.mode === "auth") throw new ProviderError("meta", "auth", "meta request failed (401).", 401);
       if (control.mode === "malformed" || (control.mode === "malformed-once" && control.calls === 1)) return { data: { nonsense: true }, usage, model: "muse-spark-1.3", requestId };
@@ -54,7 +62,7 @@ vi.mock("@/lib/server/providers/meta", async () => {
 import { db } from "@/lib/server/db";
 import { savePlan } from "@/lib/server/study-plan";
 import { ALL_JOB_TYPES, claimJobs, recoverExpiredLeases, startInitialBatch } from "@/lib/server/generation/queue";
-import { tick } from "@/lib/server/generation/worker";
+import { runPool, tick } from "@/lib/server/generation/worker";
 import { queueStudySchedule } from "@/lib/server/generation/study-schedule";
 import { getActivePlan } from "@/lib/server/study-plan";
 import { getAccountPlan, getCredits, grantBoostPacks } from "@/lib/server/credits";
@@ -76,7 +84,7 @@ async function drain(owner = "test-worker", jobTypes: JobType[] = WITHOUT_VOCABU
 
 beforeEach(async () => {
   await resetTestDb();
-  Object.assign(control, { mode: "ok", calls: 0, failSlug: null, rejectSentenceChecks: 0 });
+  Object.assign(control, { mode: "ok", calls: 0, failSlug: null, rejectSentenceChecks: 0, hold: null });
 });
 
 describe("generation batches", () => {
@@ -288,6 +296,49 @@ describe("generation batches", () => {
     const events = await db.usageEvent.findMany({ where: { userId: u.id } });
     expect(new Set(events.map((e) => e.idempotencyKey)).size).toBe(events.length);
     expect(events.every((e) => e.inputUnits === 100 && e.outputUnits === 200)).toBe(true);
+  });
+
+  it("queues the slowest packs first", async () => {
+    const u = await createUser("a@example.com");
+    await savePlan(u.id, { ...INPUT }, false);
+    await startInitialBatch(u.id, randomUUID());
+    const [first] = await claimJobs("w", 1);
+    expect(first.taskSlug).toBe("build-sentence");
+  });
+
+  it("the worker pool starts the next job as soon as one finishes; a slow pack does not hold up others", async () => {
+    const a = await createUser("a@example.com");
+    const b = await createUser("b@example.com");
+    for (const u of [a, b]) {
+      await savePlan(u.id, { ...INPUT }, false);
+      await startInitialBatch(u.id, randomUUID());
+    }
+    // A has one slow pack; B has three quick ones. Two slots, one running job per user.
+    await db.generationJob.updateMany({
+      where: { OR: [{ userId: a.id, NOT: { taskSlug: "write-email" } }, { userId: b.id, taskSlug: { notIn: ["complete-the-words", "read-in-daily-life", "read-academic-passage"] } }] },
+      data: { status: "cancelled" },
+    });
+    let release!: () => void;
+    control.hold = { slug: "write-email", until: new Promise<void>((r) => (release = r)) };
+    let stop = false;
+    const pool = runPool("pool", 2, { jobTypes: () => ["task_pack"], stopping: () => stop });
+    const done = (userId: string) => db.generationJob.count({ where: { userId, jobType: "task_pack", status: "completed" } });
+    const waitFor = async (check: () => Promise<boolean>) => {
+      for (let i = 0; i < 240 && !(await check()); i++) await new Promise((r) => setTimeout(r, 500));
+    };
+    try {
+      // With the old "claim 2, wait for both" loop, B's second pack would wait for A's slow one.
+      await waitFor(async () => (await done(b.id)) === 3);
+      expect(await done(b.id)).toBe(3);
+      expect(await done(a.id)).toBe(0);
+      release();
+      await waitFor(async () => (await done(a.id)) === 1);
+      expect(await done(a.id)).toBe(1);
+    } finally {
+      release();
+      stop = true;
+      await pool;
+    }
   });
 
   it("enforces per-user concurrency of one running job", async () => {
