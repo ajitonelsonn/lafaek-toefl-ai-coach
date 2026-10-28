@@ -46,6 +46,10 @@ const tokens = (s: string) =>
  * 1 − (word edit distance / expected length), clamped to [0, 1]. This is a
  * transcript-based estimate, not a pronunciation score.
  */
+/** Listen and Repeat counts as correct when at least this share of the sentence's words match. */
+export const REPEAT_PASS = 0.8;
+export const repeatCorrect = (similarity: number) => similarity >= REPEAT_PASS;
+
 export function wordSimilarity(expected: string, transcript: string): { score: number; missing: string[]; extra: string[] } {
   const a = tokens(expected);
   const b = tokens(transcript);

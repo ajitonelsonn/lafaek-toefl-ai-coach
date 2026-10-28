@@ -7,7 +7,7 @@ import { requireAuth } from "@/lib/server/auth/session";
 import { rateLimit } from "@/lib/server/rate-limit";
 import { getOwnedItem } from "@/lib/server/practice";
 import { unitIdsOf } from "@/lib/server/content/view";
-import { inspectWav, isAcceptedForAsr, wordSimilarity } from "@/lib/server/content/speech";
+import { REPEAT_PASS, inspectWav, isAcceptedForAsr, repeatCorrect, wordSimilarity } from "@/lib/server/content/speech";
 import { transcribeAudio } from "@/lib/server/providers/meta";
 import { ProviderError } from "@/lib/server/providers/http";
 import { recordUsage } from "@/lib/server/usage";
@@ -63,6 +63,9 @@ export const POST = route<{ itemId: string }>(async (req, { params }) => {
     const sim = wordSimilarity(expected, transcript);
     result.similarity = sim.score;
     result.answer = expected;
+    // Scored like the other auto-scored tasks: correct when most of the words match.
+    result.correct = repeatCorrect(sim.score);
+    result.label = `Correct when at least ${REPEAT_PASS * 100}% of the words match. ${result.label}`;
   } else {
     const words = transcript ? transcript.split(/\s+/).length : 0;
     const seconds = (durationMs ?? info.durationSeconds * 1000) / 1000;
@@ -76,7 +79,7 @@ export const POST = route<{ itemId: string }>(async (req, { params }) => {
       taskSlug: slug,
       unitId,
       responseJson: { transcript, durationSeconds: Math.round(info.durationSeconds) },
-      scoreJson: { correct: null, similarity: result.similarity ?? null } as Prisma.InputJsonValue,
+      scoreJson: { correct: result.correct, similarity: result.similarity ?? null } as Prisma.InputJsonValue,
       feedbackJson: { label: result.label },
       scoringVersion: "speech-1",
     },

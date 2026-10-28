@@ -59,7 +59,7 @@ export function ProgressPage({ progress, targetScore }: { progress: ProgressDTO;
             )}
           </Card>
           <Card as="section" aria-labelledby="skill-title">
-            <CardHeader title={<span id="skill-title">Accuracy by skill</span>} description="Writing and Speaking are not auto-scored." icon={<Target className="size-6 text-primary" aria-hidden />} />
+            <CardHeader title={<span id="skill-title">Accuracy by skill</span>} description="Auto-scored practice: Build a Sentence counts for Writing and Listen and Repeat for Speaking. Emails, discussion posts and interviews get AI coaching and are rated in the mock test." icon={<Target className="size-6 text-primary" aria-hidden />} />
             <BarList rows={progress.bySkill.map((s) => ({ label: getSkill(s.skill).title, value: s.accuracy ?? 0, detail: `${s.answered} answered` }))} formatValue={(v) => `${v}%`} />
             <ul className="mt-4 grid grid-cols-2 gap-2 text-xs text-muted">
               {progress.bySkill.map((s) => (

@@ -5,8 +5,18 @@ import { db } from "./db";
 import { env } from "./env";
 import { FEEDBACK_VERSION } from "./feedback";
 import { unitIdsOf } from "./content/view";
+import { repeatCorrect } from "./content/speech";
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
+
+/** Right or wrong for an attempt; null when it is not auto-scored. Listen and Repeat answers saved before
+ * they were scored (correct: null) are judged from their stored word match. */
+function correctOf(a: { taskSlug: string; scoreJson: unknown }): boolean | null {
+  const s = a.scoreJson as { correct?: boolean | null; similarity?: number | null } | null;
+  if (typeof s?.correct === "boolean") return s.correct;
+  if (a.taskSlug === "listen-repeat" && typeof s?.similarity === "number") return repeatCorrect(s.similarity);
+  return null;
+}
 
 export async function getProgress(userId: string): Promise<ProgressDTO> {
   const attempts = await db.practiceAttempt.findMany({
@@ -31,14 +41,14 @@ export async function getProgress(userId: string): Promise<ProgressDTO> {
     if (!latest.has(k)) latest.set(k, a);
   }
   const units = [...latest.values()];
-  const objective = units.filter((u) => (u.scoreJson as { correct: boolean | null }).correct !== null);
-  const correct = objective.filter((u) => (u.scoreJson as { correct: boolean }).correct).length;
+  const objective = units.filter((u) => correctOf(u) !== null);
+  const correct = objective.filter((u) => correctOf(u)).length;
 
   const byDate = new Map<string, { c: number; n: number; total: number }>();
   for (const a of attempts) {
     const d = day(a.submittedAt);
     const e = byDate.get(d) ?? { c: 0, n: 0, total: 0 };
-    const s = (a.scoreJson as { correct: boolean | null }).correct;
+    const s = correctOf(a);
     e.total++;
     if (s !== null) {
       e.n++;
@@ -51,7 +61,7 @@ export async function getProgress(userId: string): Promise<ProgressDTO> {
   const recentMap = new Map<string, ProgressDTO["recent"][number] & { ms: number }>();
   for (const a of attempts) {
     const k = `${a.practiceItemId}:${day(a.submittedAt)}`;
-    const s = (a.scoreJson as { correct: boolean | null }).correct;
+    const s = correctOf(a);
     const e = recentMap.get(k) ?? { date: a.submittedAt.toISOString(), slug: a.taskSlug as PracticeSlug, topic: a.practiceItem.topic, correct: null, total: 0, minutes: null, ms: 0 };
     e.total++;
     if (s !== null) e.correct = (e.correct ?? 0) + (s ? 1 : 0);
@@ -75,7 +85,7 @@ export async function getProgress(userId: string): Promise<ProgressDTO> {
       .map(([date, v]) => ({ date, accuracy: Math.round((v.c / v.n) * 100), answered: v.n })),
     bySkill: SKILLS.map((s) => {
       const list = objective.filter((u) => getPracticeType(u.taskSlug)?.skill === s.id);
-      const c = list.filter((u) => (u.scoreJson as { correct: boolean }).correct).length;
+      const c = list.filter((u) => correctOf(u)).length;
       return { skill: s.id, accuracy: list.length ? Math.round((c / list.length) * 100) : null, answered: units.filter((u) => getPracticeType(u.taskSlug)?.skill === s.id).length };
     }),
     byTask: PRACTICE_TYPES.map((t) => ({

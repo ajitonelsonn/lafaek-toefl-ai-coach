@@ -45,7 +45,8 @@ export function SpeakingPractice({ type, view, sidebarExtra }: { type: PracticeT
         : view.items.flatMap((i) => i.questions.map((x) => ({ key: unitKey(i.itemId, x.unitId), itemId: i.itemId, unitId: x.unitId, source: i.source, audio: x.audio, responseSeconds: x.responseSeconds, context: i.scenario, imageAssetId: i.imageAssetId, illustration: null }))),
     [view],
   );
-  const s = usePracticeSession<string>({ unitKeys: units.map((u) => u.key), gradable: false });
+  // Listen and Repeat is scored (correct when most words match); interview answers are not.
+  const s = usePracticeSession<string>({ unitKeys: units.map((u) => u.key), gradable: !isInterview });
   const [heard, setHeard] = useState<Record<string, boolean>>({});
   const [transcribing, setTranscribing] = useState(false);
   const [coaching, setCoaching] = useState<Record<string, { feedback: AiFeedback; label: string }>>({});
@@ -186,11 +187,15 @@ export function SpeakingPractice({ type, view, sidebarExtra }: { type: PracticeT
         s.finished && (
           <ResultsPanel
             type={type}
-            correct={null}
+            correct={isInterview ? null : s.summary.correct}
             total={s.summary.total}
             answered={s.summary.answered}
             onRetry={reset}
-            note="Speaking feedback is based on an automatic transcript. It is a practice estimate, not an official or pronunciation score."
+            note={
+              isInterview
+                ? "Speaking feedback is based on an automatic transcript. It is a practice estimate, not an official or pronunciation score."
+                : "A sentence counts as correct when at least 80% of its words match, from an automatic transcript. It is a practice estimate, not an official or pronunciation score."
+            }
           />
         )
       }

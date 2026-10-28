@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inspectWav, isAcceptedForAsr, wordSimilarity } from "@/lib/server/content/speech";
+import { inspectWav, isAcceptedForAsr, wordSimilarity, repeatCorrect } from "@/lib/server/content/speech";
 
 function wav(rate: number, channels: number, seconds: number) {
   const data = Buffer.alloc(rate * channels * 2 * seconds);
@@ -39,5 +39,14 @@ describe("transcript similarity (practice estimate)", () => {
     const r = wordSimilarity("The printer is next to the kitchen.", "the printer is the kitchen");
     expect(r.score).toBeLessThan(1);
     expect(r.missing).toEqual(["next", "to"]);
+  });
+});
+
+describe("Listen and Repeat scoring", () => {
+  const sentence = "Please keep your desk tidy and save your files every evening";
+  it("counts an answer as correct when at least 80% of the words match", () => {
+    expect(repeatCorrect(wordSimilarity(sentence, sentence).score)).toBe(true);
+    expect(repeatCorrect(wordSimilarity(sentence, "Please keep your desk tidy and save your files every night").score)).toBe(true); // 1 of 11 words wrong
+    expect(repeatCorrect(wordSimilarity(sentence, "Please keep your desk tidy").score)).toBe(false); // about half missing
   });
 });

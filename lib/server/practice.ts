@@ -6,6 +6,7 @@ import { db } from "./db";
 import { ApiError } from "./http";
 import { buildView, unitIdsOf, type ItemWithMedia } from "./content/view";
 import { SCORING_VERSION, isValidResponse, scoreUnit } from "./content/scoring";
+import { repeatCorrect } from "./content/speech";
 
 const MAX_ITEMS_PER_PAGE = 30;
 
@@ -167,7 +168,7 @@ async function savedProgress(userId: string, slug: PracticeSlug, items: ItemWith
       const score = a.scoreJson as { similarity?: number | null };
       answers[key] = "recorded";
       results[key] = {
-        correct: null,
+        correct: slug === "listen-repeat" && typeof score?.similarity === "number" ? repeatCorrect(score.similarity) : null,
         transcript: r?.transcript ?? "",
         ...(slug === "listen-repeat" ? { similarity: score?.similarity ?? undefined, answer: (item.answerKeyJson as Record<string, string>)[a.unitId] } : {}),
         label: "Transcript-based practice estimate — not an official or pronunciation score.",
