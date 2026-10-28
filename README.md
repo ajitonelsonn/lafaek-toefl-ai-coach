@@ -170,8 +170,10 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
 - **Timing.** Practice tasks have no countdown; only the mock test is timed. Speaking recordings still stop at the
   task's answer time.
 - **Interface motion (GSAP).** All of it is off when the device asks for reduced motion (`lib/client/motion.ts`).
-  - A crocodile loading screen (`app/(app)/loading.tsx`) appears after 0.15 s and explains slow or missing
-    internet. An app-wide offline banner shows the connection state.
+  - The loading screen (`components/ui/LogoLoader.tsx`) appears after 0.15 s. The crocodile logo is cut into a grid
+    of pieces that fly in and snap together, shine, flip in a wave, then shatter and fall apart, looping with new
+    random paths; the wordmark wipes in below. It explains slow or missing internet, and shows a still logo under
+    reduced motion. An app-wide offline banner shows the connection state.
   - Pages, landing sections, progress bars and counters, answer feedback, results, flashcards and toasts have short
     entrance effects.
   - Media from S3 shows loading animations: a shimmer placeholder for pictures, an animated waveform for audio and
