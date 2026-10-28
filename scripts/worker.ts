@@ -47,7 +47,7 @@ async function main() {
   if (!metaOk) log.warn("meta models not visible from this network; skipping text and image jobs", { jobTypes: jobTypesFor(false) });
   // Settings changes restart the worker, so retry jobs that were waiting on provider setup once.
   // Re-queued Meta jobs left by a worker that cannot reach Meta wait for one that can.
-  const requeued = await unblockJobs(["task_pack", "asset_audio", "asset_image", "vocabulary_pack", "study_schedule"], "PROVIDER_CONFIG").catch(() => 0);
+  const requeued = await unblockJobs(["task_pack", "asset_audio", "asset_image", "vocabulary_pack", "study_schedule", "mock_scoring"], "PROVIDER_CONFIG").catch(() => 0);
   if (requeued) log.info("requeued jobs waiting on provider setup", { count: requeued });
   let lastHousekeeping = 0;
   await runPool(owner, concurrency, {

@@ -55,6 +55,13 @@ export async function objectExists(key: string): Promise<boolean> {
   }
 }
 
+export async function getObject(key: string): Promise<Buffer> {
+  const { client, bucket } = s3();
+  const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  if (!res.Body) throw new Error("Empty object body");
+  return Buffer.from(await res.Body.transformToByteArray());
+}
+
 export async function deleteObject(key: string): Promise<void> {
   const { client, bucket } = s3();
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));

@@ -7,6 +7,8 @@ import { ArrowRight, CheckCircle2, Clock, History, ListChecks, Play, Sparkles, T
 import { SKILLS, getPracticeType, type SkillId } from "@/lib/config/practice-types";
 import { MOCK_BLUEPRINT, MOCK_DEMO_MINUTES, mockQuestionCount } from "@/lib/config/mock-test";
 import { cefrForBand, formatBand } from "@/lib/config/toefl-scale";
+import { CERTIFICATE_MIN_BAND, verifyPath } from "@/lib/config/certificate";
+import { Icon3D } from "@/components/ui/Icon3D";
 import type { MockResultDTO } from "@/lib/practice/mock-dto";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -21,6 +23,26 @@ import { BOOST_PACK } from "@/lib/config/pricing";
 import { useToast } from "@/components/ui/Toast";
 import { UpgradeDialog } from "@/components/upgrade/UpgradeDialog";
 import { MockTestPreparing } from "./MockTestPreparing";
+
+/** How to earn a certificate, with a link to the preview (or to the certificate the latest test earned). */
+function CertificateCard({ code }: { code: string | null }) {
+  return (
+    <Card as="section" aria-labelledby="cert-title" className="border-[#e6c768] bg-gradient-to-br from-[#fff8e1] to-surface">
+      <div className="flex items-start gap-3">
+        <Icon3D name="achievement" size={44} />
+        <div className="min-w-0">
+          <h2 id="cert-title" className="text-base font-bold text-ink">
+            Earn a certificate
+          </h2>
+          <p className="mt-1 text-sm text-body">Score {formatBand(CERTIFICATE_MIN_BAND)} or higher on a full mock test to get a certificate that anyone can verify online.</p>
+          <Link href={code ? verifyPath(code) : "/mock-test/certificate-preview"} className="mt-2 inline-block text-sm font-semibold text-primary hover:underline">
+            {code ? "View your certificate" : "Preview certificate"} →
+          </Link>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export function MockTestIntro({ latest, active, credits }: { latest: MockResultDTO | null; active: { startedAt: string; expiresAt: string } | null; credits: { planCredits: number; mockCredits: number } }) {
   const router = useRouter();
@@ -81,8 +103,9 @@ export function MockTestIntro({ latest, active, credits }: { latest: MockResultD
 
         <InfoCallout title="About the Mock Test">
           Every mock test is new: it uses your own personalised questions that you have not seen in a mock test before (starter questions fill any
-          gaps). Each section has its own timer, like the real test. You get an estimated band on the 1–6 scale for Reading and Listening. Results
-          are practice estimates, not official TOEFL scores.
+          gaps). Each section has its own timer, like the real test. Every section gets a band on the 1–6 scale: Reading and Listening
+          are scored from your answers, and Writing and Speaking are rated by AI about a minute after you submit. Your overall band is their
+          average. Results are practice estimates, not official TOEFL scores.
         </InfoCallout>
 
         <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
@@ -137,7 +160,7 @@ export function MockTestIntro({ latest, active, credits }: { latest: MockResultD
                       ))}
                     </ul>
                     <span className="mt-3 rounded-lg bg-surface/80 px-3 py-2 text-sm font-semibold text-ink">
-                      {s.id === "reading" || s.id === "listening" ? "Scored automatically · band estimate" : s.id === "writing" ? "Length and structure checks" : "Recorded for practice"}
+                      {s.id === "reading" || s.id === "listening" ? "Scored automatically · band estimate" : "Rated by AI · band estimate"}
                     </span>
                   </label>
                 );
@@ -196,6 +219,7 @@ export function MockTestIntro({ latest, active, credits }: { latest: MockResultD
             </div>
           </div>
         </Card>
+        <CertificateCard code={latest?.certificateCode ?? null} />
         <Card as="section" aria-labelledby="cond-title">
           <h2 id="cond-title" className="mb-3 text-base font-bold text-ink">
             Test Conditions

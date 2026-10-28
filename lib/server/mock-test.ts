@@ -1,16 +1,21 @@
 import "server-only";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
+import { certificateEligible } from "@/lib/config/certificate";
 import { MOCK_BLUEPRINT, MOCK_SECTION_ORDER } from "@/lib/config/mock-test";
 import type { PracticeSlug, SkillId } from "@/lib/config/practice-types";
 import { estimateBandFromAccuracy, overallBand } from "@/lib/config/toefl-scale";
 import type { PracticeView, WritingCheckDTO } from "@/lib/practice/dto";
 import type { MockResultDTO, MockSectionResultDTO } from "@/lib/practice/mock-dto";
 import { db } from "./db";
-import { requireEnv } from "./env";
+import { features, requireEnv } from "./env";
+import { issueCertificate } from "./certificates";
 import { useMockCredit } from "./credits";
 import { ApiError } from "./http";
+import { errorSummary, log } from "./log";
 import { visibleTo } from "./practice";
+import { bucketName, objectKeyFor, putObject } from "./storage/s3";
+import { enqueueJob } from "./generation/queue";
 import { buildView, unitIdsOf, type ItemWithMedia } from "./content/view";
 import { scoreUnit } from "./content/scoring";
 
@@ -62,9 +67,33 @@ function decodeForm(token: string, userId: string): FormPayload {
 }
 
 // --- stored results (format 1: array of sections; format 2: object) -------------------------
-type Stored = MockSectionResult[] | { format: 2; formId: string; itemIds: string[]; personalised: number; estimatedBand: number | null; sections: MockSectionResult[] };
+/** A Writing or Speaking answer waiting for AI rating (the email text is dropped once rated). */
+export interface OpenResponse {
+  itemId: string;
+  unitId: string;
+  skill: "writing" | "speaking";
+  answered: boolean;
+  text?: string;
+}
 
-function toResult(row: { id: string; completedAt: Date; durationSeconds: number; sectionsJson: Prisma.JsonValue }): MockResult {
+export interface StoredResult {
+  format: 2;
+  formId: string;
+  itemIds: string[];
+  personalised: number;
+  estimatedBand: number | null;
+  sections: MockSectionResult[];
+  /** Absent on results from before Writing and Speaking were AI-rated. */
+  scoring?: "pending" | "done";
+  open?: OpenResponse[];
+}
+type Stored = MockSectionResult[] | StoredResult;
+
+/** S3 role of a mock test Speaking recording (media_assets.attempt_id is the mock test id). */
+export const mockRecordingRole = (itemId: string, unitId: string) => `mock:${itemId}:${unitId}`;
+export const mockScoringKey = (mockId: string) => `${mockId}:mock_scoring`;
+
+function toResult(row: { id: string; completedAt: Date; durationSeconds: number; sectionsJson: Prisma.JsonValue; certificate?: { code: string } | null }): MockResult {
   const s = row.sectionsJson as unknown as Stored;
   const sections = (Array.isArray(s) ? s : s.sections).map((x) => ({ ...x, band: x.band ?? (x.correct !== null ? estimateBandFromAccuracy(x.correct, x.total) : null) }));
   const bands = sections.map((x) => x.band).filter((b): b is number => b !== null);
@@ -75,7 +104,21 @@ function toResult(row: { id: string; completedAt: Date; durationSeconds: number;
     sections,
     estimatedBand: Array.isArray(s) ? (bands.length ? overallBand(bands) : null) : s.estimatedBand,
     personalised: Array.isArray(s) ? 0 : s.personalised,
+    scoring: Array.isArray(s) ? null : (s.scoring ?? null),
+    certificateCode: row.certificate?.code ?? null,
   };
+}
+
+/** Marks results whose AI rating job gave up as "failed" (the learner can try again). */
+async function withScoringStatus(results: MockResult[]): Promise<MockResult[]> {
+  const pending = results.filter((r) => r.scoring === "pending");
+  if (!pending.length) return results;
+  const failed = new Set(
+    (await db.generationJob.findMany({ where: { idempotencyKey: { in: pending.map((r) => mockScoringKey(r.id)) }, status: "failed" }, select: { idempotencyKey: true } })).map(
+      (j) => j.idempotencyKey,
+    ),
+  );
+  return results.map((r) => (r.scoring === "pending" && failed.has(mockScoringKey(r.id)) ? { ...r, scoring: "failed" } : r));
 }
 
 const usedItemIds = async (userId: string) =>
@@ -176,6 +219,45 @@ export async function mockStatus(userId: string): Promise<{ mockCredits: number;
 /** The single item id inside a one-item view. */
 const itemIdOf = (view: PracticeView): string => view.items[0].itemId;
 
+/**
+ * Stores a Speaking answer recorded during a started mock test, so the worker can transcribe and
+ * rate it after submit. Re-recording replaces it. The file is deleted once it has been rated.
+ */
+export async function saveMockRecording(userId: string, input: { token: string; itemId: string; unitId: string; wav: Buffer; durationMs: number }): Promise<void> {
+  const form = decodeForm(input.token, userId);
+  if (!form.f.some(([id, skill, units]) => id === input.itemId && skill === "speaking" && units.includes(input.unitId))) {
+    throw new ApiError(400, "VALIDATION_ERROR", "This question is not part of your test.");
+  }
+  const open = await db.mockTestResult.findFirst({ where: { id: form.id, userId, status: "started" }, select: { id: true } });
+  if (!open) throw new ApiError(409, "CONFLICT", "This test was already submitted.");
+  if (!features.storage()) throw new ApiError(503, "CONFIGURATION_MISSING", "Recording storage is not set up, so Speaking cannot be scored.");
+
+  const role = mockRecordingRole(input.itemId, input.unitId);
+  const existing = await db.mediaAsset.findFirst({ where: { attemptId: form.id, role, deletedAt: null } });
+  const assetId = existing?.id ?? randomUUID();
+  const objectKey = existing?.objectKey ?? objectKeyFor({ ownerId: userId, attemptId: form.id, kind: "recording", assetId, mimeType: "audio/wav" });
+  if (!existing) {
+    await db.mediaAsset.create({ data: { id: assetId, userId, attemptId: form.id, kind: "recording", role, bucket: bucketName(), objectKey, mimeType: "audio/wav", status: "pending" } });
+  }
+  const up = await putObject(objectKey, input.wav, "audio/wav");
+  await db.mediaAsset.update({ where: { id: assetId }, data: { status: "ready", byteSize: up.byteSize, checksum: up.checksum, durationMs: input.durationMs } });
+}
+
+/** Issues the certificate when the result qualifies; never fails the caller. */
+export async function issueIfEligible(userId: string, result: MockResult): Promise<MockResult> {
+  if (result.certificateCode || !certificateEligible(result)) return result;
+  try {
+    return { ...result, certificateCode: (await issueCertificate(userId, result)).code };
+  } catch (err) {
+    log.error("certificate not issued", { resultId: result.id, error: errorSummary(err) });
+    return result;
+  }
+}
+
+/**
+ * Scores the started test once. Reading and Listening are scored at once; Writing and Speaking
+ * answers are queued for AI rating (`mock_scoring` job), and the overall band follows when they are rated.
+ */
 export async function submitMockTest(userId: string, input: { token: string; answers: { itemId: string; unitId: string; response: unknown }[]; durationSeconds: number }) {
   const form = decodeForm(input.token, userId);
   const started = await db.mockTestResult.findFirst({ where: { id: form.id, userId }, select: { status: true } });
@@ -186,6 +268,7 @@ export async function submitMockTest(userId: string, input: { token: string; ans
   const rows = await db.practiceItem.findMany({ where: { id: { in: ids } } });
   const byId = new Map(rows.map((r) => [r.id, r]));
   const answerFor = (itemId: string, unitId: string) => input.answers.find((a) => a.itemId === itemId && a.unitId === unitId);
+  const open: OpenResponse[] = [];
 
   const sections: MockSectionResult[] = form.s.map((skill) => {
     let correct = 0;
@@ -203,39 +286,70 @@ export async function submitMockTest(userId: string, input: { token: string; ans
         total++;
         const a = answerFor(itemId, unit);
         if (a) answered++;
-        if (slug === "take-interview" || slug === "listen-repeat") continue; // recorded, not scored
+        if (skill === "speaking") {
+          open.push({ itemId, unitId: unit, skill, answered: !!a });
+          continue;
+        }
         const r = scoreUnit(slug, row, unit, a?.response);
         if (r.correct !== null) {
           objective = true;
           if (r.correct) correct++;
         } else if (r.checks) {
           checks = r.checks;
-          const body = (a?.response as { body?: string } | undefined)?.body ?? "";
-          note = `${body.trim() ? body.trim().split(/\s+/).length : 0} words written. Checked for length and structure, not AI scored.`;
+          const body = ((a?.response as { body?: string } | undefined)?.body ?? "").trim().slice(0, 6000);
+          open.push({ itemId, unitId: unit, skill: "writing", answered: !!body, text: body });
+          note = `${body ? body.split(/\s+/).length : 0} words written.`;
         }
       }
     }
-    if (skill === "speaking") note = answered ? `${answered} of ${total} answers recorded. Speaking is not auto-scored.` : "No answers recorded.";
+    if (skill === "speaking") note = answered ? `${answered} of ${total} answers recorded.` : "No answers recorded.";
     const band = objective ? estimateBandFromAccuracy(correct, total) : null;
     return { skill, correct: objective ? correct : null, total, answered, band, ...(note ? { note } : {}), ...(checks ? { checks } : {}) };
   });
 
   const bands = sections.map((s) => s.band).filter((b): b is number => b !== null);
   const personalised = rows.length ? rows.filter((r) => r.userId === userId).length / rows.length : 0;
-  const stored: Stored = { format: 2, formId: form.id, itemIds: ids, personalised, estimatedBand: bands.length ? overallBand(bands) : null, sections };
+  const stored: StoredResult = {
+    format: 2,
+    formId: form.id,
+    itemIds: ids,
+    personalised,
+    // With Writing or Speaking in the test, the overall band waits for their AI rating.
+    estimatedBand: open.length ? null : bands.length ? overallBand(bands) : null,
+    sections,
+    ...(open.length ? { scoring: "pending" as const, open } : {}),
+  };
   // Only a still-started row is completed (a parallel submit of the same test loses).
   const done = await db.mockTestResult.updateMany({
     where: { id: form.id, userId, status: "started" },
     data: { status: "completed", sectionsJson: stored as unknown as Prisma.InputJsonValue, durationSeconds: Math.min(input.durationSeconds, 4 * 3600), completedAt: new Date() },
   });
   if (done.count !== 1) throw new ApiError(409, "CONFLICT", "This test was already submitted.");
-  return toResult(await db.mockTestResult.findUniqueOrThrow({ where: { id: form.id } }));
+  if (open.length) await enqueueJob({ idempotencyKey: mockScoringKey(form.id), jobType: "mock_scoring", userId, payload: { mockResultId: form.id } });
+  return issueIfEligible(userId, toResult(await db.mockTestResult.findUniqueOrThrow({ where: { id: form.id } })));
+}
+
+/** Queues the AI rating again after it failed (e.g. the provider was down). */
+export async function retryMockScoring(userId: string, id: string): Promise<void> {
+  const result = await mockResult(userId, id);
+  if (result.scoring !== "failed") throw new ApiError(409, "CONFLICT", "This test is not waiting to be scored again.");
+  await db.generationJob.updateMany({
+    where: { idempotencyKey: mockScoringKey(id), status: "failed" },
+    data: { status: "queued", attemptCount: 0, nextAttemptAt: new Date(), errorCode: null, errorSummary: null, finishedAt: null },
+  });
 }
 
 /** The learner's mock tests, newest first. */
 export async function mockHistory(userId: string, take = 20): Promise<MockResult[]> {
-  const rows = await db.mockTestResult.findMany({ where: { userId, status: "completed" }, orderBy: { completedAt: "desc" }, take });
-  return rows.map(toResult);
+  const rows = await db.mockTestResult.findMany({ where: { userId, status: "completed" }, orderBy: { completedAt: "desc" }, take, include: { certificate: { select: { code: true } } } });
+  return withScoringStatus(rows.map(toResult));
+}
+
+/** One completed mock test of `userId` (404 when it is not theirs or not finished). */
+export async function mockResult(userId: string, id: string): Promise<MockResult> {
+  const row = await db.mockTestResult.findFirst({ where: { id, userId, status: "completed" }, include: { certificate: { select: { code: true } } } });
+  if (!row) throw new ApiError(404, "NOT_FOUND", "Mock test not found.");
+  return (await withScoringStatus([toResult(row)]))[0];
 }
 
 export async function latestMockResult(userId: string): Promise<MockResult | null> {

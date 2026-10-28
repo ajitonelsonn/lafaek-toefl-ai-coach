@@ -9,6 +9,7 @@ import { MOCK_DEMO_MINUTES } from "@/lib/config/mock-test";
 import type { AudioDTO, ChoiceQuestionDTO, PracticeView } from "@/lib/practice/dto";
 import type { DailyLifeDocument } from "@/lib/services/types";
 import { api, errorMessage } from "@/lib/client/api";
+import { toWav16k } from "@/lib/client/wav";
 import { countWords } from "@/lib/utils/format";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
@@ -20,8 +21,9 @@ import { CountdownTimer } from "@/components/practice/CountdownTimer";
 import { QuestionNavigation } from "@/components/practice/QuestionNavigation";
 import { ChoiceList } from "@/components/practice/ChoiceList";
 import { AudioPlayer } from "@/components/practice/AudioPlayer";
-import { RecordingControl } from "@/components/practice/RecordingControl";
+import { RecordingControl, type RecordingResult } from "@/components/practice/RecordingControl";
 import { SKILL_TONE } from "@/components/practice/icons";
+import { LoadingWave } from "@/components/ui/MediaLoading";
 import { cn } from "@/lib/utils/cn";
 
 export interface MockFormItemDTO {
@@ -104,6 +106,9 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
   const [submitting, setSubmitting] = useState(false);
   const startedAt = useRef(Date.now());
   const submitted = useRef(false);
+  // Speaking answers upload as soon as they are recorded; submit waits for any still uploading.
+  const uploads = useRef(new Map<string, Promise<void>>());
+  const [uploadState, setUploadState] = useState<Record<string, UploadState>>({});
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
@@ -139,20 +144,49 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
   };
   const unansweredHere = sectionUnits.filter((u) => !isAnswered(u)).length;
   const personalised = form.filter((f) => f.view.items[0]?.source === "generated").length;
-  const set = (value: unknown) =>
+  const setAnswer = (key: string, value: unknown) =>
     setAnswers((a) => {
       const next = { ...a };
-      if (value === undefined) delete next[unit.key];
-      else next[unit.key] = value;
+      if (value === undefined) delete next[key];
+      else next[key] = value;
       return next;
     });
+  const set = (value: unknown) => setAnswer(unit.key, value);
+
+  const recordSpeaking = (u: Unit, r: RecordingResult) => {
+    // Without a microphone nothing was captured: the question counts as unanswered.
+    if (r.simulated || !r.blob) {
+      toast("No recording was captured, so this answer cannot be rated.", "warning");
+      return;
+    }
+    const blob = r.blob;
+    setAnswer(u.key, "recorded");
+    setUploadState((s) => ({ ...s, [u.key]: "uploading" }));
+    const upload = (async () => {
+      try {
+        const form = new FormData();
+        form.append("token", token);
+        form.append("itemId", u.itemId);
+        form.append("unitId", u.unitId);
+        form.append("audio", await toWav16k(blob), "answer.wav");
+        await api("/api/mock-test/recording", { form });
+        setUploadState((s) => ({ ...s, [u.key]: "saved" }));
+      } catch (e) {
+        setAnswer(u.key, undefined);
+        setUploadState((s) => ({ ...s, [u.key]: "failed" }));
+        toast(`${errorMessage(e)} Please record this answer again.`, "warning");
+      }
+    })();
+    uploads.current.set(u.key, upload);
+  };
 
   const submit = async () => {
     if (submitted.current) return;
     submitted.current = true;
     setSubmitting(true);
     try {
-      // Speaking is not uploaded in the mock test; it is marked as answered only.
+      await Promise.all(uploads.current.values());
+      // Speaking recordings are already uploaded; the answer only marks them as given.
       const payload = units
         .filter((u) => isAnswered(u))
         .map((u) => ({ itemId: u.itemId, unitId: u.unitId, response: u.kind === "speaking" ? null : answers[u.key] }));
@@ -223,7 +257,7 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
               </span>
             </header>
             <div className="flex flex-col gap-5 p-5">
-              <UnitView key={unit.key} unit={unit} answer={answers[unit.key]} onAnswer={set} />
+              <UnitView key={unit.key} unit={unit} answer={answers[unit.key]} onAnswer={set} onRecorded={(r) => recordSpeaking(unit, r)} upload={uploadState[unit.key]} />
             </div>
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
@@ -278,7 +312,9 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
   );
 }
 
-function UnitView({ unit, answer, onAnswer }: { unit: Unit; answer: unknown; onAnswer: (a: unknown) => void }) {
+type UploadState = "uploading" | "saved" | "failed";
+
+function UnitView({ unit, answer, onAnswer, onRecorded, upload }: { unit: Unit; answer: unknown; onAnswer: (a: unknown) => void; onRecorded: (r: RecordingResult) => void; upload?: UploadState }) {
   if (unit.kind === "choice") {
     return (
       <div className={cn("grid grid-cols-[minmax(0,1fr)] gap-5", (unit.document || unit.passage) && "lg:grid-cols-2")}>
@@ -331,15 +367,25 @@ function UnitView({ unit, answer, onAnswer }: { unit: Unit; answer: unknown; onA
   }
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[15px] text-body">Listen to the interviewer&apos;s question, then record your answer. In the mock test, speaking is recorded for practice only and is not scored.</p>
+      <p className="text-[15px] text-body">Listen to the interviewer&apos;s question, then record your answer. After you submit, your answers are transcribed and rated by AI. The recordings are deleted once rated.</p>
       <AudioPlayer audio={unit.audio} label="Play question" transcript={false} />
-      {answer !== undefined && (
+      {upload === "uploading" && (
+        <p className="flex items-center gap-2 rounded-lg bg-primary-soft p-3 text-sm font-semibold text-primary" role="status">
+          <LoadingWave label="Saving" /> Saving your answer…
+        </p>
+      )}
+      {upload !== "uploading" && answer !== undefined && (
         <p className="rounded-lg bg-success-soft p-3 text-sm font-semibold text-success" role="status">
-          You already answered this question. Recording again replaces it.
+          Your answer is saved. Recording again replaces it.
+        </p>
+      )}
+      {upload === "failed" && answer === undefined && (
+        <p className="rounded-lg bg-danger-soft p-3 text-sm font-semibold text-danger" role="alert">
+          Your last answer could not be saved. Please record it again.
         </p>
       )}
       <div className="rounded-xl bg-speaking-soft/60 p-4">
-        <RecordingControl maxSeconds={unit.responseSeconds} onRecorded={() => onAnswer("recorded")} onCleared={() => onAnswer(undefined)} />
+        <RecordingControl maxSeconds={unit.responseSeconds} onRecorded={onRecorded} onCleared={() => onAnswer(undefined)} />
       </div>
     </div>
   );

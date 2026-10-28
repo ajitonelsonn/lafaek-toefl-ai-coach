@@ -11,7 +11,7 @@ import { ProviderError, providerFetch } from "./http";
 const PROVIDER = "meta";
 
 /** Allowlisted task types. Browser input never chooses models, endpoints or URLs. */
-export type TextTask = `generate:${string}` | `verify:${string}` | "feedback:writing" | "feedback:speaking";
+export type TextTask = `generate:${string}` | `verify:${string}` | "feedback:writing" | "feedback:speaking" | "score:writing" | "score:speaking";
 
 export interface TextUsage {
   inputTokens: number | null;

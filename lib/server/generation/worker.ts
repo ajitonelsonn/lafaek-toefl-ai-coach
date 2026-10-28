@@ -9,6 +9,7 @@ import { claimJobs, completeJob, failJob, heartbeat, recoverExpiredLeases, unblo
 import { JobFailure, reconcileMedia, runAudioAsset, runDeleteUserAssets, runImageAsset, runTaskPack, toJobFailure } from "./handlers";
 import { backfillVocabularyJobs, queueVocabularyFor, runVocabularyPack } from "./vocabulary";
 import { runStudySchedule } from "./study-schedule";
+import { runMockScoring } from "../mock-scoring";
 
 export const workerId = () => `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
 
@@ -38,6 +39,9 @@ export async function processJob(job: GenerationJob, owner: string): Promise<voi
         break;
       case "study_schedule":
         await runStudySchedule(job);
+        break;
+      case "mock_scoring":
+        await runMockScoring(job);
         break;
     }
     await completeJob(job, owner, job.jobType === "task_pack" ? { provider: "meta" } : {});
