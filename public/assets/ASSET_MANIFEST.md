@@ -10,7 +10,8 @@ Runtime code references these files through `lib/config/assets.ts`.
 |---|---|---|---|
 | `logo_icon/logo.png` | 1254×1254 | RGBA, 70% transparent | Mascot + open book (rows 155–882), wordmark (rows 880–1105). |
 | `logo_icon/all_icon.png` | 1536×1024 | RGBA, 78% transparent | Composite sheet: 82 labelled 3D icons in 6 rows, each with a text label below. |
-| `logo_icon/all_background.png` | 1663×946 | RGB | Composite sheet: 9 illustration panels separated by white gutters, each with a caption below. |
+| `logo_icon/all_background.png` | 1663×946 | RGB | Composite sheet: 9 illustration panels separated by white gutters, each with a caption below. Superseded by `logo_icon/backgrounds/`. |
+| `logo_icon/backgrounds/*.png` (10 files) | ~1500×1050 | RGB | Owner-supplied high-resolution scenes (login, signup, OTP, forgot password ×2, dashboard, progress, resources, profile, settings). |
 | `ilu/*.png` (26 files) | ~1663×946 | RGB | Page reference screenshots (see the route map in `README.md`). |
 
 ## Logo — `assets/logo/`
@@ -27,24 +28,25 @@ row 878 and the 5-pixel tip is removed from the wordmark crop. Both crops were c
 
 ## Backgrounds — `assets/backgrounds/`
 
-Panel gutters were measured programmatically (rows/columns that are >97% white). Each panel is inset
-2 px so no gutter or caption is included.
+Sources are the owner's high-resolution scenes in `logo_icon/backgrounds/*.png` (about 1500 × 1050,
+replacing the small panels of `all_background.png`). `npm run assets:crop -- backgrounds` crops each one
+to what its page shows and writes WebP at about 2× display size. The auth scenes share one 3:2 frame
+(centre crop) so the layout does not jump between auth pages.
 
-| File | Sheet region (x, y) | Used for |
+| File | Source & crop (x, y, w, h) | Used for |
 |---|---|---|
-| `login.png` / `login-scene.png` | 0–401, 0–425 (scene: from y 140) | `/login` illustration |
-| `signup.png` / `signup-scene.png` | 413–826 (scene: from y 150) | `/signup` illustration |
-| `otp.png` / `otp-scene.png` | 839–1243 (scene: from y 150) | `/verify-email` illustration |
-| `forgot-password.png` / `forgot-password-scene.png` | 1255–1662 (scene: from y 140) | `/forgot-password` illustration |
-| `dashboard.png` | 0–327, 489–881 | Catalogued, not currently shown (see README) |
-| `progress.png` | 335–731, 489–881 | `/progress` empty state |
-| `resources.png` | 742–1009, 489–881 | Catalogued, not currently shown |
-| `profile.png` | 1020–1327, 489–881 | `/profile` side panel |
+| `login-scene.webp` | `login-scene.png`, 3:2 centre, 1040 × 693 | `/login` illustration |
+| `signup-scene.webp` | `signup-scene.png`, 3:2 centre, 1040 × 693 | `/signup` illustration |
+| `otp-scene.webp` | `otp-scene.png`, 3:2 centre, 1040 × 693 | `/verify-email` illustration |
+| `forgot-password-scene.webp` | `forgot-password-scene.png`, 3:2 centre, 1040 × 693 | `/forgot-password` illustration |
+| `dashboard.webp` | `dashboard.png` (0, 40, 1491, 960), 800 wide | Dashboard "Your TOEFL Journey" card |
+| `progress.webp` | `progress.png` (195, 32, 1296, 930), 900 wide | `/progress` empty state |
+| `profile.webp` | `profile.png` (217, 79, 1005, 1061), 640 wide | `/profile` side panel |
+| `settings.webp` | `settings.png` (193, 122, 1104, 986), 640 wide | `/settings` side panel |
 | `Interview_Mascot.webp` | Owner-supplied, 1254 × 1254 (not cropped) | "Interviewer (mascot)" on Take an Interview |
-| `settings.png` | 1339–1662, 489–881 | `/settings` side panel |
 
-`*-scene.png` crops start below the baked-in "LafaekTOEFL" wordmark, because the auth layout renders
-the real logo above the illustration.
+`forgot-password.png` (a "Send Reset Link" form) and `resources.png` are kept as sources but not shown:
+password resets go through the administrator, and there is no Resources page.
 
 ## Icons — `assets/icons/` (82 files)
 

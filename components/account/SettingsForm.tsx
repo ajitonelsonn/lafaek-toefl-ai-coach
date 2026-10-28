@@ -169,8 +169,8 @@ function SettingsEditor({ saved }: { saved: UserSettings }) {
           />
         </Card>
       </div>
-      <div className="hidden overflow-hidden rounded-[var(--radius-card)] border border-line bg-[#eef4ff] xl:block">
-        <Image src={BACKGROUNDS.settings.src} alt="" width={BACKGROUNDS.settings.width} height={BACKGROUNDS.settings.height} className="h-auto w-full" />
+      <div className="hidden self-start overflow-hidden rounded-[var(--radius-card)] border border-line bg-[#eef4ff] xl:block">
+        <Image src={BACKGROUNDS.settings.src} alt="" width={BACKGROUNDS.settings.width} height={BACKGROUNDS.settings.height} sizes="300px" className="h-auto w-full" />
       </div>
 
       <ConfirmDialog open={confirm === "logout"} title="Log out?" description="You can log in again at any time." confirmLabel="Log out" onCancel={() => setConfirm(null)} onConfirm={() => void logout()} />

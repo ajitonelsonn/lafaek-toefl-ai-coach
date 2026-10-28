@@ -1,8 +1,8 @@
 // Derives UI assets from the supplied source images without modifying them.
-// Sources: logo_icon/*.png and ilu/*.png. Outputs: public/assets/**.
+// Sources: logo_icon/*.png, logo_icon/backgrounds/*.png and ilu/*.png. Outputs: public/assets/**.
 // Every crop is listed in public/assets/ASSET_MANIFEST.md with its source and purpose.
 //
-// Run: npm run assets:crop
+// Run: npm run assets:crop (or npm run assets:crop -- <step>)
 import sharp from "sharp";
 import { mkdir, copyFile } from "node:fs/promises";
 import path from "node:path";
@@ -58,45 +58,32 @@ async function logo() {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Background sheet (logo_icon/all_background.png, 1663x946, opaque)
-//    White gutters were measured programmatically; each panel is inset 2px
-//    so no gutter or caption text is included.
+// 2. Background scenes (logo_icon/backgrounds/*.png, owner-supplied, ~1500x1050, opaque)
+//    Each scene is cropped to what its page shows and saved as WebP at about 2x display size.
+//    The auth scenes share one 3:2 frame so the layout does not jump between auth pages.
 // ---------------------------------------------------------------------------
-const backgroundPanels = [
-  // top row: y 0-426, captions below y 427
-  { name: "login", left: 0, right: 401, top: 0, bottom: 425 },
-  { name: "signup", left: 413, right: 826, top: 0, bottom: 425 },
-  { name: "otp", left: 839, right: 1243, top: 0, bottom: 425 },
-  { name: "forgot-password", left: 1255, right: 1662, top: 0, bottom: 425 },
-  // bottom row: y 488-882, captions below y 883
-  { name: "dashboard", left: 0, right: 327, top: 489, bottom: 881 },
-  { name: "progress", left: 335, right: 731, top: 489, bottom: 881 },
-  { name: "resources", left: 742, right: 1009, top: 489, bottom: 881 },
-  { name: "profile", left: 1020, right: 1327, top: 489, bottom: 881 },
-  { name: "settings", left: 1339, right: 1662, top: 489, bottom: 881 },
+const backgroundScenes = [
+  { name: "login-scene", cover: [1040, 693] },
+  { name: "signup-scene", cover: [1040, 693] },
+  { name: "otp-scene", cover: [1040, 693] },
+  { name: "forgot-password-scene", cover: [1040, 693] },
+  // mascot pointing at the dashboard card (the tassel overlaps the books, so the full width is kept)
+  { name: "dashboard", box: { left: 0, top: 40, width: 1491, height: 960 }, width: 800 },
+  // mascot climbing the bars to the star
+  { name: "progress", box: { left: 195, top: 32, width: 1296, height: 930 }, width: 900 },
+  // mascot and the profile bubble
+  { name: "profile", box: { left: 217, top: 79, width: 1005, height: 1061 }, width: 640 },
+  // mascot holding the gears
+  { name: "settings", box: { left: 193, top: 122, width: 1104, height: 986 }, width: 640 },
 ];
 
 async function backgrounds() {
-  for (const p of backgroundPanels) {
-    const inset = 2;
-    const left = p.left + inset;
-    const top = p.top + (p.top === 0 ? 0 : inset);
-    const width = p.right - p.left - inset * 2;
-    const height = p.bottom - top - inset;
-    await crop("logo_icon/all_background.png", `backgrounds/${p.name}.png`, { left, top, width, height });
-  }
-  // Auth panels: illustration only, without the baked-in "LafaekTOEFL" wordmark
-  // (the real logo is rendered above it in the layout).
-  const sceneTop = { login: 140, signup: 150, otp: 150, "forgot-password": 140 };
-  for (const p of backgroundPanels.slice(0, 4)) {
-    const left = p.left + 2;
-    const top = sceneTop[p.name];
-    await crop("logo_icon/all_background.png", `backgrounds/${p.name}-scene.png`, {
-      left,
-      top,
-      width: p.right - p.left - 4,
-      height: p.bottom - top,
-    });
+  for (const s of backgroundScenes) {
+    const dest = `backgrounds/${s.name}.webp`;
+    let img = sharp(src(`logo_icon/backgrounds/${s.name}.png`));
+    img = s.cover ? img.resize(s.cover[0], s.cover[1], { fit: "cover" }) : img.extract(s.box).resize({ width: s.width });
+    await img.webp({ quality: 86 }).toFile(out(dest));
+    console.log("wrote", dest);
   }
 }
 
@@ -225,7 +212,7 @@ async function screenshots() {
   for (const c of screenshotCrops) await crop(c.source, c.dest, c.box);
 }
 
-await logo();
-await backgrounds();
-await icons();
-await screenshots();
+// `npm run assets:crop -- backgrounds` runs one step only.
+const only = process.argv[2];
+const steps = { logo, backgrounds, icons, screenshots };
+for (const [name, step] of Object.entries(steps)) if (!only || only === name) await step();

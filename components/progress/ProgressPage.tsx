@@ -23,7 +23,7 @@ export function ProgressPage({ progress, targetScore }: { progress: ProgressDTO;
   if (progress.questionsAttempted === 0) {
     return (
       <EmptyState
-        icon={<Image src={BACKGROUNDS.progress.src} alt="" width={BACKGROUNDS.progress.width} height={BACKGROUNDS.progress.height} className="h-44 w-auto rounded-2xl" />}
+        icon={<Image src={BACKGROUNDS.progress.src} alt="" width={BACKGROUNDS.progress.width} height={BACKGROUNDS.progress.height} sizes="300px" className="h-48 w-auto rounded-2xl" />}
         title="No progress yet"
         description="Answer some practice questions and your accuracy, practice time and activity will appear here."
         action={<LinkButton href="/practice">Start practising</LinkButton>}

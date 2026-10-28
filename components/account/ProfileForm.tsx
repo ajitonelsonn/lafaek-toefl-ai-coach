@@ -84,8 +84,8 @@ function ProfileEditor({ name: savedName, email, planLabel, memberSince }: { nam
             </Button>
           </div>
         </form>
-        <div className="hidden bg-[#eef4ff] md:block">
-          <Image src={BACKGROUNDS.profile.src} alt="" width={BACKGROUNDS.profile.width} height={BACKGROUNDS.profile.height} className="h-full w-full object-cover" />
+        <div className="hidden items-center bg-[#eef4ff] p-5 md:flex">
+          <Image src={BACKGROUNDS.profile.src} alt="" width={BACKGROUNDS.profile.width} height={BACKGROUNDS.profile.height} sizes="220px" className="h-auto w-full rounded-2xl shadow-sm" />
         </div>
       </div>
     </Card>

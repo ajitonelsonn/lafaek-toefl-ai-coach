@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Forgot Password" };
 
 export default function ForgotPasswordPage() {
   return (
-    <AuthLayout title="Forgot Your Password?" subtitle="No problem! Contact the administrator to reset your password." scene={BACKGROUNDS.forgotScene} sceneAlt="The LafaekTOEFL crocodile next to a lock and question mark">
+    <AuthLayout title="Forgot Your Password?" subtitle="No problem! Contact the administrator to reset your password." scene={BACKGROUNDS.forgotScene} sceneAlt="The LafaekTOEFL crocodile at a laptop next to a lock and a question mark">
       <ForgotPassword adminContact={env().ADMIN_CONTACT_EMAIL ?? null} />
     </AuthLayout>
   );

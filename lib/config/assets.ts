@@ -18,15 +18,14 @@ export const BRAND = {
 } as const;
 
 export const BACKGROUNDS = {
-  loginScene: img("/assets/backgrounds/login-scene.png", 397, 285),
-  signupScene: img("/assets/backgrounds/signup-scene.png", 409, 275),
-  otpScene: img("/assets/backgrounds/otp-scene.png", 400, 275),
-  forgotScene: img("/assets/backgrounds/forgot-password-scene.png", 403, 285),
-  dashboard: img("/assets/backgrounds/dashboard.png", 323, 388),
-  progress: img("/assets/backgrounds/progress.png", 392, 388),
-  resources: img("/assets/backgrounds/resources.png", 263, 388),
-  profile: img("/assets/backgrounds/profile.png", 303, 388),
-  settings: img("/assets/backgrounds/settings.png", 319, 388),
+  loginScene: img("/assets/backgrounds/login-scene.webp", 1040, 693),
+  signupScene: img("/assets/backgrounds/signup-scene.webp", 1040, 693),
+  otpScene: img("/assets/backgrounds/otp-scene.webp", 1040, 693),
+  forgotScene: img("/assets/backgrounds/forgot-password-scene.webp", 1040, 693),
+  dashboard: img("/assets/backgrounds/dashboard.webp", 800, 515),
+  progress: img("/assets/backgrounds/progress.webp", 900, 646),
+  profile: img("/assets/backgrounds/profile.webp", 640, 676),
+  settings: img("/assets/backgrounds/settings.webp", 640, 572),
   interviewer: img("/assets/backgrounds/Interview_Mascot.webp", 1254, 1254),
 } as const;
 

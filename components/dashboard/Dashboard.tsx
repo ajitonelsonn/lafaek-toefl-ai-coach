@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { ArrowRight, CalendarDays, Check, Clock, History, Sparkles, Target } from "lucide-react";
 import { PRACTICE_TYPES, SKILLS, getPracticeType, practiceHref, type PracticeType } from "@/lib/config/practice-types";
-import { BRAND } from "@/lib/config/assets";
+import { BACKGROUNDS } from "@/lib/config/assets";
 import { formatBand } from "@/lib/config/toefl-scale";
 import { todayKey } from "@/lib/utils/dates";
 import { formatRelative, percent } from "@/lib/utils/format";
@@ -98,11 +98,11 @@ export function Dashboard({ userName, plan, progress, batch }: DashboardProps) {
               {attempts.length ? `Continue: ${next?.shortTitle ?? "Practice"}` : "Start Practising Now"}
             </LinkButton>
           </div>
-          <div className="hidden flex-col items-center sm:flex">
-            <p className="mb-2 rotate-[-3deg] rounded-xl bg-surface/90 px-3 py-2 text-center text-sm font-semibold italic text-primary shadow-sm">
+          <div className="hidden flex-col items-center self-center sm:flex sm:pb-8">
+            <p className="relative z-10 -mb-3 rotate-[-3deg] rounded-xl bg-surface/90 px-3 py-2 text-center text-sm font-semibold italic text-primary shadow-sm">
               Small steps every day lead to a big score!
             </p>
-            <Image src={BRAND.mark.src} alt="" width={300} height={237} className="pointer-events-none h-auto w-full max-w-[300px]" priority />
+            <Image src={BACKGROUNDS.dashboard.src} alt="" width={BACKGROUNDS.dashboard.width} height={BACKGROUNDS.dashboard.height} sizes="380px" className="pointer-events-none h-auto w-full max-w-[380px] rounded-2xl shadow-sm" priority />
           </div>
         </section>
 

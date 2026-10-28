@@ -25,7 +25,7 @@ export function AuthLayout({ title, subtitle, scene, sceneAlt, children }: AuthL
         <Logo size={64} priority />
         <h1 className="mt-6 text-3xl font-extrabold tracking-tight text-brand-950 sm:text-4xl lg:mt-10">{title}</h1>
         <p className="mx-auto mt-3 max-w-md text-base text-slate-600 sm:text-lg">{subtitle}</p>
-        <Image src={scene.src} alt={sceneAlt} width={scene.width} height={scene.height} priority className="mt-8 hidden h-auto w-full max-w-[520px] rounded-2xl lg:block" />
+        <Image src={scene.src} alt={sceneAlt} width={scene.width} height={scene.height} priority sizes="520px" className="mt-8 hidden h-auto w-full max-w-[520px] rounded-2xl lg:block" />
         <ul className="mt-8 hidden w-full max-w-lg grid-cols-3 gap-4 lg:grid">
           {FEATURES.map((f) => (
             <li key={f.label} className="flex flex-col items-center gap-2 text-sm font-semibold text-brand-950">
