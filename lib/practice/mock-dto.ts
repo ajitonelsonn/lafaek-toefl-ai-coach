@@ -4,8 +4,11 @@ import type { WritingCheckDTO } from "./dto";
 
 export interface MockSectionResultDTO {
   skill: SkillId;
+  /** Correct auto-scored questions; null when the section has none. */
   correct: number | null;
   total: number;
+  /** Auto-scored questions, when only some of the section's questions are (Writing: Build a Sentence). */
+  objectiveTotal?: number;
   answered: number;
   /** Practice band (1–6): from accuracy for Reading and Listening, AI-rated for Writing and Speaking. */
   band: number | null;

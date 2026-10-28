@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Prisma } from "@prisma/client";
-import { MOCK_BLUEPRINT, mockQuestionCount } from "@/lib/config/mock-test";
+import { MOCK_BLUEPRINT } from "@/lib/config/mock-test";
 import { SKILLS, type SkillId } from "@/lib/config/practice-types";
 import { db } from "@/lib/server/db";
 import { getCredits, grantBoostPacks } from "@/lib/server/credits";
@@ -21,7 +21,7 @@ vi.mock("@/lib/server/providers/meta", async (orig) => ({
     model: "test-model",
     requestId: null,
   })),
-  transcribeAudio: vi.fn(async () => ({ transcript: "I would like this job because I enjoy helping people and I work well in a team.", audioDurationMs: 20_000, model: "test-asr" })),
+  transcribeAudio: vi.fn(async (wav: Buffer) => ({ transcript: wav.toString().replace(/^say:/, ""), audioDurationMs: 20_000, model: "test-asr" })),
 }));
 vi.mock("@/lib/server/storage/s3", () => ({
   bucketName: () => "test-bucket",
@@ -36,16 +36,26 @@ vi.mock("@/lib/server/env", async (orig) => {
 });
 
 const ALL: SkillId[] = SKILLS.map((s) => s.id);
-const MOCK_SLUGS = new Set(Object.values(MOCK_BLUEPRINT).flat().map((b) => b.slug));
+const PARTS = Object.values(MOCK_BLUEPRINT).flat();
 type Form = NonNullable<Awaited<ReturnType<typeof activeMockTest>>>;
 
-/** Starter set for everyone, plus two personalised copies of each mock task type for `userId`. */
+/**
+ * Starter set for everyone, plus personalised copies for `userId`: twice the blueprint's items per
+ * task type, so two full tests can each get new personalised questions.
+ */
 async function seed(userId: string) {
   const starter = fakeItems().map((i) => Object.fromEntries(Object.entries(i).filter(([k]) => k !== "media")) as Prisma.PracticeItemCreateManyInput);
   await db.practiceItem.createMany({ data: starter.map((i) => ({ ...i, contentKey: `starter-test:${i.id}` })) });
-  const personal = starter
-    .filter((i) => MOCK_SLUGS.has(i.taskSlug as never) && (i.itemIndex ?? 0) < 2)
-    .map((i, n) => ({ ...Object.fromEntries(Object.entries(i).filter(([k]) => k !== "id")), userId, source: "generated" as const, contentKey: `personal-test:${n}` }));
+  const personal = PARTS.flatMap((part) => {
+    const source = starter.filter((i) => i.taskSlug === part.slug);
+    return Array.from({ length: part.items * 2 }, (_, n) => ({
+      ...Object.fromEntries(Object.entries(source[n % source.length]).filter(([k]) => k !== "id")),
+      userId,
+      source: "generated" as const,
+      itemIndex: n,
+      contentKey: `personal-test:${part.slug}:${n}`,
+    }));
+  });
   await db.practiceItem.createMany({ data: personal as Prisma.PracticeItemCreateManyInput[] });
 }
 
@@ -61,19 +71,31 @@ async function perfectAnswers(items: Form["items"]) {
   for (const f of items) {
     const itemId = f.view.items[0].itemId;
     const row = await db.practiceItem.findUniqueOrThrow({ where: { id: itemId } });
+    const key = row.answerKeyJson as Record<string, unknown>;
     for (const unitId of f.units) {
-      if (f.skill === "reading" || f.skill === "listening") out.push({ itemId, unitId, response: shownLetter(itemId, unitId, (row.answerKeyJson as Record<string, string>)[unitId]) });
-      else if (f.skill === "writing") out.push({ itemId, unitId, response: { body: "Hi Sam, thank you for your email. I would like to join the trip. I can bring food for everyone. Could you tell me the time? I hope the weather is good. Best wishes, Alex" } });
-      else out.push({ itemId, unitId, response: null });
+      if (row.taskSlug === "complete-the-words") out.push({ itemId, unitId, response: key[unitId] });
+      else if (row.taskSlug === "build-sentence") out.push({ itemId, unitId, response: key.s });
+      else if (row.taskSlug === "write-email" || row.taskSlug === "academic-discussion")
+        out.push({ itemId, unitId, response: { body: "Hi Sam, thank you for your email. I would like to join the trip. I can bring food for everyone. Could you tell me the time? I hope the weather is good. Best wishes, Alex" } });
+      else if (f.skill === "speaking") out.push({ itemId, unitId, response: null });
+      else out.push({ itemId, unitId, response: shownLetter(itemId, unitId, key[unitId] as string) });
     }
   }
   return out;
 }
 
-/** Uploads a recording for every Speaking question, as the session page does after each answer. */
+/**
+ * Uploads a recording for every Speaking question, as the session page does after each answer. The
+ * (mocked) transcription reads back what the "recording" says: the exact sentence for Listen and Repeat.
+ */
 async function recordSpeaking(userId: string, form: Form) {
   for (const f of form.items.filter((i) => i.skill === "speaking")) {
-    for (const unitId of f.units) await saveMockRecording(userId, { token: form.token, itemId: f.view.items[0].itemId, unitId, wav: Buffer.from(`wav:${unitId}`), durationMs: 20_000 });
+    const itemId = f.view.items[0].itemId;
+    const key = (await db.practiceItem.findUniqueOrThrow({ where: { id: itemId } })).answerKeyJson as Record<string, string>;
+    for (const unitId of f.units) {
+      const said = f.slug === "listen-repeat" ? key[unitId] : "I would like this job because I enjoy helping people and I work well in a team.";
+      await saveMockRecording(userId, { token: form.token, itemId, unitId, wav: Buffer.from(`say:${said}`), durationMs: 20_000 });
+    }
   }
 }
 
@@ -101,9 +123,10 @@ describe("mock test", () => {
     const u = await createUser("a@example.com");
     await seed(u.id);
     const form = await begin(u.id);
-    for (const skill of ALL) {
-      expect(form.items.filter((i) => i.skill === skill).reduce((n, i) => n + i.units.length, 0)).toBe(mockQuestionCount(skill));
-    }
+    // All 12 task types, with the blueprint's number of items each and every question of each item.
+    for (const part of PARTS) expect(form.items.filter((i) => i.slug === part.slug)).toHaveLength(part.items);
+    expect(new Set(form.items.map((i) => i.slug)).size).toBe(12);
+    for (const i of form.items) expect(i.units.length).toBeGreaterThan(0);
     expect(form.items.every((i) => i.view.items[0].source === "generated")).toBe(true);
     expect(await getCredits(u.id)).toMatchObject({ mockCredits: 0 });
     // Starting again (e.g. a reload or a second click) resumes the same test.
@@ -123,7 +146,7 @@ describe("mock test", () => {
     expect(result.personalised).toBe(1);
     expect(result.sections.find((s) => s.skill === "writing")!.checks?.length).toBeGreaterThan(0);
     // Writing and Speaking wait for the AI rating job; so does the overall band.
-    expect(result.sections.find((s) => s.skill === "speaking")).toMatchObject({ correct: null, band: null, answered: 2 });
+    expect(result.sections.find((s) => s.skill === "speaking")).toMatchObject({ correct: null, band: null, answered: 11, total: 11 });
     expect(result).toMatchObject({ scoring: "pending", estimatedBand: null, certificateCode: null });
     expect(await db.generationJob.count({ where: { jobType: "mock_scoring", userId: u.id } })).toBe(1);
     expect(await activeMockTest(u.id)).toBeNull();
@@ -161,24 +184,28 @@ describe("mock test", () => {
     const reading = form.items.find((i) => i.skill === "reading")!;
     await expect(saveMockRecording(u.id, { token: form.token, itemId: reading.view.items[0].itemId, unitId: reading.units[0], wav: Buffer.from("x"), durationMs: 1000 })).rejects.toMatchObject({ status: 400 });
     await recordSpeaking(u.id, form);
-    expect(objects.size).toBe(2);
+    expect(objects.size).toBe(11); // 7 Listen and Repeat sentences + 4 interview answers
     await submitMockTest(u.id, { token: form.token, answers: await perfectAnswers(form.items), durationSeconds: 900 });
     await expect(saveMockRecording(u.id, { token: form.token, itemId: form.items.find((i) => i.skill === "speaking")!.view.items[0].itemId, unitId: "q1", wav: Buffer.from("x"), durationMs: 1000 })).rejects.toMatchObject({ status: expect.any(Number) });
 
     await rateQueued();
     const r = (await mockHistory(u.id))[0];
     expect(r.scoring).toBe("done");
-    expect(r.sections.map((s) => [s.skill, s.band])).toEqual([["reading", 6], ["listening", 6], ["writing", 5], ["speaking", 5]]);
-    expect(r.estimatedBand).toBe(5.5); // average of 6, 6, 5, 5
-    expect(r.sections.find((s) => s.skill === "speaking")!.comments).toHaveLength(2);
+    // Writing: Build a Sentence 6, email 5, discussion 5 → 5.5. Speaking: repeats matched 100% → 6, interview 5 → 5.5.
+    expect(r.sections.map((s) => [s.skill, s.band])).toEqual([["reading", 6], ["listening", 6], ["writing", 5.5], ["speaking", 5.5]]);
+    expect(r.estimatedBand).toBe(6); // average 5.75, rounded to the nearest 0.5
+    expect(r.sections.find((s) => s.skill === "writing")).toMatchObject({ correct: 5, objectiveTotal: 5 });
+    expect(r.sections.find((s) => s.skill === "writing")!.comments).toHaveLength(2);
+    expect(r.sections.find((s) => s.skill === "speaking")!.comments).toHaveLength(4);
+    expect(r.sections.find((s) => s.skill === "speaking")!.note).toContain("matched 100%");
     // Recordings and the stored email text are gone once rated; usage is recorded.
     expect(objects.size).toBe(0);
     expect(await db.mediaAsset.count({ where: { attemptId: r.id, deletedAt: null } })).toBe(0);
     expect(JSON.stringify((await db.mockTestResult.findUniqueOrThrow({ where: { id: r.id } })).sectionsJson)).not.toContain("Hi Sam");
-    expect(await db.usageEvent.count({ where: { userId: u.id, eventType: "transcription" } })).toBe(2);
+    expect(await db.usageEvent.count({ where: { userId: u.id, eventType: "transcription" } })).toBe(11);
     // Running the job again changes nothing.
     await runMockScoring((await db.generationJob.findFirstOrThrow({ where: { jobType: "mock_scoring" } })));
-    expect((await mockResult(u.id, r.id)).estimatedBand).toBe(5.5);
+    expect((await mockResult(u.id, r.id)).estimatedBand).toBe(6);
   });
 
   it("counts unrecorded Speaking answers as band 1, and lets a failed rating be retried", async () => {
@@ -193,7 +220,7 @@ describe("mock test", () => {
     await rateQueued();
     const r = await mockResult(u.id, submitted.id);
     expect(r.sections.find((s) => s.skill === "speaking")!.band).toBe(1);
-    expect(r.estimatedBand).toBe(4.5); // average of 6, 6, 5, 1
+    expect(r.estimatedBand).toBe(4.5); // average of 6, 6, 5.5, 1
     await expect(retryMockScoring(u.id, submitted.id)).rejects.toMatchObject({ status: 409 });
   });
 
@@ -205,8 +232,8 @@ describe("mock test", () => {
     expect(result.certificateCode).toMatch(/^LT-\w{4}-\w{4}-\w{4}$/);
 
     const cert = (await findCertificate(result.certificateCode!.toLowerCase().replace(/-/g, " ")))!;
-    expect(cert).toMatchObject({ code: result.certificateCode, holderName: "a", overallBand: 5.5, revokedAt: null });
-    expect(cert.sections.map((s) => s.band)).toEqual([6, 6, 5, 5]);
+    expect(cert).toMatchObject({ code: result.certificateCode, holderName: "a", overallBand: 6, revokedAt: null });
+    expect(cert.sections.map((s) => s.band)).toEqual([6, 6, 5.5, 5.5]);
     expect(cert.sections.map((s) => s.skill)).toEqual(ALL);
     expect((await mockHistory(u.id))[0].certificateCode).toBe(cert.code);
 

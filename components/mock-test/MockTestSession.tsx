@@ -7,7 +7,7 @@ import { ArrowLeft, ArrowRight, Bookmark, BookmarkCheck, Check, Send } from "luc
 import { getSkill, type SkillId } from "@/lib/config/practice-types";
 import { MOCK_DEMO_MINUTES } from "@/lib/config/mock-test";
 import { MockTestSubmitting, type SubmitStage } from "./MockTestSubmitting";
-import type { AudioDTO, ChoiceQuestionDTO, PracticeView } from "@/lib/practice/dto";
+import type { AudioDTO, ChoiceQuestionDTO, CtwSegment, PracticeView } from "@/lib/practice/dto";
 import type { DailyLifeDocument } from "@/lib/services/types";
 import { api, errorMessage } from "@/lib/client/api";
 import { toWav16k } from "@/lib/client/wav";
@@ -24,6 +24,7 @@ import { ChoiceList } from "@/components/practice/ChoiceList";
 import { AudioPlayer } from "@/components/practice/AudioPlayer";
 import { RecordingControl, type RecordingResult } from "@/components/practice/RecordingControl";
 import { SKILL_TONE } from "@/components/practice/icons";
+import { LetterBoxes } from "@/components/practice/LetterBoxes";
 import { LoadingWave } from "@/components/ui/MediaLoading";
 import { cn } from "@/lib/utils/cn";
 
@@ -34,10 +35,16 @@ export interface MockFormItemDTO {
   view: PracticeView;
 }
 
-type Unit =
-  | { key: string; itemId: string; unitId: string; skill: SkillId; kind: "choice"; title: string; question: ChoiceQuestionDTO; document?: DailyLifeDocument; passage?: { title: string; paragraphs: string[] }; audio?: AudioDTO }
-  | { key: string; itemId: string; unitId: string; skill: SkillId; kind: "writing"; title: string; scenario: string; bullets: string[] }
-  | { key: string; itemId: string; unitId: string; skill: SkillId; kind: "speaking"; title: string; audio: AudioDTO; responseSeconds: number };
+type UnitBase = { key: string; itemId: string; unitId: string; skill: SkillId; title: string };
+type Unit = UnitBase &
+  (
+    | { kind: "choice"; question: ChoiceQuestionDTO; document?: DailyLifeDocument; passage?: { title: string; paragraphs: string[] }; audio?: AudioDTO }
+    /** A whole Complete the Words passage on one screen; the answer maps each blank to its letters. */
+    | { kind: "ctw"; passageTitle: string; segments: CtwSegment[]; blanks: string[] }
+    | { kind: "build"; context: string; prefix: string | null; suffix: string | null; tokens: { id: string; text: string }[] }
+    | { kind: "writing"; scenario: string; bullets: string[]; recipient: string | null; subject: string | null; professor: { name: string; prompt: string } | null; students: { name: string; text: string }[] }
+    | { kind: "speaking"; intro: string; repeat: boolean; audio: AudioDTO; responseSeconds: number }
+  );
 
 const TITLES: Record<PracticeView["kind"], string> = {
   "complete-the-words": "Complete the Words",
@@ -77,13 +84,29 @@ function toUnits(form: MockFormItemDTO[]): Unit[] {
         for (const it of v.items)
           for (const q of it.questions.filter((q) => f.units.includes(q.unitId))) out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, kind: "choice", title, question: q, audio: it.audio });
         break;
+      case "complete-the-words":
+        for (const it of v.items) {
+          const blanks = it.segments.flatMap((sg) => (sg.type === "blank" && f.units.includes(sg.unitId) ? [sg.unitId] : []));
+          out.push({ key: key(it.itemId, "ctw"), itemId: it.itemId, unitId: "ctw", skill: f.skill, kind: "ctw", title, passageTitle: it.title, segments: it.segments, blanks });
+        }
+        break;
+      case "build-sentence":
+        for (const it of v.items) out.push({ key: key(it.itemId, it.unitId), itemId: it.itemId, unitId: it.unitId, skill: f.skill, kind: "build", title, context: it.context, prefix: it.prefix, suffix: it.suffix, tokens: it.tokens });
+        break;
       case "write-email":
       case "academic-discussion":
-        for (const it of v.items) out.push({ key: key(it.itemId, it.unitId), itemId: it.itemId, unitId: it.unitId, skill: f.skill, kind: "writing", title, scenario: it.scenario, bullets: it.bullets });
+        for (const it of v.items)
+          out.push({ key: key(it.itemId, it.unitId), itemId: it.itemId, unitId: it.unitId, skill: f.skill, kind: "writing", title, scenario: it.scenario, bullets: it.bullets, recipient: it.recipient, subject: it.subject, professor: it.professor, students: it.students });
+        break;
+      case "listen-repeat":
+        for (const it of v.items)
+          for (const q of it.sentences.filter((q) => f.units.includes(q.unitId)))
+            out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, kind: "speaking", title, intro: it.situation, repeat: true, audio: q.audio, responseSeconds: q.responseSeconds });
         break;
       case "take-interview":
         for (const it of v.items)
-          for (const q of it.questions.filter((q) => f.units.includes(q.unitId))) out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, kind: "speaking", title, audio: q.audio, responseSeconds: q.responseSeconds });
+          for (const q of it.questions.filter((q) => f.units.includes(q.unitId)))
+            out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, kind: "speaking", title, intro: it.scenario, repeat: false, audio: q.audio, responseSeconds: q.responseSeconds });
         break;
       default:
         break;
@@ -144,6 +167,8 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
     const a = answers[u.key];
     if (a === undefined) return false;
     if (u.kind === "writing") return typeof (a as { body?: string }).body === "string" && (a as { body: string }).body.trim().length > 0;
+    if (u.kind === "ctw") return Object.values(a as Record<string, string>).some((v) => v.trim());
+    if (u.kind === "build") return (a as (string | null)[]).some((v) => v !== null);
     return true;
   };
   const unansweredHere = sectionUnits.filter((u) => !isAnswered(u)).length;
@@ -196,7 +221,11 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
       // Speaking recordings are already uploaded; the answer only marks them as given.
       const payload = units
         .filter((u) => isAnswered(u))
-        .map((u) => ({ itemId: u.itemId, unitId: u.unitId, response: u.kind === "speaking" ? null : answers[u.key] }));
+        .flatMap((u) => {
+          // A passage screen sends one answer per blank.
+          if (u.kind === "ctw") return Object.entries(answers[u.key] as Record<string, string>).filter(([, v]) => v.trim()).map(([unitId, v]) => ({ itemId: u.itemId, unitId, response: v }));
+          return [{ itemId: u.itemId, unitId: u.unitId, response: u.kind === "speaking" ? null : answers[u.key] }];
+        });
       // The server scores Reading and Listening while the request runs.
       scoring = window.setTimeout(() => setStage(2), 700);
       await api("/api/mock-test/submit", { body: { token, durationSeconds: Math.round((Date.now() - startedAt.current) / 1000), answers: payload } });
@@ -341,7 +370,7 @@ type UploadState = "uploading" | "saved" | "failed";
 
 /** One key per audio clip, shared by the questions about it. */
 const audioKey = (u: Unit) => {
-  const audio = u.kind === "writing" ? undefined : u.audio;
+  const audio = u.kind === "choice" || u.kind === "speaking" ? u.audio : undefined;
   return audio?.source ? `${audio.source.itemId}:${audio.source.role}` : u.key;
 };
 
@@ -391,26 +420,72 @@ function UnitView({ unit, answer, onAnswer, onRecorded, upload, played, onPlaySt
       </div>
     );
   }
+  if (unit.kind === "ctw") return <CtwView unit={unit} answer={(answer as Record<string, string> | undefined) ?? {}} onAnswer={onAnswer} />;
+  if (unit.kind === "build") return <BuildView unit={unit} answer={answer as (string | null)[] | undefined} onAnswer={onAnswer} />;
   if (unit.kind === "writing") {
     const text = (answer as { body?: string } | undefined)?.body ?? "";
+    const discussion = unit.professor !== null;
     return (
       <div className="flex flex-col gap-4">
-        <div className="text-[15px] text-body">
-          <p>{unit.scenario}</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5">
-            {unit.bullets.map((b) => (
-              <li key={b}>{b}</li>
+        {discussion ? (
+          <div className="flex flex-col gap-3 text-[15px] text-body">
+            <p>{unit.scenario}</p>
+            <div className="rounded-xl border border-line bg-surface-soft p-4">
+              <p className="text-sm font-bold text-ink">{unit.professor!.name} (professor)</p>
+              <p className="mt-1">{unit.professor!.prompt}</p>
+            </div>
+            {unit.students.map((st) => (
+              <div key={st.name} className="rounded-xl border border-line p-4">
+                <p className="text-sm font-bold text-ink">{st.name}</p>
+                <p className="mt-1">{st.text}</p>
+              </div>
             ))}
-          </ul>
-        </div>
-        <Textarea label="Your email" value={text} onChange={(e) => onAnswer(e.target.value ? { body: e.target.value } : undefined)} placeholder="Write your email here…" hint={`Word count: ${countWords(text)}`} className="min-h-56" />
+          </div>
+        ) : (
+          <div className="text-[15px] text-body">
+            <p>{unit.scenario}</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {unit.bullets.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
+            {(unit.recipient || unit.subject) && (
+              <p className="mt-3 text-sm text-muted">
+                {unit.recipient && (
+                  <>
+                    <span className="font-semibold text-ink">To:</span> {unit.recipient}{" "}
+                  </>
+                )}
+                {unit.subject && (
+                  <>
+                    <span className="font-semibold text-ink">Subject:</span> {unit.subject}
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+        )}
+        <Textarea
+          label={discussion ? "Your post" : "Your email"}
+          value={text}
+          onChange={(e) => onAnswer(e.target.value ? { body: e.target.value } : undefined)}
+          placeholder={discussion ? "Write your contribution to the discussion…" : "Write your email here…"}
+          hint={`Word count: ${countWords(text)}`}
+          className="min-h-56"
+        />
       </div>
     );
   }
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[15px] text-body">Listen to the interviewer&apos;s question, then record your answer. After you submit, your answers are transcribed and rated by AI. The recordings are deleted once rated.</p>
-      <AudioPlayer audio={unit.audio} label="Play question" transcript={false} testMode played={played} onPlayStart={onPlayStart} />
+      <p className="text-[15px] text-body">{unit.intro}</p>
+      <p className="text-sm text-muted">
+        {unit.repeat
+          ? "Listen to the sentence once, then record yourself saying exactly the same sentence."
+          : "Listen to the interviewer's question, then record your answer."}{" "}
+        Your recordings are transcribed after you submit and deleted once scored.
+      </p>
+      <AudioPlayer audio={unit.audio} label={unit.repeat ? "Play sentence" : "Play question"} transcript={false} testMode played={played} onPlayStart={onPlayStart} />
       {upload === "uploading" && (
         <p className="flex items-center gap-2 rounded-lg bg-primary-soft p-3 text-sm font-semibold text-primary" role="status">
           <LoadingWave label="Saving" /> Saving your answer…
@@ -431,6 +506,90 @@ function UnitView({ unit, answer, onAnswer, onRecorded, upload, played, onPlaySt
           <RecordingControl maxSeconds={unit.responseSeconds} onRecorded={onRecorded} onCleared={() => onAnswer(undefined)} testMode />
         </div>
       )}
+    </div>
+  );
+}
+
+/** A Complete the Words passage: every blank on one screen. */
+function CtwView({ unit, answer, onAnswer }: { unit: Extract<Unit, { kind: "ctw" }>; answer: Record<string, string>; onAnswer: (a: unknown) => void }) {
+  const set = (blank: string, v: string) => {
+    const next = { ...answer, [blank]: v };
+    onAnswer(Object.values(next).some((x) => x.trim()) ? next : undefined);
+  };
+  const filled = unit.blanks.filter((b) => (answer[b] ?? "").trim()).length;
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted">
+        Fill in the missing letters to complete each word. {filled} of {unit.blanks.length} filled.
+      </p>
+      <article aria-label={unit.passageTitle} className="rounded-xl border border-line p-4 text-[17px] leading-[3.2] text-body sm:p-6">
+        <h3 className="sr-only">{unit.passageTitle}</h3>
+        {unit.segments.map((seg, i) => {
+          if (seg.type === "text") return <span key={i}>{seg.text}</span>;
+          return (
+            <span key={seg.unitId} className="inline-flex items-baseline">
+              <span>{seg.prefix}</span>
+              <LetterBoxes
+                length={seg.length}
+                value={answer[seg.unitId] ?? ""}
+                onChange={(v) => set(seg.unitId, v)}
+                label={`Missing letters for the word starting with “${seg.prefix}”`}
+                status={(answer[seg.unitId] ?? "").trim() ? "answered" : "unanswered"}
+              />
+            </span>
+          );
+        })}
+      </article>
+    </div>
+  );
+}
+
+/** Build a Sentence: tap the word groups in order; tap a placed group to take it back. */
+function BuildView({ unit, answer, onAnswer }: { unit: Extract<Unit, { kind: "build" }>; answer: (string | null)[] | undefined; onAnswer: (a: unknown) => void }) {
+  const slots = answer ?? Array<string | null>(unit.tokens.length).fill(null);
+  const textOf = (id: string) => unit.tokens.find((t) => t.id === id)?.text ?? "";
+  const bank = unit.tokens.filter((t) => !slots.includes(t.id));
+  const setSlots = (next: (string | null)[]) => onAnswer(next.some((v) => v !== null) ? next : undefined);
+  const place = (id: string) => {
+    const at = slots.indexOf(null);
+    if (at < 0) return;
+    setSlots(slots.map((v, i) => (i === at ? id : v)));
+  };
+  return (
+    <div className="rounded-xl border border-line p-4 sm:p-6">
+      <p className="mb-5 text-base font-semibold text-ink">Make an appropriate sentence.</p>
+      <p className="text-base text-ink sm:text-lg">{unit.context}</p>
+      <ol className="mt-6 flex flex-wrap items-end gap-x-3 gap-y-4" aria-label="Your sentence">
+        {unit.prefix && <li className="pb-1 text-lg text-ink">{unit.prefix}</li>}
+        {slots.map((token, i) => (
+          <li key={i}>
+            {token === null ? (
+              <span className="block h-8 w-16 border-b-2 border-ink sm:w-20" role="img" aria-label={`Blank ${i + 1} of ${slots.length}, empty`} />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSlots(slots.map((v, j) => (j === i ? null : v)))}
+                aria-label={`Blank ${i + 1}: ${textOf(token)}. Click to remove.`}
+                className="rounded border-b-2 border-ink px-1 pb-0.5 text-lg font-semibold text-brand-700 hover:border-danger hover:text-danger dark:text-primary"
+              >
+                {textOf(token)}
+              </button>
+            )}
+          </li>
+        ))}
+        {unit.suffix && <li className="pb-1 text-lg text-ink">{unit.suffix}</li>}
+      </ol>
+      <div className="mt-8 flex min-h-10 flex-wrap items-center gap-x-4 gap-y-2" role="group" aria-label="Word bank">
+        {bank.length === 0 ? (
+          <span className="text-sm text-muted">All words placed. Click a word in the sentence to move it back.</span>
+        ) : (
+          bank.map((t) => (
+            <button key={t.id} type="button" onClick={() => place(t.id)} className="rounded px-1 text-lg font-semibold text-brand-700 hover:underline dark:text-primary">
+              {t.text}
+            </button>
+          ))
+        )}
+      </div>
     </div>
   );
 }

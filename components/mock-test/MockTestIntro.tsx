@@ -24,6 +24,13 @@ import { useToast } from "@/components/ui/Toast";
 import { UpgradeDialog } from "@/components/upgrade/UpgradeDialog";
 import { MockTestPreparing } from "./MockTestPreparing";
 
+const SCORING_NOTE: Record<SkillId, string> = {
+  reading: "Scored automatically · band estimate",
+  listening: "Scored automatically · band estimate",
+  writing: "Build a Sentence scored · email and discussion rated by AI",
+  speaking: "Repeats matched · interview rated by AI",
+};
+
 /** How to earn a certificate, with a link to the preview (or to the certificate the latest test earned). */
 function CertificateCard({ code }: { code: string | null }) {
   return (
@@ -103,7 +110,7 @@ export function MockTestIntro({ latest, active, credits }: { latest: MockResultD
 
         <InfoCallout title="About the Mock Test">
           Every mock test is new: it uses your own personalised questions that you have not seen in a mock test before (starter questions fill any
-          gaps). Each section has its own timer, like the real test. Every section gets a band on the 1–6 scale: Reading and Listening
+          gaps). It covers all 12 TOEFL 2026 task types, and each section has its own timer, like the real test. Every section gets a band on the 1–6 scale: Reading and Listening
           are scored from your answers, and Writing and Speaking are rated by AI about a minute after you submit. Your overall band is their
           average. Results are practice estimates, not official TOEFL scores.
         </InfoCallout>
@@ -112,7 +119,7 @@ export function MockTestIntro({ latest, active, credits }: { latest: MockResultD
           {[
             { icon: Sparkles, title: "New every time", body: "From your personalised questions" },
             { icon: Timer, title: "Section timers", body: "Each section is timed" },
-            { icon: TrendingUp, title: "Estimated band", body: "1–6 scale for Reading and Listening" },
+            { icon: TrendingUp, title: "Estimated band", body: "1–6 scale for every section" },
             { icon: Clock, title: "Track progress", body: "History of all your mock tests" },
           ].map(({ icon: Icon, title, body }) => (
             <div key={title} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-4 shadow-card">
@@ -130,7 +137,7 @@ export function MockTestIntro({ latest, active, credits }: { latest: MockResultD
             title={<span id="sections-title">Test Sections</span>}
             description="Choose the sections for your mock test."
             icon={<ListChecks className="size-7 text-primary" aria-hidden />}
-            action={<StatusBadge tone="primary">Short practice test</StatusBadge>}
+            action={<StatusBadge tone="primary">All 12 task types</StatusBadge>}
           />
           <fieldset>
             <legend className="sr-only">Sections to include</legend>
@@ -147,7 +154,7 @@ export function MockTestIntro({ latest, active, credits }: { latest: MockResultD
                       <span>
                         <span className={cn("block text-lg font-bold", tone.text)}>{s.title}</span>
                         <span className="text-xs text-muted">
-                          {mockQuestionCount(s.id)} questions · {MOCK_DEMO_MINUTES[s.id]} min
+                          About {mockQuestionCount(s.id)} questions · {MOCK_DEMO_MINUTES[s.id]} min
                         </span>
                       </span>
                     </span>
@@ -155,13 +162,13 @@ export function MockTestIntro({ latest, active, credits }: { latest: MockResultD
                       {parts.map((p) => (
                         <li key={p.slug} className="flex items-center justify-between gap-2 text-body">
                           <span>{getPracticeType(p.slug)?.title}</span>
-                          <span className="rounded-full bg-surface px-2 text-xs font-semibold text-ink">{p.items * p.unitsPerItem}</span>
+                          <span className="whitespace-nowrap rounded-full bg-surface px-2 text-xs font-semibold text-ink" title={`${p.items} item${p.items === 1 ? "" : "s"}, about ${p.items * p.about} questions`}>
+                            {p.items} × {p.about === 1 ? "1" : `~${p.about}`}
+                          </span>
                         </li>
                       ))}
                     </ul>
-                    <span className="mt-3 rounded-lg bg-surface/80 px-3 py-2 text-sm font-semibold text-ink">
-                      {s.id === "reading" || s.id === "listening" ? "Scored automatically · band estimate" : "Rated by AI · band estimate"}
-                    </span>
+                    <span className="mt-3 rounded-lg bg-surface/80 px-3 py-2 text-sm font-semibold text-ink">{SCORING_NOTE[s.id]}</span>
                   </label>
                 );
               })}
@@ -171,7 +178,7 @@ export function MockTestIntro({ latest, active, credits }: { latest: MockResultD
 
         <section aria-label="Start" className="flex flex-col items-center gap-3 rounded-[var(--radius-card)] border border-line bg-primary-soft/50 p-6 text-center">
           <p className="text-sm text-body">
-            Practice test: <span className="font-bold text-ink">{questions} questions</span> · about <span className="font-bold text-ink">{minutes} minutes</span> ·{" "}
+            Practice test: <span className="font-bold text-ink">about {questions} questions</span> · about <span className="font-bold text-ink">{minutes} minutes</span> ·{" "}
             {sections.length} {sections.length === 1 ? "section" : "sections"}, each timed
           </p>
           {canStart ? (

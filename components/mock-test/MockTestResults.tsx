@@ -26,6 +26,8 @@ export type { MockResultDTO };
 
 const bandOf = (r: MockResultDTO, skill: SkillId) => r.sections.find((s) => s.skill === skill)?.band ?? null;
 const SKILL_COLUMNS: SkillId[] = ["reading", "listening", "writing", "speaking"];
+/** Auto-scored questions in a section (Writing: only Build a Sentence). */
+const scoredOf = (s: MockResultDTO["sections"][number]) => s.objectiveTotal ?? s.total;
 
 /** While Writing and Speaking are being rated (refreshes itself), or a retry when rating failed. */
 function ScoringStatus({ result }: { result: MockResultDTO }) {
@@ -156,7 +158,7 @@ export function MockTestResults({ history }: { history: MockResultDTO[] }) {
 
   const graded = result.sections.filter((s) => s.correct !== null);
   const correct = graded.reduce((n, s) => n + (s.correct ?? 0), 0);
-  const total = graded.reduce((n, s) => n + s.total, 0);
+  const total = graded.reduce((n, s) => n + scoredOf(s), 0);
   const band = result.estimatedBand;
   const rating = result.scoring === "pending";
   const weakest = result.sections.filter((s) => s.band !== null).sort((a, b) => a.band! - b.band!)[0];
@@ -181,10 +183,10 @@ export function MockTestResults({ history }: { history: MockResultDTO[] }) {
             <p className="mt-2 text-body">
               {total ? (
                 <>
-                  You answered <span className="font-bold text-ink">{correct}</span> of {total} Reading and Listening questions correctly ({percent(correct, total)}%).
+                  You answered <span className="font-bold text-ink">{correct}</span> of {total} auto-scored questions correctly ({percent(correct, total)}%).
                 </>
               ) : (
-                "This test had no Reading or Listening questions."
+                "This test had no auto-scored questions."
               )}
             </p>
             <p className="mt-1 flex items-center justify-center gap-1.5 text-sm text-muted md:justify-start">
@@ -216,7 +218,7 @@ export function MockTestResults({ history }: { history: MockResultDTO[] }) {
         <ul className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
           {result.sections.map((s) => {
             const tone = SKILL_TONE[s.skill];
-            const p = s.correct !== null ? percent(s.correct, s.total) : null;
+            const p = s.correct !== null ? percent(s.correct, scoredOf(s)) : null;
             const firstType = practiceTypesForSkill(s.skill)[0];
             return (
               <li key={s.skill} className={cn("flex flex-col gap-3 rounded-xl border p-4", tone.border, tone.soft)}>
@@ -224,7 +226,7 @@ export function MockTestResults({ history }: { history: MockResultDTO[] }) {
                   <SkillIconTile skill={s.skill} className="bg-surface" />
                   <div className="min-w-0 flex-1">
                     <p className={cn("font-bold", tone.text)}>{getSkill(s.skill).title}</p>
-                    <p className="text-sm font-semibold text-ink">{s.correct !== null ? `${s.correct} / ${s.total} correct` : `${s.answered} / ${s.total} answered`}</p>
+                    <p className="text-sm font-semibold text-ink">{s.correct !== null ? `${s.correct} / ${scoredOf(s)} correct${s.objectiveTotal ? " (auto-scored)" : ""}` : `${s.answered} / ${s.total} answered`}</p>
                   </div>
                   {s.band !== null && (
                     <span className="rounded-lg bg-surface px-2.5 py-1 text-center">

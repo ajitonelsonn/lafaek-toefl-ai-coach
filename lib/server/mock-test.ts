@@ -72,6 +72,8 @@ export interface OpenResponse {
   itemId: string;
   unitId: string;
   skill: "writing" | "speaking";
+  /** Absent on results stored before the full blueprint (then: write-email or take-interview). */
+  slug?: PracticeSlug;
   answered: boolean;
   text?: string;
 }
@@ -95,7 +97,8 @@ export const mockScoringKey = (mockId: string) => `${mockId}:mock_scoring`;
 
 function toResult(row: { id: string; completedAt: Date; durationSeconds: number; sectionsJson: Prisma.JsonValue; certificate?: { code: string } | null }): MockResult {
   const s = row.sectionsJson as unknown as Stored;
-  const sections = (Array.isArray(s) ? s : s.sections).map((x) => ({ ...x, band: x.band ?? (x.correct !== null ? estimateBandFromAccuracy(x.correct, x.total) : null) }));
+  // Results in the first format stored no bands; newer ones store them (null while being rated).
+  const sections = Array.isArray(s) ? s.map((x) => ({ ...x, band: x.band ?? (x.correct !== null ? estimateBandFromAccuracy(x.correct, x.total) : null) })) : s.sections;
   const bands = sections.map((x) => x.band).filter((b): b is number => b !== null);
   return {
     id: row.id,
@@ -152,7 +155,7 @@ async function pickItems(userId: string, sections: SkillId[]): Promise<MockFormI
         .slice(0, part.items)
         .map((x) => x.r);
       for (const row of picked) {
-        const units = unitIdsOf(part.slug, row).slice(0, part.unitsPerItem);
+        const units = unitIdsOf(part.slug, row);
         if (units.length) items.push({ skill, slug: part.slug, units, view: buildView(part.slug, [row]) });
       }
     }
@@ -270,12 +273,15 @@ export async function submitMockTest(userId: string, input: { token: string; ans
   const answerFor = (itemId: string, unitId: string) => input.answers.find((a) => a.itemId === itemId && a.unitId === unitId);
   const open: OpenResponse[] = [];
 
+  // A section can mix auto-scored questions (e.g. Build a Sentence) with answers the AI rates later
+  // (the email and the discussion post); its band then waits for the rating job.
   const sections: MockSectionResult[] = form.s.map((skill) => {
     let correct = 0;
+    let objectiveTotal = 0;
     let total = 0;
     let answered = 0;
-    let objective = false;
-    let note: string | undefined;
+    let rated = 0;
+    const words: string[] = [];
     let checks: WritingCheckDTO[] | undefined;
     for (const [itemId, s, units] of form.f) {
       if (s !== skill) continue;
@@ -287,24 +293,36 @@ export async function submitMockTest(userId: string, input: { token: string; ans
         const a = answerFor(itemId, unit);
         if (a) answered++;
         if (skill === "speaking") {
-          open.push({ itemId, unitId: unit, skill, answered: !!a });
+          open.push({ itemId, unitId: unit, skill, slug, answered: !!a });
+          rated++;
           continue;
         }
         const r = scoreUnit(slug, row, unit, a?.response);
         if (r.correct !== null) {
-          objective = true;
+          objectiveTotal++;
           if (r.correct) correct++;
         } else if (r.checks) {
-          checks = r.checks;
+          checks = [...(checks ?? []), ...r.checks];
           const body = ((a?.response as { body?: string } | undefined)?.body ?? "").trim().slice(0, 6000);
-          open.push({ itemId, unitId: unit, skill: "writing", answered: !!body, text: body });
-          note = `${body ? body.split(/\s+/).length : 0} words written.`;
+          open.push({ itemId, unitId: unit, skill: "writing", slug, answered: !!body, text: body });
+          rated++;
+          words.push(`${body ? body.split(/\s+/).length : 0} words in ${slug === "write-email" ? "your email" : "your discussion post"}`);
         }
       }
     }
+    let note = words.length ? `${words.join(", ")}.` : undefined;
     if (skill === "speaking") note = answered ? `${answered} of ${total} answers recorded.` : "No answers recorded.";
-    const band = objective ? estimateBandFromAccuracy(correct, total) : null;
-    return { skill, correct: objective ? correct : null, total, answered, band, ...(note ? { note } : {}), ...(checks ? { checks } : {}) };
+    const band = objectiveTotal && !rated ? estimateBandFromAccuracy(correct, objectiveTotal) : null;
+    return {
+      skill,
+      correct: objectiveTotal ? correct : null,
+      total,
+      answered,
+      band,
+      ...(objectiveTotal && objectiveTotal !== total ? { objectiveTotal } : {}),
+      ...(note ? { note } : {}),
+      ...(checks ? { checks } : {}),
+    };
   });
 
   const bands = sections.map((s) => s.band).filter((b): b is number => b !== null);

@@ -1,32 +1,42 @@
 import type { PracticeSlug, SkillId } from "./practice-types";
 
 /**
- * The short mock test: per section, which task types and how many questions from each.
- * Questions come from the learner's own AI-generated items first (unused in earlier mock tests),
- * then from the shared starter set. Complete the Words and Build a Sentence are practised on
- * their own pages and are not part of the mock test.
+ * The mock test: all 12 task types, as a number of items per task type. Every question of each
+ * item is used, so the number of questions follows the generation settings (e.g. a Read in Daily
+ * Life item has 2–3 questions). `about` is the usual number of questions per item, for display only.
+ * Items come from the learner's own AI-generated questions first (unused in earlier mock tests),
+ * then from the shared starter set.
  */
-export const MOCK_BLUEPRINT: Record<SkillId, { slug: PracticeSlug; items: number; unitsPerItem: number }[]> = {
+export const MOCK_BLUEPRINT: Record<SkillId, { slug: PracticeSlug; items: number; about: number }[]> = {
   reading: [
-    { slug: "read-in-daily-life", items: 1, unitsPerItem: 2 },
-    { slug: "read-academic-passage", items: 1, unitsPerItem: 3 },
+    { slug: "complete-the-words", items: 1, about: 10 },
+    { slug: "read-in-daily-life", items: 3, about: 3 },
+    { slug: "read-academic-passage", items: 2, about: 5 },
   ],
   listening: [
-    { slug: "listen-choose-response", items: 2, unitsPerItem: 1 },
-    { slug: "listen-conversation", items: 1, unitsPerItem: 2 },
-    { slug: "listen-announcement", items: 1, unitsPerItem: 2 },
+    { slug: "listen-choose-response", items: 5, about: 1 },
+    { slug: "listen-conversation", items: 2, about: 4 },
+    { slug: "listen-announcement", items: 2, about: 3 },
+    { slug: "listen-academic-talk", items: 2, about: 4 },
   ],
-  writing: [{ slug: "write-email", items: 1, unitsPerItem: 1 }],
-  speaking: [{ slug: "take-interview", items: 1, unitsPerItem: 2 }],
+  writing: [
+    { slug: "build-sentence", items: 5, about: 1 },
+    { slug: "write-email", items: 1, about: 1 },
+    { slug: "academic-discussion", items: 1, about: 1 },
+  ],
+  speaking: [
+    { slug: "listen-repeat", items: 1, about: 7 },
+    { slug: "take-interview", items: 1, about: 4 },
+  ],
 };
 
-/** Minutes per section in the short mock test; each section has its own timer. */
-export const MOCK_DEMO_MINUTES: Record<SkillId, number> = { reading: 8, listening: 7, writing: 7, speaking: 4 };
+/** Minutes per section, close to the TOEFL iBT 2026 timings; each section has its own timer. */
+export const MOCK_DEMO_MINUTES: Record<SkillId, number> = { reading: 30, listening: 29, writing: 23, speaking: 8 };
 
-/** Planned full-length durations, shown for reference only (not official ETS timings). */
-export const MOCK_FULL_MINUTES: Record<SkillId, number> = { reading: 35, listening: 36, writing: 32, speaking: 17 };
+/** Full TOEFL iBT 2026 section lengths, shown for reference only (not official ETS timings). */
+export const MOCK_FULL_MINUTES: Record<SkillId, number> = { reading: 30, listening: 29, writing: 23, speaking: 8 };
 
 export const MOCK_SECTION_ORDER: SkillId[] = ["reading", "listening", "writing", "speaking"];
 
-/** Questions per section in the short mock test. */
-export const mockQuestionCount = (skill: SkillId) => MOCK_BLUEPRINT[skill].reduce((n, b) => n + b.items * b.unitsPerItem, 0);
+/** About how many questions a section has (the real number follows the items chosen). */
+export const mockQuestionCount = (skill: SkillId) => MOCK_BLUEPRINT[skill].reduce((n, b) => n + b.items * b.about, 0);
