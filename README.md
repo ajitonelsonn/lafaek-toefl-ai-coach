@@ -81,9 +81,16 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
     **Upgrade · $5**. Each saved plan gets its own generation batch; earlier questions stay available.
 - **Generation jobs.** Job types are `study_schedule`, `task_pack` (12 per plan; default counts in
   `PRACTICE_TYPES.referenceCount`, 133 questions per plan), `vocabulary_pack`, `asset_image`, `asset_audio`,
-  `delete_user_assets` and `reconcile_media`.
-  - Jobs use leases with heartbeats, expired-lease recovery, exponential backoff with jitter, a per-user concurrency
-    limit and per-item checkpoints. Completed items are never regenerated.
+  `mock_scoring`, `delete_user_assets` and `reconcile_media`.
+  - Jobs use leases with heartbeats, expired-lease recovery, exponential backoff with jitter, per-user concurrency
+    limits and per-item checkpoints. Completed items are never regenerated.
+  - **Two lanes.** Question packs (`task_pack`) run in a long lane (`WORKER_CONCURRENCY`, default 3;
+    `GENERATION_MAX_CONCURRENCY_PER_USER`). Everything else runs in a quick lane with its own slots
+    (`WORKER_QUICK_CONCURRENCY`, default 6; `GENERATION_MAX_QUICK_CONCURRENCY_PER_USER`, default 4): audio, pictures,
+    vocabulary, the schedule and the mock test rating. Those jobs take seconds each, so they never wait behind a
+    pack that takes minutes.
+  - **Build a Sentence** is written and checked in batches of 5 with low model reasoning (`reasoning_effort: "low"`).
+    That made it about 8× faster than the model's default with the same pass rate on the grammar check.
   - A rejected key or unknown model waits as `PROVIDER_CONFIG` ("Waiting for AI service setup") instead of failing,
     and is re-queued when the worker restarts.
   - On `model_not_found`, Meta calls retry 3 times, then use `META_TEXT_FALLBACK_MODEL` (`muse-spark-1.2`).
@@ -118,18 +125,33 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
   - Credits are used atomically (`UPDATE … WHERE credits > 0`) under a per-user advisory lock, so concurrent
     requests cannot overspend.
 - **Mock test.** Each test is built per learner (`lib/server/mock-test.ts`, `MOCK_BLUEPRINT`).
-  - **Contents:** Reading 5, Listening 6, Writing 1 and Speaking 2 questions, about 26 min. It uses the learner's
-    own AI questions first, preferring ones not used in earlier mock tests and not yet practised. The starter set fills
-    any gaps.
+  - **Contents:** all 12 task types, about 80 questions in about 90 minutes:
+    - Reading: Complete the Words 1, Read in Daily Life 3, Academic Passage 2.
+    - Listening: Choose a Response 5, Conversation 2, Announcement 2, Academic Talk 2.
+    - Writing: Build a Sentence 10, Email 1, Academic Discussion 1.
+    - Speaking: Listen and Repeat 1 (7 sentences), Interview 1 (4 questions).
+
+    The numbers are items, and every question in each item is used. The test takes the learner's own AI questions
+    first, preferring ones not used in earlier mock tests and not yet practised. The starter set fills any gaps.
   - **Starting.** `POST /api/mock-test/start` uses one mock credit and stores the chosen form as a `started` row.
     Reloading `/mock-test/session` resumes it without using another credit; unfinished tests expire after 8 hours.
     A GSAP "preparing your mock test" screen covers the wait.
   - **Signed form.** The browser gets the chosen questions in a signed (HMAC) form token, so a submission scores
     exactly those questions, once, for that user.
-  - **Timing.** Each section has its own timer. When it ends, the next section starts and the learner cannot go
-    back; the last section submits automatically.
-  - **Scoring.** Reading and Listening are scored on the server and get a rough practice band (1–6); the overall
-    estimate is their average. Writing gets length and structure checks, and Speaking is recorded only.
+  - **Timing.** Test conditions: no pause, audio plays once, and spoken answers cannot be re-recorded.
+    - Each section has its own timer: Reading 30, Listening 29, Writing 23 and Speaking 8 minutes.
+    - In Writing, each task has its own timer, as in the real test: Build a Sentence 6, Email 7 and Discussion 10
+      minutes.
+    - When a timer ends, the next part starts and the learner cannot go back. The last part submits automatically,
+      behind a GSAP progress screen.
+  - **Scoring.** Every section gets a band (1–6), and the overall band is their average.
+    - Reading, Listening and Build a Sentence are scored on submit.
+    - The email, the discussion post and the interview are rated by AI in the worker (`mock_scoring`), from
+      transcripts for speaking. Listen and Repeat is scored by how closely the transcript matches each sentence.
+    - Recordings are deleted after rating.
+  - **Certificates.** An overall band of 4.0 or higher on a full test earns a certificate with an ID and QR code.
+    Anyone can check it at `/verify/<ID>` (`lib/server/certificates.ts`). Learners without one can open a
+    watermarked preview at `/mock-test/certificate-preview`.
   - **History.** Every result is kept: the results page shows the latest test plus a history chart and table.
 - **Timing.** Practice tasks have no countdown; only the mock test is timed. Speaking recordings still stop at the
   task's answer time.
@@ -168,6 +190,12 @@ usually cannot create the shadow database that `migrate dev` needs) and apply it
     Singapore. See `BACKEND_PROGRESS.md`.
   - Build command: `npm ci --include=dev`. `tsx` and `prisma` are devDependencies.
   - Start command: `npm run worker:prod`.
+  - **Instance size: 0.5 CPU, 512 MB RAM is enough.** On that instance (Render 0.5c-512mb), a learner's whole
+    study plan is ready in about **10–15 minutes**. That covers the AI schedule, all 133 questions across the 12
+    practice types, vocabulary, audio and pictures. The worker spends most of its time waiting on the AI and voice
+    APIs rather than computing, so a larger instance would not make it noticeably faster. The speed comes from the
+    two job lanes and the low-reasoning Build a Sentence batches (measured October 2026; before, Build a Sentence
+    alone could take over an hour).
   - Environment: the same variables as Vercel, with `NODE_ENV=production`.
   - Alternative or supplement: a cron job can `POST /api/internal/worker/tick` with
     `Authorization: Bearer $WORKER_TICK_SECRET`. It processes one job per call, and the queue itself stays in PostgreSQL.
