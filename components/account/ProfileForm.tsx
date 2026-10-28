@@ -6,19 +6,19 @@ import { Camera } from "lucide-react";
 import { BACKGROUNDS } from "@/lib/config/assets";
 import { useSession } from "@/components/session/SessionProvider";
 import { api, ApiClientError, errorMessage } from "@/lib/client/api";
-import { initials } from "@/lib/utils/format";
+import { formatDate, initials } from "@/lib/utils/format";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/Toast";
 
-export function ProfileForm() {
+export function ProfileForm({ planLabel }: { planLabel: string }) {
   const { user } = useSession();
-  return <ProfileEditor key={user.email} name={user.name} email={user.email} />;
+  return <ProfileEditor key={user.email} name={user.name} email={user.email} planLabel={planLabel} memberSince={user.createdAt} />;
 }
 
-function ProfileEditor({ name: savedName, email }: { name: string; email: string }) {
+function ProfileEditor({ name: savedName, email, planLabel, memberSince }: { name: string; email: string; planLabel: string; memberSince: string }) {
   const toast = useToast();
   const { user, setUser } = useSession();
   const [name, setName] = useState(savedName);
@@ -66,7 +66,8 @@ function ProfileEditor({ name: savedName, email }: { name: string; email: string
                 </button>
               </div>
               <p className="text-xl font-bold text-ink">{savedName}</p>
-              <StatusBadge tone="primary">Free & open source</StatusBadge>
+              <StatusBadge tone="primary">{planLabel}</StatusBadge>
+              {memberSince && <p className="text-xs text-muted">Member since {formatDate(memberSince)}</p>}
               <p className="max-w-40 text-center text-xs text-muted">Photo upload comes later.</p>
             </div>
             <div className="flex w-full flex-1 flex-col gap-5">

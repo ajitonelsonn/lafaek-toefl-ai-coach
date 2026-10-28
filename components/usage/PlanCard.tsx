@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
-import { BOOST_PACK } from "@/lib/config/pricing";
+import { BOOST_PACK, planName } from "@/lib/config/pricing";
 import { formatDate } from "@/lib/utils/format";
 import { gsap, useMotion } from "@/lib/client/motion";
 import { Card } from "@/components/ui/Card";
@@ -21,7 +21,6 @@ export interface AccountPlanDTO {
   grants: { date: string; packs: number; planCredits: number; mockCredits: number }[];
 }
 
-export const planName = (p: Pick<AccountPlanDTO, "packs">) => (p.packs ? `Starter + ${p.packs} ${BOOST_PACK.name}${p.packs === 1 ? "" : "s"}` : "Starter (free)");
 
 /** Usage page: the learner's plan, lifetime credits left, and how to get more. */
 export function PlanCard({ plan }: { plan: AccountPlanDTO }) {

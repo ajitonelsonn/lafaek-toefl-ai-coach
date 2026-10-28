@@ -7,6 +7,9 @@ export const FREE_MOCK_CREDITS = 1;
 
 export const BOOST_PACK = { name: "Boost Pack", priceUsd: 5, planCredits: 1, mockCredits: 2 } as const;
 
+/** "Starter (free)" or "Starter + 2 Boost Packs" (shared by server and browser code). */
+export const planName = (p: { packs: number }) => (p.packs ? `Starter + ${p.packs} ${BOOST_PACK.name}${p.packs === 1 ? "" : "s"}` : "Starter (free)");
+
 export interface PricingTier {
   id: "starter" | "boost" | "open-source";
   name: string;

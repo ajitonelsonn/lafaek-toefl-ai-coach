@@ -12,7 +12,8 @@ import { TipCard } from "@/components/ui/Callouts";
 import { Icon3D } from "@/components/ui/Icon3D";
 import { ColumnChart } from "@/components/charts/Charts";
 import { UsageMetricCard, type UsageMetricView } from "./UsageMetricCard";
-import { PlanCard, planName, type AccountPlanDTO } from "./PlanCard";
+import { PlanCard, type AccountPlanDTO } from "./PlanCard";
+import { planName } from "@/lib/config/pricing";
 
 type Range = UsageDTO["range"];
 const RANGE_LABEL: Record<Range, string> = { "7d": "Last 7 days", "30d": "Last 30 days", all: "All time" };
