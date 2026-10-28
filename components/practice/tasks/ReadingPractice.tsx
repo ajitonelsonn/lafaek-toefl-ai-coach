@@ -7,7 +7,8 @@ import type { DailyLifeDocument } from "@/lib/services/types";
 import type { PracticeView } from "@/lib/practice/dto";
 import { ChoiceSetPractice } from "./ChoiceSetPractice";
 
-function DocumentView({ doc }: { doc: DailyLifeDocument }) {
+/** A Read in Daily Life document (email, notice or text messages); also used by the mock test. */
+export function DocumentView({ doc }: { doc: DailyLifeDocument }) {
   if (doc.type === "email") {
     return (
       <article aria-label="Email" className="overflow-hidden rounded-xl border-2 border-warning/40 bg-surface">

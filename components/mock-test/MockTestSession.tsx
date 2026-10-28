@@ -25,6 +25,7 @@ import { AudioPlayer } from "@/components/practice/AudioPlayer";
 import { RecordingControl, type RecordingResult } from "@/components/practice/RecordingControl";
 import { SKILL_TONE } from "@/components/practice/icons";
 import { LetterBoxes } from "@/components/practice/LetterBoxes";
+import { DocumentView } from "@/components/practice/tasks/ReadingPractice";
 import { LoadingWave } from "@/components/ui/MediaLoading";
 import { cn } from "@/lib/utils/cn";
 
@@ -416,18 +417,8 @@ function UnitView({ unit, answer, onAnswer, onRecorded, upload, played, onPlaySt
         {(unit.document || unit.passage || unit.audio) && (
           <div className="min-w-0">
             {unit.audio && <AudioPlayer audio={unit.audio} label="Play audio" transcript={false} testMode played={played} onPlayStart={onPlayStart} />}
-            {unit.document?.type === "email" && (
-              <article className="rounded-xl border border-line bg-surface-soft p-4 text-[15px] leading-relaxed text-body">
-                <p className="text-sm text-muted">
-                  <span className="font-semibold text-ink">Subject:</span> {unit.document.subject}
-                </p>
-                {unit.document.body.map((p, i) => (
-                  <p key={i} className="mt-2">
-                    {p}
-                  </p>
-                ))}
-              </article>
-            )}
+            {/* Every document type (email, notice, text messages), the same view as in practice. */}
+            {unit.document && <DocumentView doc={unit.document} />}
             {unit.passage && (
               <article className="max-h-96 overflow-y-auto rounded-xl border border-line bg-surface-soft p-4 text-[15px] leading-relaxed text-body">
                 <h3 className="font-bold text-ink">{unit.passage.title}</h3>
