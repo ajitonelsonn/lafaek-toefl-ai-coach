@@ -3,7 +3,7 @@ import type { PracticeSlug } from "@/lib/config/practice-types";
 
 // Versioned prompt templates. Bump PROMPT_VERSION whenever wording changes;
 // it is stored with every generated item and job for auditability.
-export const PROMPT_VERSION = "gen-2026-10-28.1";
+export const PROMPT_VERSION = "gen-2026-10-28.2";
 
 export const SYSTEM_PROMPT = `You write ORIGINAL English practice material for adult learners preparing for the TOEFL iBT (format from January 2026).
 Rules:
@@ -44,7 +44,7 @@ const TASK_INSTRUCTIONS: Record<PracticeSlug, string> = {
   "read-academic-passage":
     "Write one original academic passage of 3–4 paragraphs (each 60–110 words) and 5 questions covering main idea, detail, inference, vocabulary in context and purpose/organization.",
   "listen-choose-response":
-    "Write one short spoken statement or question (5–20 words) from everyday or campus life, and four written responses where exactly one is the most natural reply. Distractors should repeat words or misread the intent.",
+    "Write one short spoken statement or question (5–20 words) from everyday or campus life, and four written responses where exactly one is the most natural reply. Distractors should repeat words or misread the intent. In the explanation, refer to replies by their words, never by letter or position.",
   "listen-conversation":
     "Write a natural conversation (8–12 turns) between two speakers (e.g. a student and a staff member) and 3–4 questions about what was said and implied. Use speaker ids S1 and S2. imagePrompt: a short description of the scene for an illustration, no text in the image.",
   "listen-announcement":
@@ -90,6 +90,25 @@ export function buildUserPrompt(slug: PracticeSlug, ctx: PromptContext): string 
 
 export function buildRepairPrompt(original: string, errors: string[]): string {
   return `${original}\n\nYour previous answer was rejected for these reasons:\n- ${errors.slice(0, 8).join("\n- ")}\nWrite a corrected, complete answer.`;
+}
+
+const BATCH_VARIETY: Partial<Record<PracticeSlug, string>> = {
+  "listen-choose-response":
+    "Mix them: questions and statements; all four speaker roles (student, staff, professor, friend); and different kinds of correct reply (answering, agreeing, suggesting, declining, asking back). Every spoken line must be new: never reuse a situation or line from another item or from the topics already used.",
+};
+
+/** Several items of one task type in one call (each must still pass the per-item checks). */
+export function batchPrompt(slug: PracticeSlug, ctx: PromptContext, count: number): string {
+  // buildUserPrompt lists the last 8 topics; a batch pack has many more, so name the earlier ones too.
+  const earlier = ctx.avoidTopics.slice(-40, -8);
+  const areas = [...new Set(Array.from({ length: count }, (_, i) => suggestedTopic(slug, ctx.itemIndex + i * 5, ctx.avoidTopics)))];
+  return [
+    buildUserPrompt(slug, ctx),
+    `Write ${count} different items in "items", each with a different topic and situation. Instead of one topic area, spread them over these: ${areas.join(", ")}. ${BATCH_VARIETY[slug] ?? ""}`.trim(),
+    earlier.length ? `Earlier topics, also not to repeat: ${earlier.join("; ")}.` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** Several Build a Sentence items in one call (each must still pass the per-item checks). */

@@ -24,9 +24,9 @@ vi.mock("@/lib/server/providers/meta", async () => {
         });
         return { data: { results }, usage, model: "muse-spark-1.3", requestId };
       }
-      if (task === "generate:build-sentence-batch" && control.mode === "ok") {
+      if (task.startsWith("generate:") && task.endsWith("-batch") && control.mode === "ok") {
         const want = Number(/Write (\d+) different items/.exec(user)?.[1] ?? 1);
-        const fixture = starterEntries().find((e) => e.slug === "build-sentence")!.output;
+        const fixture = starterEntries().find((e) => e.slug === task.slice("generate:".length, -"-batch".length))!.output;
         return { data: { items: Array.from({ length: want }, () => fixture) }, usage, model: "muse-spark-1.3", requestId };
       }
       if (task === "generate:study-schedule") {
@@ -39,7 +39,7 @@ vi.mock("@/lib/server/providers/meta", async () => {
         const entry = (word: string) => ({ word, partOfSpeech: "noun", pronunciation: "/test/", meaning: "a test meaning", example: `An example with ${word}.`, category: "academic", related: [] });
         return { data: { words: [...picks.map(entry), entry("xylophonist")] }, usage, model: "muse-spark-1.3", requestId };
       }
-      const slug = task.replace("generate:", "") as PracticeSlug;
+      const slug = task.replace("generate:", "").replace(/-batch$/, "") as PracticeSlug;
       if (control.failSlug === slug || control.mode === "transient") throw new ProviderError("meta", "server", "meta request failed (503).", 503);
       if (control.mode === "auth") throw new ProviderError("meta", "auth", "meta request failed (401).", 401);
       if (control.mode === "malformed" || (control.mode === "malformed-once" && control.calls === 1)) return { data: { nonsense: true }, usage, model: "muse-spark-1.3", requestId };
@@ -208,6 +208,28 @@ describe("generation batches", () => {
     await drain();
     expect(await db.practiceItem.count({ where: { userId: u.id, taskSlug: "build-sentence" } })).toBe(6);
     expect(control.calls - before).toBe(4); // 5 + 1 sentences: 2 generation calls and 2 check calls (was at least 12)
+    expect((await db.generationJob.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("completed");
+  });
+
+  it("writes Listen and Choose a Response ten per call, with the correct reply in shuffled positions", async () => {
+    const u = await createUser("a@example.com");
+    await savePlan(u.id, { ...INPUT }, false);
+    await startInitialBatch(u.id, randomUUID());
+    await db.generationJob.updateMany({ where: { jobType: "task_pack", NOT: { taskSlug: "listen-choose-response" } }, data: { status: "cancelled" } });
+    const job = await db.generationJob.findFirstOrThrow({ where: { jobType: "task_pack", taskSlug: "listen-choose-response" } });
+    await db.generationJob.update({ where: { id: job.id }, data: { payloadJson: { ...(job.payloadJson as object), items: 23 }, progressTotal: 23 } });
+    const before = control.calls;
+    await drain();
+    const items = await db.practiceItem.findMany({ where: { userId: u.id, taskSlug: "listen-choose-response" }, select: { itemIndex: true, contentJson: true, answerKeyJson: true } });
+    expect(items).toHaveLength(23);
+    expect(control.calls - before).toBe(3); // 10 + 10 + 3, no check calls (was 23)
+    expect(new Set(items.map((i) => i.itemIndex)).size).toBe(23);
+    // The answer key still points at the same reply text after shuffling.
+    const fixture = starterEntries().find((e) => e.slug === "listen-choose-response")!.output as { options: string[]; answerIndex: number };
+    for (const i of items) {
+      const options = (i.contentJson as { question: { options: { id: string; text: string }[] } }).question.options;
+      expect(options.find((o) => o.id === (i.answerKeyJson as { q1: string }).q1)?.text).toBe(fixture.options[fixture.answerIndex]);
+    }
     expect((await db.generationJob.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("completed");
   });
 

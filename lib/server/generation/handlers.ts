@@ -14,7 +14,7 @@ import { pickVoices, synthesizeSpeech } from "../providers/elevenlabs";
 import { bucketName, deleteObject, objectExists, objectKeyFor, putObject } from "../storage/s3";
 import { GEN_SCHEMAS, toStoredItem, validateGenerated, type StoredItem } from "../content/schemas";
 import { cefrForLevel } from "../study-plan";
-import { PROMPT_VERSION, SYSTEM_PROMPT, buildRepairPrompt, buildSentenceBatchCheckPrompt, buildSentenceBatchPrompt, buildUserPrompt, scenePrompt } from "./prompts";
+import { PROMPT_VERSION, SYSTEM_PROMPT, batchPrompt, buildRepairPrompt, buildSentenceBatchCheckPrompt, buildSentenceBatchPrompt, buildUserPrompt, scenePrompt, type PromptContext } from "./prompts";
 import { enqueueJob, heartbeat, setStage } from "./queue";
 
 export class JobFailure extends Error {
@@ -55,8 +55,9 @@ export async function runTaskPack(job: GenerationJob, workerId: string): Promise
   const input = (plan.answersJson as unknown as { input: StudyPlanInputBody }).input;
 
   await enforceDailyLimit(job.userId);
-  // Build a Sentence is generated and checked in batches (much faster; see below).
-  if (slug === "build-sentence") return runBuildSentenceBatches(job, workerId, plan, input, items);
+  // The large packs of short items are written several per call (much faster; see below).
+  const spec = BATCHED[slug];
+  if (spec) return runBatchedPack(job, workerId, plan, input, items, slug, spec);
 
   // A question that still fails its checks after repairs is skipped and replaced at the next slot
   // (up to 10% extra slots, at least 2), so one bad question cannot hold up the whole pack.
@@ -156,18 +157,49 @@ async function saveItem(job: GenerationJob, studyPlanId: string, slug: PracticeS
 }
 
 // ---------------------------------------------------------------------------
-// Build a Sentence in batches: one call writes up to 5 items, one call checks them all (grammar and
-// a unique word order). Passing items fill the next free slots; rejected ones are simply replaced by
-// the next batch, within a budget of about twice the target so a bad run cannot loop forever.
+// Batched packs: one call writes several items (Build a Sentence 5, Listen and Choose a Response 10).
+// Build a Sentence also gets one call that checks the whole batch (grammar and a unique word order).
+// Passing items fill the next free slots; rejected ones are replaced by the next batch, within a
+// budget of about twice the target so a bad run cannot loop forever.
 // ---------------------------------------------------------------------------
 
-const SENTENCE_BATCH = 5;
-// A real batch took about 33 s to write and 96 s to check (2026-10-28), so allow more than the default.
-const BATCH_TIMEOUT_SECONDS = 240;
 type SentenceItem = z.infer<(typeof GEN_SCHEMAS)["build-sentence"]>;
+type Verdicts = Map<number, { ok: boolean; issue: string }>;
 
-async function runBuildSentenceBatches(job: GenerationJob, workerId: string, plan: { id: string }, input: StudyPlanInputBody, items: number): Promise<void> {
-  const slug = "build-sentence" as const;
+interface BatchSpec {
+  size: number;
+  timeoutSeconds: number;
+  prompt: (ctx: PromptContext, count: number, toFix: { item: never; issue: string }[]) => string;
+  /** Optional second-pass check of the whole batch; rejected items go back to be corrected. */
+  check?: (job: GenerationJob, batch: number, items: never[]) => Promise<Verdicts>;
+  /** Adjusts a raw item before validation. */
+  prepare?: (raw: unknown) => unknown;
+}
+
+const BATCHED: Partial<Record<PracticeSlug, BatchSpec>> = {
+  // A real batch of 5 took about 33 s to write and 96 s to check (2026-10-28), so allow more than the default.
+  "build-sentence": { size: 5, timeoutSeconds: 240, prompt: buildSentenceBatchPrompt, check: verifyBuildSentences },
+  // Short items (one spoken line + four replies): 10 per call turns 50 calls into 5.
+  "listen-choose-response": { size: 10, timeoutSeconds: 180, prompt: (ctx, count) => batchPrompt("listen-choose-response", ctx, count), prepare: shuffleChoices },
+};
+
+/**
+ * Moves the correct reply to a random position: in a batch the model tends to put it in the same
+ * place every time. Skipped when the explanation names a letter, which would then be wrong.
+ */
+function shuffleChoices(raw: unknown): unknown {
+  const v = raw as { options?: unknown; answerIndex?: unknown; explanation?: unknown } | null;
+  if (!v || !Array.isArray(v.options) || typeof v.answerIndex !== "number" || !v.options[v.answerIndex]) return raw;
+  if (typeof v.explanation === "string" && /\b(option|answer|choice|response|reply)\s+[A-D]\b|\([A-D]\)/i.test(v.explanation)) return raw;
+  const options = [...v.options];
+  for (let i = options.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [options[i], options[j]] = [options[j], options[i]];
+  }
+  return { ...v, options, answerIndex: options.indexOf(v.options[v.answerIndex]) };
+}
+
+async function runBatchedPack(job: GenerationJob, workerId: string, plan: { id: string }, input: StudyPlanInputBody, items: number, slug: PracticeSlug, spec: BatchSpec): Promise<void> {
   const existing = await db.practiceItem.findMany({ where: { studyPlanId: plan.id, taskSlug: slug, userId: job.userId }, select: { itemIndex: true } });
   const taken = new Set(existing.map((i) => i.itemIndex));
   let storedCount = taken.size;
@@ -177,16 +209,16 @@ async function runBuildSentenceBatches(job: GenerationJob, workerId: string, pla
     taken.add(nextSlot);
     return nextSlot;
   };
-  const budget = Math.ceil(items * 2) + SENTENCE_BATCH;
+  const budget = Math.ceil(items * 2) + spec.size;
   let requested = 0;
   let lastIssues: string[] = [];
   // Rejected items go back with the checker's reason, to be corrected in the next batch (like repairs).
-  let toFix: { item: SentenceItem; issue: string }[] = [];
-  const batchSchema = z.strictObject({ items: z.array(GEN_SCHEMAS[slug]).min(1).max(SENTENCE_BATCH) });
+  let toFix: { item: unknown; issue: string }[] = [];
+  const batchSchema = z.strictObject({ items: z.array(GEN_SCHEMAS[slug]).min(1).max(spec.size) });
 
   for (let batch = 0; storedCount < items && requested < budget; batch++) {
     if (!(await heartbeat(job.id, workerId))) throw new JobFailure("LEASE_LOST", "Lease lost.", true);
-    const want = Math.min(SENTENCE_BATCH, items - storedCount);
+    const want = Math.min(spec.size, items - storedCount);
     requested += want;
     const usedTopics = (await db.practiceItem.findMany({ where: { userId: job.userId, taskSlug: slug }, select: { topic: true } })).map((t) => t.topic);
     const ctx = { cefrLevel: cefrForLevel(input.level), itemIndex: storedCount + batch, weakAreas: input.weakAreas, goals: input.goals, avoidTopics: usedTopics };
@@ -194,11 +226,11 @@ async function runBuildSentenceBatches(job: GenerationJob, workerId: string, pla
     let raw: unknown;
     let meta: { modelId: string; requestId: string | null };
     try {
-      const r = await generateText({ task: "generate:build-sentence-batch", schema: batchSchema as z.ZodType, system: SYSTEM_PROMPT, user: buildSentenceBatchPrompt(ctx, want, toFix), timeoutSeconds: BATCH_TIMEOUT_SECONDS });
+      const r = await generateText({ task: `generate:${slug}-batch`, schema: batchSchema as z.ZodType, system: SYSTEM_PROMPT, user: spec.prompt(ctx, want, toFix as never[]), timeoutSeconds: spec.timeoutSeconds });
       raw = r.data;
       meta = { modelId: r.model, requestId: r.requestId };
       await recordUsage({
-        idempotencyKey: `meta:${r.requestId ?? `${job.id}:bs-batch:${job.attemptCount}:${batch}`}`,
+        idempotencyKey: `meta:${r.requestId ?? `${job.id}:${slug}-batch:${job.attemptCount}:${batch}`}`,
         userId: job.userId,
         eventType: "text_generation",
         provider: "meta",
@@ -218,20 +250,20 @@ async function runBuildSentenceBatches(job: GenerationJob, workerId: string, pla
 
     await setStage(job.id, workerId, "validating");
     const list = (raw as { items?: unknown[] } | null)?.items;
-    const valid: { value: SentenceItem; stored: StoredItem }[] = [];
+    const valid: { value: unknown; stored: StoredItem }[] = [];
     for (const candidate of Array.isArray(list) ? list.slice(0, want) : []) {
-      const v = validateGenerated(slug, candidate);
-      if (v.ok) valid.push({ value: v.value as SentenceItem, stored: toStoredItem(slug, v.value) });
+      const v = validateGenerated(slug, spec.prepare ? spec.prepare(candidate) : candidate);
+      if (v.ok) valid.push({ value: v.value, stored: toStoredItem(slug, v.value) });
       else lastIssues = v.errors;
     }
     if (!valid.length) continue;
 
-    const verdicts = await verifyBuildSentences(job, batch, valid.map((x) => x.value));
+    const verdicts: Verdicts | null = spec.check ? await spec.check(job, batch, valid.map((x) => x.value) as never[]) : null;
     const rejected: string[] = [];
-    const nextFix: { item: SentenceItem; issue: string }[] = [];
+    const nextFix: { item: unknown; issue: string }[] = [];
     await setStage(job.id, workerId, "storing");
     for (const [i, x] of valid.entries()) {
-      const verdict = verdicts.get(i + 1);
+      const verdict = verdicts ? verdicts.get(i + 1) : { ok: true, issue: "" };
       if (!verdict?.ok) {
         const issue = verdict?.issue ?? "No verdict returned for this item.";
         rejected.push(issue);
@@ -245,7 +277,7 @@ async function runBuildSentenceBatches(job: GenerationJob, workerId: string, pla
     toFix = nextFix;
     if (rejected.length) {
       lastIssues = rejected;
-      log.warn("sentences rejected by the check; the next batch corrects them", { jobId: job.id, taskSlug: slug, batch, rejected: rejected.length, of: valid.length, issues: rejected.slice(0, 2) });
+      log.warn("items rejected by the check; the next batch corrects them", { jobId: job.id, taskSlug: slug, batch, rejected: rejected.length, of: valid.length, issues: rejected.slice(0, 2) });
     }
     await setStage(job.id, workerId, "running", Math.min(storedCount, items));
   }
@@ -257,9 +289,9 @@ async function runBuildSentenceBatches(job: GenerationJob, workerId: string, pla
 }
 
 /** Checks several Build a Sentence items in one call; returns a verdict per item number (1-based). */
-async function verifyBuildSentences(job: GenerationJob, batch: number, items: SentenceItem[]): Promise<Map<number, { ok: boolean; issue: string }>> {
+async function verifyBuildSentences(job: GenerationJob, batch: number, items: SentenceItem[]): Promise<Verdicts> {
   const schema = z.strictObject({
-    results: z.array(z.strictObject({ n: z.number().int().min(1), grammatical: z.boolean(), uniqueOrder: z.boolean(), issue: z.string().max(300) })).min(1).max(SENTENCE_BATCH),
+    results: z.array(z.strictObject({ n: z.number().int().min(1), grammatical: z.boolean(), uniqueOrder: z.boolean(), issue: z.string().max(300) })).min(1).max(items.length),
   });
   const r = await generateText({
     task: "verify:build-sentence-batch",
@@ -267,7 +299,7 @@ async function verifyBuildSentences(job: GenerationJob, batch: number, items: Se
     system: "You are a careful English grammar checker. Return JSON only.",
     user: buildSentenceBatchCheckPrompt(items),
     temperature: 0,
-    timeoutSeconds: BATCH_TIMEOUT_SECONDS,
+    timeoutSeconds: BATCHED["build-sentence"]!.timeoutSeconds,
   });
   await recordUsage({
     idempotencyKey: `meta:${r.requestId ?? `${job.id}:bs-verify:${job.attemptCount}:${batch}`}`,
