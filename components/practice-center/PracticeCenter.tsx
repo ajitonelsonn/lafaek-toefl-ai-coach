@@ -9,6 +9,7 @@ import type { ProgressDTO } from "@/lib/practice/insights-dto";
 import type { GenerationTaskDTO } from "@/lib/practice/generation-dto";
 import { ChipGroup } from "@/components/ui/Segmented";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { Icon3D } from "@/components/ui/Icon3D";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/States";
 import { GenerationBadge } from "@/components/generation/GenerationStatus";
@@ -109,7 +110,9 @@ export function PracticeCenter({ initialSkill, byTask, tasks }: { initialSkill: 
                 {types.map((t) => {
                   const p = byTask.find((b) => b.slug === t.slug);
                   const count = p?.availableUnits ?? 0;
-                  const done = Math.min(count, p?.attemptedUnits ?? 0);
+                  // Answered since the last "Start over" on that practice page.
+                  const done = Math.min(count, p?.doneUnits ?? 0);
+                  const completed = count > 0 && done >= count;
                   const job = tasks.find((x) => x.slug === t.slug);
                   return (
                     <li key={t.slug}>
@@ -120,7 +123,18 @@ export function PracticeCenter({ initialSkill, byTask, tasks }: { initialSkill: 
                         <div className="flex items-start gap-3">
                           <SkillIconTile skill={t.skill} slug={t.slug} size="md" />
                           <div className="min-w-0 flex-1">
-                            <h3 className="font-bold text-ink group-hover:text-primary">{t.title}</h3>
+                            <h3 className="flex items-start justify-between gap-2 font-bold text-ink group-hover:text-primary">
+                              {t.title}
+                              {completed ? (
+                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-xs font-semibold text-success">
+                                  <Icon3D name="achievement" size={16} /> Completed
+                                </span>
+                              ) : done > 0 ? (
+                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-xs font-semibold text-primary">
+                                  <Icon3D name="continue" size={16} /> In progress
+                                </span>
+                              ) : null}
+                            </h3>
                             <p className="mt-0.5 text-sm text-muted">{t.description}</p>
                           </div>
                         </div>
@@ -132,7 +146,8 @@ export function PracticeCenter({ initialSkill, byTask, tasks }: { initialSkill: 
                           <span className="w-12 shrink-0 text-sm font-semibold text-ink tabular-nums">
                             {done}/{count}
                           </span>
-                          <ProgressBar value={done} max={count} tone={done === count ? "success" : tone.tone} label={`${t.title}: ${done} of ${count} questions practised`} size="sm" />
+                          <ProgressBar value={done} max={count} tone={completed ? "success" : tone.tone} label={`${t.title}: ${done} of ${count} questions practised`} size="sm" />
+                          <span className="sr-only">{completed ? "Completed. Open to review or start over." : done > 0 ? "Continue where you stopped." : "Start practising."}</span>
                           <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-line text-primary transition-colors group-hover:border-primary group-hover:bg-primary group-hover:text-on-primary" aria-hidden>
                             <ArrowRight className="size-4" />
                           </span>

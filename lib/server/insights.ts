@@ -15,10 +15,14 @@ export async function getProgress(userId: string): Promise<ProgressDTO> {
     orderBy: { submittedAt: "desc" },
     take: 5000,
   });
-  const items = await db.practiceItem.findMany({
-    where: { archivedAt: null, validationStatus: "valid", OR: [{ source: "starter", userId: null }, { userId }] },
-    select: { taskSlug: true, contentJson: true },
-  });
+  const [items, resets] = await Promise.all([
+    db.practiceItem.findMany({
+      where: { archivedAt: null, validationStatus: "valid", OR: [{ source: "starter", userId: null }, { userId }] },
+      select: { taskSlug: true, contentJson: true },
+    }),
+    db.practiceReset.findMany({ where: { userId }, select: { taskSlug: true, resetAt: true } }),
+  ]);
+  const resetAt = new Map(resets.map((r) => [r.taskSlug, r.resetAt]));
 
   // Latest attempt per unit decides correctness.
   const latest = new Map<string, (typeof attempts)[number]>();
@@ -77,6 +81,8 @@ export async function getProgress(userId: string): Promise<ProgressDTO> {
     byTask: PRACTICE_TYPES.map((t) => ({
       slug: t.slug,
       attemptedUnits: units.filter((u) => u.taskSlug === t.slug).length,
+      // Answered since the learner's last "Start over" for this type (what the practice page shows as done).
+      doneUnits: units.filter((u) => u.taskSlug === t.slug && (!resetAt.get(t.slug) || u.submittedAt > resetAt.get(t.slug)!)).length,
       availableUnits: items.filter((i) => i.taskSlug === t.slug).reduce((n, i) => n + unitIdsOf(t.slug, i).length, 0),
       lastPractisedAt: attempts.find((a) => a.taskSlug === t.slug)?.submittedAt.toISOString() ?? null,
     })),

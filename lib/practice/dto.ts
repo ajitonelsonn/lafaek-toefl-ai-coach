@@ -100,9 +100,16 @@ export interface SubmitResponseDTO {
   results: Record<string, UnitResultDTO>;
 }
 
+/** The learner's saved answers since their last "Start over", keyed `${itemId}:${unitId}`. */
+export interface PracticeProgressDTO {
+  answers: Record<string, unknown>;
+  results: Record<string, UnitResultDTO>;
+}
+
 export interface PracticeSetDTO {
   slug: PracticeSlug;
   view: PracticeView;
+  progress: PracticeProgressDTO;
   /** Total ready units across items (for progress). */
   unitCount: number;
   generatedCount: number;

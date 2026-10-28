@@ -11,7 +11,7 @@ export interface ProgressDTO {
   practisedDates: string[];
   trend: { date: string; accuracy: number; answered: number }[];
   bySkill: { skill: SkillId; accuracy: number | null; answered: number }[];
-  byTask: { slug: PracticeSlug; attemptedUnits: number; availableUnits: number; lastPractisedAt: string | null }[];
+  byTask: { slug: PracticeSlug; attemptedUnits: number; doneUnits: number; availableUnits: number; lastPractisedAt: string | null }[];
   recent: { date: string; slug: PracticeSlug; topic: string; correct: number | null; total: number; minutes: number | null }[];
 }
 

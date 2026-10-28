@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { UnitResultDTO } from "@/lib/practice/dto";
 import { api, errorMessage } from "@/lib/client/api";
 import { useToast } from "@/components/ui/Toast";
+import { usePracticeProgress } from "./PracticeProgressContext";
 
 export type UnitStatus = "unanswered" | "answered" | "correct" | "incorrect";
 
@@ -23,13 +24,23 @@ interface Options {
 /**
  * Practice-set state. Answers live in the browser until checked; checking sends
  * them to the server, which scores them, stores the attempt and returns the result.
- * Answer keys never reach the browser before submission.
+ * Answer keys never reach the browser before submission. Answers saved earlier (since the last
+ * "Start over") are restored, and the session opens at the first unanswered question.
  */
 export function usePracticeSession<A>({ unitKeys, gradable = true }: Options) {
   const toast = useToast();
-  const [index, setIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, A>>({});
-  const [results, setResults] = useState<Record<string, UnitResultDTO>>({});
+  const ctx = usePracticeProgress();
+  const saved = ctx?.progress ?? null;
+  const [answers, setAnswers] = useState<Record<string, A>>(() =>
+    Object.fromEntries(unitKeys.filter((k) => saved && k in saved.answers).map((k) => [k, saved!.answers[k] as A])),
+  );
+  const [results, setResults] = useState<Record<string, UnitResultDTO>>(() =>
+    Object.fromEntries(unitKeys.filter((k) => saved && k in saved.results).map((k) => [k, saved!.results[k]])),
+  );
+  const [index, setIndex] = useState(() => {
+    const next = unitKeys.findIndex((k) => !(saved && k in saved.results));
+    return next < 0 ? 0 : next;
+  });
   const [flagged, setFlagged] = useState<Record<string, boolean>>({});
   const [pending, setPending] = useState(false);
   const [finished, setFinished] = useState(false);
@@ -110,6 +121,11 @@ export function usePracticeSession<A>({ unitKeys, gradable = true }: Options) {
   }, [answers, check, results, unitKeys]);
 
   const reset = useCallback(() => {
+    // "Try again" also starts over on the server, so earlier answers do not come back on reload.
+    if (ctx) {
+      void ctx.startOver();
+      return;
+    }
     setAnswers({});
     setResults({});
     setFlagged({});
@@ -117,7 +133,7 @@ export function usePracticeSession<A>({ unitKeys, gradable = true }: Options) {
     setIndex(0);
     setResetKey((k) => k + 1);
     startedAt.current = Date.now();
-  }, []);
+  }, [ctx]);
 
   const resetUnits = useCallback((keys: string[]) => {
     const drop = <T,>(obj: Record<string, T>) => Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)));

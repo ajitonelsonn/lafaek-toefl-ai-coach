@@ -45,7 +45,7 @@ export function Dashboard({ userName, plan, progress, batch }: DashboardProps) {
   const byTask = useMemo(() => new Map(progress.byTask.map((t) => [t.slug, t])), [progress.byTask]);
 
   const recommended: PracticeType[] = useMemo(() => {
-    const notDone = PRACTICE_TYPES.filter((t) => (byTask.get(t.slug)?.attemptedUnits ?? 0) < (byTask.get(t.slug)?.availableUnits ?? 0));
+    const notDone = PRACTICE_TYPES.filter((t) => (byTask.get(t.slug)?.doneUnits ?? 0) < (byTask.get(t.slug)?.availableUnits ?? 0));
     const weak = studyPlan?.input.weakAreas ?? [];
     const ranked = [...notDone.filter((t) => weak.includes(t.skill)), ...notDone.filter((t) => !weak.includes(t.skill))];
     return (ranked.length ? ranked : [...PRACTICE_TYPES]).slice(0, 3);
@@ -68,7 +68,7 @@ export function Dashboard({ userName, plan, progress, batch }: DashboardProps) {
 
   const totals = SKILLS.map((skill) => {
     const types = PRACTICE_TYPES.filter((t) => t.skill === skill.id);
-    const done = types.reduce((s, t) => s + Math.min(byTask.get(t.slug)?.availableUnits ?? 0, byTask.get(t.slug)?.attemptedUnits ?? 0), 0);
+    const done = types.reduce((s, t) => s + Math.min(byTask.get(t.slug)?.availableUnits ?? 0, byTask.get(t.slug)?.doneUnits ?? 0), 0);
     const total = types.reduce((s, t) => s + (byTask.get(t.slug)?.availableUnits ?? 0), 0);
     return { skill, types, done, total };
   });
@@ -203,7 +203,7 @@ export function Dashboard({ userName, plan, progress, batch }: DashboardProps) {
                     <li key={t.slug} className="flex justify-between gap-2 text-body">
                       <span className="truncate">{t.shortTitle}</span>
                       <span className="tabular-nums">
-                        {Math.min(byTask.get(t.slug)?.availableUnits ?? 0, byTask.get(t.slug)?.attemptedUnits ?? 0)}/{byTask.get(t.slug)?.availableUnits ?? 0}
+                        {Math.min(byTask.get(t.slug)?.availableUnits ?? 0, byTask.get(t.slug)?.doneUnits ?? 0)}/{byTask.get(t.slug)?.availableUnits ?? 0}
                       </span>
                     </li>
                   ))}

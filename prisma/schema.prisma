@@ -117,6 +117,7 @@ model User {
   vocabulary       VocabularyProgress[]
   vocabularyWords  VocabularyWord[]
   creditGrants     CreditGrant[]        @relation("CreditGrantUser")
+  practiceResets   PracticeReset[]
   drafts           PracticeDraft[]
   mockResults      MockTestResult[]
   adminAuditEvents AdminAuditEvent[]
@@ -452,6 +453,19 @@ model MockTestResult {
   @@index([userId, completedAt])
   @@index([userId, status])
   @@map("mock_test_results")
+}
+
+/// "Start over" point per practice type: answers before it stay in the history (progress stats)
+/// but no longer count as done on the practice page.
+model PracticeReset {
+  userId   String   @map("user_id") @db.Uuid
+  taskSlug String   @map("task_slug")
+  resetAt  DateTime @default(now()) @map("reset_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, taskSlug])
+  @@map("practice_resets")
 }
 
 /// Ledger of upgrades granted by an admin (payment is arranged by email).
