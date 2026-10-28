@@ -80,7 +80,7 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
     and upgrades*. Without a credit, the server returns `402 UPGRADE_REQUIRED` and the Study Plan page shows
     **Upgrade · $5**. Each saved plan gets its own generation batch; earlier questions stay available.
 - **Generation jobs.** Job types are `study_schedule`, `task_pack` (12 per plan; default counts in
-  `PRACTICE_TYPES.referenceCount`, 208 questions per plan), `vocabulary_pack`, `asset_image`, `asset_audio`,
+  `PRACTICE_TYPES.referenceCount`, 158 questions per plan), `vocabulary_pack`, `asset_image`, `asset_audio`,
   `delete_user_assets` and `reconcile_media`.
   - Jobs use leases with heartbeats, expired-lease recovery, exponential backoff with jitter, a per-user concurrency
     limit and per-item checkpoints. Completed items are never regenerated.
@@ -194,7 +194,7 @@ usually cannot create the shadow database that `migrate dev` needs) and apply it
 
 - **Costs.** Meta text calls return token usage (stored as actual units). The model's reasoning makes output tokens
   large: about 6,000 per item in testing. ElevenLabs returns no usage data, so characters and seconds are stored as
-  _estimates_. No prices are configured, so the app shows no cost figures. `GENERATION_ITEMS_PER_TASK` (optional cap; unset = the per-type defaults in `lib/config/practice-types.ts`, 208 per plan) and
+  _estimates_. No prices are configured, so the app shows no cost figures. `GENERATION_ITEMS_PER_TASK` (optional cap; unset = the per-type defaults in `lib/config/practice-types.ts`, 158 per plan) and
   `GENERATION_DAILY_USER_LIMIT` are the hard limits.
 - **Score scale.** The app uses the TOEFL iBT 2026 scale: bands from 1 to 6 in 0.5 steps, with CEFR (6 C2,
   5–5.5 C1, 4–4.5 B2, 3–3.5 B1, 2–2.5 A2, 1–1.5 A1). See `lib/config/toefl-scale.ts`. Study-plan targets use it, and

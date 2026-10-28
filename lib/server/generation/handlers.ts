@@ -56,9 +56,10 @@ export async function runTaskPack(job: GenerationJob, workerId: string): Promise
 
   await enforceDailyLimit(job.userId);
 
-  // A question that still fails its checks after repairs is skipped and replaced at the next slot
-  // (up to 10% extra slots, at least 2), so one bad question cannot hold up the whole pack.
-  const spareSlots = Math.max(2, Math.ceil(items * 0.1));
+  // A question that still fails its checks after repairs is skipped and replaced at the next slot,
+  // so one bad question cannot hold up the whole pack. Build a Sentence has a strict second check
+  // (about 12% rejected in production), so it gets 25% spare slots; other types 10%; at least 2.
+  const spareSlots = Math.max(2, Math.ceil(items * (slug === "build-sentence" ? 0.25 : 0.1)));
   let storedCount = await db.practiceItem.count({ where: { studyPlanId: plan.id, taskSlug: slug, userId: job.userId } });
   let lastRejection: string[] = [];
   for (let index = 0; storedCount < items && index < items + spareSlots; index++) {

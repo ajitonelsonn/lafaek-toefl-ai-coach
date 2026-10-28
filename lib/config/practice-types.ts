@@ -36,7 +36,7 @@ export interface PracticeType {
   /** Short label used in compact lists. */
   shortTitle: string;
   skill: SkillId;
-  /** Questions AI generates per study plan for this type (owner defaults, 208 in total). GENERATION_ITEMS_PER_TASK can cap it. */
+  /** Questions AI generates per study plan for this type (owner defaults, 158 in total). GENERATION_ITEMS_PER_TASK can cap it. */
   referenceCount: number;
   description: string;
   /** Subtitle shown in the practice page header. */
@@ -130,7 +130,7 @@ export const PRACTICE_TYPES: readonly PracticeType[] = [
     title: "Build a Sentence",
     shortTitle: "Build a Sentence",
     skill: "writing",
-    referenceCount: 100,
+    referenceCount: 50,
     description: "Arrange the words to create a correct sentence.",
     instruction: "Arrange the words to make a correct and natural sentence.",
     timeLimitSeconds: 6 * 60,

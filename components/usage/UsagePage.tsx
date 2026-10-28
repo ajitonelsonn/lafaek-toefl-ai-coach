@@ -133,7 +133,7 @@ export function UsagePage({ usage, plan }: { usage: Record<Range, UsageDTO>; pla
               Study plans and mock tests use lifetime credits: you have {plan.planCredits} study plan{plan.planCredits === 1 ? "" : "s"} and {plan.mockCredits} mock test
               {plan.mockCredits === 1 ? "" : "s"} left.
             </li>
-            <li>Each study plan creates about 208 personalised questions, plus vocabulary and an AI schedule.</li>
+            <li>Each study plan creates about 158 personalised questions, plus vocabulary and an AI schedule.</li>
             {u.dailyItemLimit ? <li>Up to {u.dailyItemLimit} new questions can be generated for you per day.</li> : null}
             <li>AI coaching: up to 10 requests per hour. New word pronunciations: up to 120 per hour.</li>
           </ul>
