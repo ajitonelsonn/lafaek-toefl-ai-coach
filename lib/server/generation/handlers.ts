@@ -180,7 +180,7 @@ interface BatchSpec {
 
 const BATCHED: Partial<Record<PracticeSlug, BatchSpec>> = {
   // A real batch of 5 took about 33 s to write and 96 s to check (2026-10-28), so allow more than the default.
-  // Low reasoning: ~11 s per accepted item instead of ~90 s (2026-10-30 measurement, 73% pass the check).
+  // Low reasoning: ~11 s per accepted item instead of ~90 s (2026-10-29 measurement, 73% pass the check).
   "build-sentence": { size: 5, timeoutSeconds: 240, prompt: buildSentenceBatchPrompt, check: verifyBuildSentences, reasoningEffort: "low" },
   // Short items (one spoken line + four replies): 10 per call turns 50 calls into 5.
   "listen-choose-response": { size: 10, timeoutSeconds: 180, prompt: (ctx, count) => batchPrompt("listen-choose-response", ctx, count), prepare: shuffleChoices },

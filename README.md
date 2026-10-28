@@ -1,7 +1,8 @@
 # LafaekTOEFL AI Coach
 
 Open-source TOEFL iBT practice app with all 12 TOEFL 2026 task types, personalised study plans, AI-generated
-practice, server-side scoring, and progress and usage tracking.
+practice in the real 2026 formats, scores for every answer (AI bands for writing and interview answers), a full mock
+test with AI-rated Writing and Speaking, verifiable certificates, and progress and usage tracking.
 
 **Stack:** Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · PostgreSQL (Prisma 6) ·
 Meta Model API (text, images, speech-to-text) · ElevenLabs (text-to-speech) · Amazon S3 (private media) ·
@@ -75,7 +76,10 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
     - It is expanded into days by the same code. Invalid parts keep the rule week.
     - The page shows "Personalising with AI…" until the job finishes.
     - Code: `lib/server/generation/study-schedule.ts`.
-  - **Score scale.** Targets use the TOEFL 2026 bands (1–6, see below).
+  - **AI calls per learner action.** A practice email, discussion post or interview answer: 1 scoring call. A full mock
+  test: 11 transcriptions (7 Listen and Repeat sentences, 4 interview answers) and 2 rating calls. Build a Sentence
+  batches and practice scores use low model reasoning, which also cuts output tokens about 4×.
+- **Score scale.** Targets use the TOEFL 2026 bands (1–6, see below).
   - **Lifetime credits.** Every save uses one study-plan credit: the first plan, an edit, or a new plan. See *Plans
     and upgrades*. Without a credit, the server returns `402 UPGRADE_REQUIRED` and the Study Plan page shows
     **Upgrade · $5**. Each saved plan gets its own generation batch; earlier questions stay available.
@@ -112,8 +116,9 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
   played as a playlist through 5-minute signed URLs. Until an item has audio, the player uses the browser's voice and
   says so; in that case the script is sent to the browser, otherwise it is withheld.
 - **Speaking.** The browser converts recordings to 16 kHz mono WAV. Meta `muse-voice-transcribe-1.0` transcribes them.
-  Listen and Repeat shows a word-alignment similarity score. Recordings are discarded after transcription unless the
-  learner turns on _Keep my speaking recordings_ and S3 is configured.
+  Listen and Repeat shows a word-alignment match and counts as correct at 80% or more (`REPEAT_PASS`). Recordings are
+  discarded after transcription unless the learner turns on _Keep my speaking recordings_ and S3 is configured
+  (mock test recordings are kept only until they are rated).
 - **Writing and interview scores.** Emails, discussion posts and interview answers get an **AI score (band 1–6)**
   plus coaching right after they are checked or transcribed (`POST /api/practice/items/:id/feedback`, about 10–15 s
   with low model reasoning, rate-limited, labelled a practice estimate). The criteria are shared with the mock test
@@ -169,6 +174,10 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
     internet. An app-wide offline banner shows the connection state.
   - Pages, landing sections, progress bars and counters, answer feedback, results, flashcards and toasts have short
     entrance effects.
+  - Media from S3 shows loading animations: a shimmer placeholder for pictures, an animated waveform for audio and
+    an equaliser for vocabulary voices (`components/ui/MediaLoading.tsx`).
+  - The mock test has a "preparing" screen (section cards dealt around the crocodile) and a submit screen with a
+    percentage ring that follows the real submit stages.
 
 ## Commands
 
@@ -180,6 +189,7 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
 | `node scripts/check-secrets.mjs`                              | Fails if any secret value appears in client bundles or git-tracked files        |
 | `npm run db:status` / `npm run db:deploy`                     | Migration status / apply                                                        |
 | `npm run worker` / `npm run worker:prod`                      | Generation worker (`--once` drains and exits)                                   |
+| `npm run assets:crop -- backgrounds`                          | Re-crops the owner's background scenes from `logo_icon/backgrounds/` into WebP  |
 
 New migrations: change `prisma/schema.prisma`, then create a migration with `prisma migrate diff` (Render users
 usually cannot create the shadow database that `migrate dev` needs) and apply it with `db:deploy`.
@@ -224,6 +234,8 @@ usually cannot create the shadow database that `migrate dev` needs) and apply it
 | OTP codes                                       | HMAC only, 10-minute validity                   | Superseded codes are invalidated; rows go when the account is deleted           |
 | Sessions                                        | 30 days (`SESSION_TTL_DAYS`)                    | Revoked on logout; all deleted with the account                                 |
 | Recordings                                      | Only with opt-in consent and configured storage | Learner can delete each one (`DELETE /api/media/:id`); deleted with the account |
+| Mock test recordings and email text             | Until the AI rating finishes (about a minute)    | Deleted by the `mock_scoring` job; the result keeps bands and short comments    |
+| Certificates                                    | While the account exists                        | Deleted with the account; `revoked_at` revokes one (verification shows Revoked)  |
 | Practice answers, plans, generated items, usage | While the account exists                        | `DELETE /api/account` deletes all rows (cascade) and queues S3 cleanup          |
 | Rate-limit counters                             | 2 days                                          | Pruned by the worker                                                            |
 
@@ -268,10 +280,12 @@ See `BACKEND_PROGRESS.md` → _Blockers_. In short:
 
 - The ElevenLabs key cannot list voices, so a fixed set of premade voices (`ELEVENLABS_VOICE_IDS`) is used and accent
   selection isn't applied.
-- Starter-set items have no generated audio yet; they use the browser-voice fallback.
+- Starter-set items have no generated audio yet; they use the browser-voice fallback. They also predate the 2026
+  formats (for example, conversations with 3–4 questions instead of 2).
 - Practice AI scores and speaking transcription run in Vercel route handlers. Transcription works in production, so
   Meta is reachable from Vercel. If AI scores ever time out (limit 60 s; usually 10–15 s), move them to the worker
   queue as the mock test rating does.
 - No self-service password reset.
 - Google sign-in is not implemented.
-- The mock test uses the starter set and is a short practice test.
+- AI bands for Writing and Speaking are model estimates. Speaking is judged from transcripts, so pronunciation is not
+  scored. Results and certificates say they are practice estimates.
