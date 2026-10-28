@@ -77,13 +77,19 @@ export async function generateText<T>(args: {
   temperature?: number;
   /** Longer limit for heavy calls (e.g. batched Build a Sentence); default GENERATION_TIMEOUT_SECONDS. */
   timeoutSeconds?: number;
+  /**
+   * How much the model reasons before answering (omitted = the model's default). "low" cut a
+   * 5-item Build a Sentence batch from ~140 s and ~30,000 output tokens to ~40 s; "minimal" broke
+   * the sentences, so it is not offered.
+   */
+  reasoningEffort?: "low" | "medium" | "high";
 }): Promise<TextResult<T>> {
   return withModel(env().META_TEXT_MODEL, env().META_TEXT_FALLBACK_MODEL, (model) => generateTextWith(model, args));
 }
 
 async function generateTextWith<T>(
   model: string,
-  args: { task: TextTask; schema: ZodType<T>; system: string; user: string; temperature?: number; timeoutSeconds?: number },
+  args: { task: TextTask; schema: ZodType<T>; system: string; user: string; temperature?: number; timeoutSeconds?: number; reasoningEffort?: "low" | "medium" | "high" },
 ): Promise<TextResult<T>> {
   const res = await providerFetch(
     `${base()}/chat/completions`,
@@ -101,6 +107,7 @@ async function generateTextWith<T>(
           type: "json_schema",
           json_schema: { name: args.task.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64), schema: toStrictJsonSchema(args.schema), strict: true },
         },
+        ...(args.reasoningEffort ? { reasoning_effort: args.reasoningEffort } : {}),
       }),
     },
     { provider: PROVIDER, timeoutMs: args.timeoutSeconds ? args.timeoutSeconds * 1000 : timeoutMs(), retries: 2 },

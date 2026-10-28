@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowRight, CheckCircle2, Clock, History, ListChecks, Play, Sparkles, Ticket, Timer, TrendingUp } from "lucide-react";
 import { SKILLS, getPracticeType, type SkillId } from "@/lib/config/practice-types";
-import { MOCK_BLUEPRINT, MOCK_DEMO_MINUTES, mockQuestionCount } from "@/lib/config/mock-test";
+import { MOCK_BLUEPRINT, MOCK_DEMO_MINUTES, MOCK_PART_MINUTES, mockQuestionCount } from "@/lib/config/mock-test";
 import { cefrForBand, formatBand } from "@/lib/config/toefl-scale";
 import { CERTIFICATE_MIN_BAND, verifyPath } from "@/lib/config/certificate";
 import { Icon3D } from "@/components/ui/Icon3D";
@@ -161,7 +161,10 @@ export function MockTestIntro({ latest, active, credits }: { latest: MockResultD
                     <ul className="mt-3 flex-1 space-y-1.5 text-sm">
                       {parts.map((p) => (
                         <li key={p.slug} className="flex items-center justify-between gap-2 text-body">
-                          <span>{getPracticeType(p.slug)?.title}</span>
+                          <span>
+                            {getPracticeType(p.slug)?.title}
+                            {MOCK_PART_MINUTES[p.slug] && <span className="text-xs text-muted"> · {MOCK_PART_MINUTES[p.slug]} min</span>}
+                          </span>
                           <span className="whitespace-nowrap rounded-full bg-surface px-2 text-xs font-semibold text-ink" title={`${p.items} item${p.items === 1 ? "" : "s"}, about ${p.items * p.about} questions`}>
                             {p.items} × {p.about === 1 ? "1" : `~${p.about}`}
                           </span>

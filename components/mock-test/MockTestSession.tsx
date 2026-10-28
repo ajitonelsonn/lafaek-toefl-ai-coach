@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Bookmark, BookmarkCheck, Check, Send } from "lucide-react";
 import { getSkill, type SkillId } from "@/lib/config/practice-types";
-import { MOCK_DEMO_MINUTES } from "@/lib/config/mock-test";
+import { MOCK_DEMO_MINUTES, MOCK_PART_MINUTES } from "@/lib/config/mock-test";
 import { MockTestSubmitting, type SubmitStage } from "./MockTestSubmitting";
 import type { AudioDTO, ChoiceQuestionDTO, CtwSegment, PracticeView } from "@/lib/practice/dto";
 import type { DailyLifeDocument } from "@/lib/services/types";
@@ -35,7 +35,25 @@ export interface MockFormItemDTO {
   view: PracticeView;
 }
 
-type UnitBase = { key: string; itemId: string; unitId: string; skill: SkillId; title: string };
+type UnitBase = { key: string; itemId: string; unitId: string; skill: SkillId; slug: PracticeView["kind"]; title: string };
+
+/** A timed part of the test: a whole section, or one task type with its own timer (Writing). */
+interface Part {
+  id: string;
+  skill: SkillId;
+  title: string;
+  minutes: number;
+  units: Unit[];
+}
+
+function toParts(units: Unit[], order: SkillId[]): Part[] {
+  return order.flatMap((skill) => {
+    const mine = units.filter((u) => u.skill === skill);
+    const slugs = [...new Set(mine.map((u) => u.slug))];
+    if (!slugs.some((slug) => MOCK_PART_MINUTES[slug])) return [{ id: skill, skill, title: getSkill(skill).title, minutes: MOCK_DEMO_MINUTES[skill], units: mine }];
+    return slugs.map((slug) => ({ id: `${skill}:${slug}`, skill, title: TITLES[slug], minutes: MOCK_PART_MINUTES[slug] ?? MOCK_DEMO_MINUTES[skill], units: mine.filter((u) => u.slug === slug) }));
+  });
+}
 type Unit = UnitBase &
   (
     | { kind: "choice"; question: ChoiceQuestionDTO; document?: DailyLifeDocument; passage?: { title: string; paragraphs: string[] }; audio?: AudioDTO }
@@ -73,40 +91,40 @@ function toUnits(form: MockFormItemDTO[]): Unit[] {
       case "read-academic-passage":
         for (const it of v.items)
           for (const q of it.questions.filter((q) => f.units.includes(q.unitId)))
-            out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, kind: "choice", title, question: q, document: it.document, passage: it.paragraphs ? { title: it.title, paragraphs: it.paragraphs } : undefined });
+            out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, slug: v.kind, kind: "choice", title, question: q, document: it.document, passage: it.paragraphs ? { title: it.title, paragraphs: it.paragraphs } : undefined });
         break;
       case "listen-choose-response":
-        for (const it of v.items) out.push({ key: key(it.itemId, it.question.unitId), itemId: it.itemId, unitId: it.question.unitId, skill: f.skill, kind: "choice", title, question: it.question, audio: it.audio });
+        for (const it of v.items) out.push({ key: key(it.itemId, it.question.unitId), itemId: it.itemId, unitId: it.question.unitId, skill: f.skill, slug: v.kind, kind: "choice", title, question: it.question, audio: it.audio });
         break;
       case "listen-conversation":
       case "listen-announcement":
       case "listen-academic-talk":
         for (const it of v.items)
-          for (const q of it.questions.filter((q) => f.units.includes(q.unitId))) out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, kind: "choice", title, question: q, audio: it.audio });
+          for (const q of it.questions.filter((q) => f.units.includes(q.unitId))) out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, slug: v.kind, kind: "choice", title, question: q, audio: it.audio });
         break;
       case "complete-the-words":
         for (const it of v.items) {
           const blanks = it.segments.flatMap((sg) => (sg.type === "blank" && f.units.includes(sg.unitId) ? [sg.unitId] : []));
-          out.push({ key: key(it.itemId, "ctw"), itemId: it.itemId, unitId: "ctw", skill: f.skill, kind: "ctw", title, passageTitle: it.title, segments: it.segments, blanks });
+          out.push({ key: key(it.itemId, "ctw"), itemId: it.itemId, unitId: "ctw", skill: f.skill, slug: v.kind, kind: "ctw", title, passageTitle: it.title, segments: it.segments, blanks });
         }
         break;
       case "build-sentence":
-        for (const it of v.items) out.push({ key: key(it.itemId, it.unitId), itemId: it.itemId, unitId: it.unitId, skill: f.skill, kind: "build", title, context: it.context, prefix: it.prefix, suffix: it.suffix, tokens: it.tokens });
+        for (const it of v.items) out.push({ key: key(it.itemId, it.unitId), itemId: it.itemId, unitId: it.unitId, skill: f.skill, slug: v.kind, kind: "build", title, context: it.context, prefix: it.prefix, suffix: it.suffix, tokens: it.tokens });
         break;
       case "write-email":
       case "academic-discussion":
         for (const it of v.items)
-          out.push({ key: key(it.itemId, it.unitId), itemId: it.itemId, unitId: it.unitId, skill: f.skill, kind: "writing", title, scenario: it.scenario, bullets: it.bullets, recipient: it.recipient, subject: it.subject, professor: it.professor, students: it.students });
+          out.push({ key: key(it.itemId, it.unitId), itemId: it.itemId, unitId: it.unitId, skill: f.skill, slug: v.kind, kind: "writing", title, scenario: it.scenario, bullets: it.bullets, recipient: it.recipient, subject: it.subject, professor: it.professor, students: it.students });
         break;
       case "listen-repeat":
         for (const it of v.items)
           for (const q of it.sentences.filter((q) => f.units.includes(q.unitId)))
-            out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, kind: "speaking", title, intro: it.situation, repeat: true, audio: q.audio, responseSeconds: q.responseSeconds });
+            out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, slug: v.kind, kind: "speaking", title, intro: it.situation, repeat: true, audio: q.audio, responseSeconds: q.responseSeconds });
         break;
       case "take-interview":
         for (const it of v.items)
           for (const q of it.questions.filter((q) => f.units.includes(q.unitId)))
-            out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, kind: "speaking", title, intro: it.scenario, repeat: false, audio: q.audio, responseSeconds: q.responseSeconds });
+            out.push({ key: key(it.itemId, q.unitId), itemId: it.itemId, unitId: q.unitId, skill: f.skill, slug: v.kind, kind: "speaking", title, intro: it.scenario, repeat: false, audio: q.audio, responseSeconds: q.responseSeconds });
         break;
       default:
         break;
@@ -119,10 +137,11 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
   const router = useRouter();
   const toast = useToast();
   const units = useMemo(() => toUnits(form), [form]);
-  // One section at a time, each with its own timer (like the real test). Finished sections are closed.
+  // One timed part at a time (a section, or a Writing task), like the real test. Finished parts are closed.
   const order = useMemo(() => sections.filter((s) => units.some((u) => u.skill === s)), [sections, units]);
+  const parts = useMemo(() => toParts(units, order), [units, order]);
 
-  const [sectionIdx, setSectionIdx] = useState(0);
+  const [partIdx, setPartIdx] = useState(0);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [flagged, setFlagged] = useState<Record<string, boolean>>({});
@@ -159,10 +178,14 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
     );
   }
 
-  const section = order[sectionIdx];
-  const sectionUnits = units.filter((u) => u.skill === section);
+  const part = parts[partIdx];
+  const section = part.skill;
+  const sectionIdx = order.indexOf(section);
+  const sectionUnits = part.units;
   const unit = sectionUnits[Math.min(index, sectionUnits.length - 1)];
-  const isLastSection = sectionIdx === order.length - 1;
+  const isLastSection = partIdx === parts.length - 1;
+  const nextPart = parts[partIdx + 1];
+  const nextIsNewSection = !!nextPart && nextPart.skill !== section;
   const isAnswered = (u: Unit) => {
     const a = answers[u.key];
     if (a === undefined) return false;
@@ -245,7 +268,7 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
     }
   };
 
-  /** Ends the current section (early by choice, or when its time is up) and opens the next one. */
+  /** Ends the current part (early by choice, or when its time is up) and opens the next one. */
   const endSection = (timeUp: boolean) => {
     setConfirm(false);
     if (isLastSection) {
@@ -253,9 +276,8 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
       void submit();
       return;
     }
-    const next = order[sectionIdx + 1];
-    toast(timeUp ? `Time is up for ${getSkill(section).title}. Starting ${getSkill(next).title}.` : `Starting ${getSkill(next).title}.`, "info");
-    setSectionIdx((i) => i + 1);
+    toast(timeUp ? `Time is up for ${part.title}. Starting ${nextPart.title}.` : `Starting ${nextPart.title}.`, "info");
+    setPartIdx((i) => i + 1);
     setIndex(0);
   };
 
@@ -286,7 +308,7 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:grid-rows-[auto_1fr]">
         <div className="order-1 xl:col-start-2 xl:row-start-1">
-          <CountdownTimer key={section} totalSeconds={MOCK_DEMO_MINUTES[section] * 60} title={`${getSkill(section).title} time`} stopped={submitting} pausable={false} onExpire={() => endSection(true)} />
+          <CountdownTimer key={part.id} totalSeconds={part.minutes * 60} title={`${part.title} time`} stopped={submitting} pausable={false} onExpire={() => endSection(true)} />
         </div>
 
         <section aria-label={`Question ${index + 1}`} className="order-2 min-w-0 xl:col-start-1 xl:row-span-2 xl:row-start-1">
@@ -333,7 +355,7 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
                 </Button>
               ) : (
                 <Button size="lg" rightIcon={isLastSection ? <Send className="size-4" /> : <ArrowRight className="size-4" />} onClick={() => setConfirm(true)} loading={submitting}>
-                  {isLastSection ? "Submit Test" : "Finish Section"}
+                  {isLastSection ? "Submit Test" : nextIsNewSection ? "Finish Section" : "Next Part"}
                 </Button>
               )}
             </div>
@@ -343,20 +365,22 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
         <div className="order-3 flex flex-col gap-5 xl:col-start-2 xl:row-start-2">
           <QuestionNavigation items={sectionUnits.map((u) => ({ id: u.key, status: isAnswered(u) ? "answered" : "unanswered", flagged: flagged[u.key] }))} current={index} onSelect={setIndex} />
           <Button variant="secondary" fullWidth leftIcon={isLastSection ? <Send className="size-4" /> : <ArrowRight className="size-4" />} onClick={() => setConfirm(true)} loading={submitting}>
-            {isLastSection ? "Submit Test" : `Finish ${getSkill(section).title}`}
+            {isLastSection ? "Submit Test" : `Finish ${part.title}`}
           </Button>
-          <p className="text-xs text-muted">Each section has its own time. When it ends, the next section starts and you cannot go back.</p>
+          <p className="text-xs text-muted">
+            Each section has its own time; in Writing, each task has its own time. When it ends, the next part starts and you cannot go back.
+          </p>
         </div>
       </div>
 
       <ConfirmDialog
         open={confirm}
-        title={isLastSection ? "Submit your test?" : `Finish ${getSkill(section).title}?`}
+        title={isLastSection ? "Submit your test?" : `Finish ${part.title}?`}
         description={
-          (unansweredHere ? `You have ${unansweredHere} unanswered question${unansweredHere === 1 ? "" : "s"} in this section. ` : "") +
-          (isLastSection ? "You cannot change answers after submitting." : "You cannot come back to this section.")
+          (unansweredHere ? `You have ${unansweredHere} unanswered question${unansweredHere === 1 ? "" : "s"} in this part. ` : "") +
+          (isLastSection ? "You cannot change answers after submitting." : "You cannot come back to this part.")
         }
-        confirmLabel={submitting ? "Submitting…" : isLastSection ? "Submit" : "Next section"}
+        confirmLabel={submitting ? "Submitting…" : isLastSection ? "Submit" : nextIsNewSection ? "Next section" : "Next part"}
         cancelLabel="Keep working"
         onCancel={() => setConfirm(false)}
         onConfirm={() => endSection(false)}

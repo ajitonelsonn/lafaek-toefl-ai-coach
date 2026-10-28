@@ -20,7 +20,7 @@ export const MOCK_BLUEPRINT: Record<SkillId, { slug: PracticeSlug; items: number
     { slug: "listen-academic-talk", items: 2, about: 4 },
   ],
   writing: [
-    { slug: "build-sentence", items: 5, about: 1 },
+    { slug: "build-sentence", items: 10, about: 1 },
     { slug: "write-email", items: 1, about: 1 },
     { slug: "academic-discussion", items: 1, about: 1 },
   ],
@@ -32,6 +32,12 @@ export const MOCK_BLUEPRINT: Record<SkillId, { slug: PracticeSlug; items: number
 
 /** Minutes per section, close to the TOEFL iBT 2026 timings; each section has its own timer. */
 export const MOCK_DEMO_MINUTES: Record<SkillId, number> = { reading: 30, listening: 29, writing: 23, speaking: 8 };
+
+/**
+ * Task types with their own timer inside their section, like the real Writing section: 6 minutes for
+ * the Build a Sentence questions, 7 for the email and 10 for the discussion post (23 in total).
+ */
+export const MOCK_PART_MINUTES: Partial<Record<PracticeSlug, number>> = { "build-sentence": 6, "write-email": 7, "academic-discussion": 10 };
 
 /** Full TOEFL iBT 2026 section lengths, shown for reference only (not official ETS timings). */
 export const MOCK_FULL_MINUTES: Record<SkillId, number> = { reading: 30, listening: 29, writing: 23, speaking: 8 };

@@ -194,7 +194,7 @@ describe("mock test", () => {
     // Writing: Build a Sentence 6, email 5, discussion 5 → 5.5. Speaking: repeats matched 100% → 6, interview 5 → 5.5.
     expect(r.sections.map((s) => [s.skill, s.band])).toEqual([["reading", 6], ["listening", 6], ["writing", 5.5], ["speaking", 5.5]]);
     expect(r.estimatedBand).toBe(6); // average 5.75, rounded to the nearest 0.5
-    expect(r.sections.find((s) => s.skill === "writing")).toMatchObject({ correct: 5, objectiveTotal: 5 });
+    expect(r.sections.find((s) => s.skill === "writing")).toMatchObject({ correct: 10, objectiveTotal: 10 });
     expect(r.sections.find((s) => s.skill === "writing")!.comments).toHaveLength(2);
     expect(r.sections.find((s) => s.skill === "speaking")!.comments).toHaveLength(4);
     expect(r.sections.find((s) => s.skill === "speaking")!.note).toContain("matched 100%");

@@ -3,7 +3,7 @@ import type { PracticeSlug } from "@/lib/config/practice-types";
 
 // Versioned prompt templates. Bump PROMPT_VERSION whenever wording changes;
 // it is stored with every generated item and job for auditability.
-export const PROMPT_VERSION = "gen-2026-10-28.2";
+export const PROMPT_VERSION = "gen-2026-10-30.1";
 
 export const SYSTEM_PROMPT = `You write ORIGINAL English practice material for adult learners preparing for the TOEFL iBT (format from January 2026).
 Rules:
@@ -59,8 +59,10 @@ const TASK_INSTRUCTIONS: Record<PracticeSlug, string> = {
     "3. Never make a movable adverb its own group or start a group with one (also, really, usually, often, just, still, maybe).",
     "4. Do not use words that could be left out, such as an optional 'that' after know, think, say or hope; join such a word to the start of its clause in the same group.",
     "5. Lock every group into one place: start groups with a verb, 'to + verb', a question word or clause word (where, when, why, how, whether, if, who, which) joined to what follows, or a preposition joined to its noun. Use subject–verb agreement (singular vs plural) so swapped nouns would be ungrammatical.",
-    "6. Use one main clause plus one embedded clause (indirect question, relative clause or reported speech). Each group has 2–4 words.",
-    "7. Before answering, try other orders of the groups. If any other order is also grammatical, or the reply does not answer the first person, change the groups until only one order works.",
+    "6. Keep the reply SHORT and everyday, like the real test: 7–12 words in total, one main clause plus at most one embedded clause (indirect question, relative clause or reported speech). Each group has 1–3 words.",
+    "7. No time, place, frequency, manner or purpose phrase anywhere in the groups (no 'during the summer', 'near campus', 'every morning', 'to save money'). If the reply needs one, put it in the fixed suffix. Never chain two modifying phrases or clauses.",
+    "8. Before answering, try other orders of the groups. If any other order is also grammatical, or the reply does not answer the first person, change the groups until only one order works.",
+    "Good examples (groups in brackets): A: 'Your presentation got a lot of positive feedback.' B: [did] [they] [mention] [what part] [impressed them] + suffix 'most?'. A: 'Daniel is taking evening classes this semester.' B: [do you] [know] [why] [he] [changed] [his schedule] + suffix '?'. A: 'Did your roommate say anything before leaving?' B: prefix 'He' + [reminded] [me] [to lock] [the door] + suffix 'after he left.'.",
   ].join(" "),
   "write-email":
     "Write a realistic email-writing task: a scenario (90–140 words) that tells the learner who to write to and why, the recipient's name, a subject line, exactly 3 things the email must do, and 3–4 short tips. imagePrompt: a short scene description for an illustration, no text in the image, or null.",

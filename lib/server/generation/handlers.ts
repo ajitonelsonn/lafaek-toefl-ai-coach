@@ -174,11 +174,14 @@ interface BatchSpec {
   check?: (job: GenerationJob, batch: number, items: never[]) => Promise<Verdicts>;
   /** Adjusts a raw item before validation. */
   prepare?: (raw: unknown) => unknown;
+  /** Less model reasoning for faster batches (measured to keep quality for Build a Sentence). */
+  reasoningEffort?: "low";
 }
 
 const BATCHED: Partial<Record<PracticeSlug, BatchSpec>> = {
   // A real batch of 5 took about 33 s to write and 96 s to check (2026-10-28), so allow more than the default.
-  "build-sentence": { size: 5, timeoutSeconds: 240, prompt: buildSentenceBatchPrompt, check: verifyBuildSentences },
+  // Low reasoning: ~11 s per accepted item instead of ~90 s (2026-10-30 measurement, 73% pass the check).
+  "build-sentence": { size: 5, timeoutSeconds: 240, prompt: buildSentenceBatchPrompt, check: verifyBuildSentences, reasoningEffort: "low" },
   // Short items (one spoken line + four replies): 10 per call turns 50 calls into 5.
   "listen-choose-response": { size: 10, timeoutSeconds: 180, prompt: (ctx, count) => batchPrompt("listen-choose-response", ctx, count), prepare: shuffleChoices },
 };
@@ -226,7 +229,7 @@ async function runBatchedPack(job: GenerationJob, workerId: string, plan: { id: 
     let raw: unknown;
     let meta: { modelId: string; requestId: string | null };
     try {
-      const r = await generateText({ task: `generate:${slug}-batch`, schema: batchSchema as z.ZodType, system: SYSTEM_PROMPT, user: spec.prompt(ctx, want, toFix as never[]), timeoutSeconds: spec.timeoutSeconds });
+      const r = await generateText({ task: `generate:${slug}-batch`, schema: batchSchema as z.ZodType, system: SYSTEM_PROMPT, user: spec.prompt(ctx, want, toFix as never[]), timeoutSeconds: spec.timeoutSeconds, reasoningEffort: spec.reasoningEffort });
       raw = r.data;
       meta = { modelId: r.model, requestId: r.requestId };
       await recordUsage({
@@ -300,6 +303,8 @@ async function verifyBuildSentences(job: GenerationJob, batch: number, items: Se
     user: buildSentenceBatchCheckPrompt(items),
     temperature: 0,
     timeoutSeconds: BATCHED["build-sentence"]!.timeoutSeconds,
+    // Agreed with the full-reasoning check on 9 of 10 items, about 3× faster.
+    reasoningEffort: "low",
   });
   await recordUsage({
     idempotencyKey: `meta:${r.requestId ?? `${job.id}:bs-verify:${job.attemptCount}:${batch}`}`,
