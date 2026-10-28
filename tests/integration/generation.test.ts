@@ -6,7 +6,7 @@ import { starterEntries } from "@/prisma/starter/convert";
 import type { StudyPlanInputBody } from "@/lib/validation/schemas";
 
 // Deterministic provider fixtures (tests only). Behaviour can be switched per test.
-const control = { mode: "ok" as "ok" | "transient" | "auth" | "malformed-once" | "malformed", calls: 0, failSlug: null as string | null };
+const control = { mode: "ok" as "ok" | "transient" | "auth" | "malformed-once" | "malformed", calls: 0, failSlug: null as string | null, rejectSentenceChecks: 0 };
 vi.mock("@/lib/server/providers/meta", async () => {
   const { ProviderError } = await import("@/lib/server/providers/http");
   return {
@@ -14,7 +14,13 @@ vi.mock("@/lib/server/providers/meta", async () => {
       control.calls++;
       const requestId = `req-${control.calls}`;
       const usage = { inputTokens: 100, outputTokens: 200 };
-      if (task === "verify:build-sentence") return { data: { grammatical: true, uniqueOrder: true, issue: "" }, usage, model: "muse-spark-1.3", requestId };
+      if (task === "verify:build-sentence") {
+        if (control.rejectSentenceChecks > 0) {
+          control.rejectSentenceChecks--;
+          return { data: { grammatical: true, uniqueOrder: false, issue: "Another grammatical order exists." }, usage, model: "muse-spark-1.3", requestId };
+        }
+        return { data: { grammatical: true, uniqueOrder: true, issue: "" }, usage, model: "muse-spark-1.3", requestId };
+      }
       if (task === "generate:study-schedule") {
         return { data: { weeks: [{ week: 1, theme: "AI warm-up week", focusSkills: ["speaking"], priorityTasks: ["take-interview", "listen-repeat"], mockTestDate: null, tip: "Speak for one full minute every day." }] }, usage, model: "muse-spark-1.3", requestId };
       }
@@ -62,7 +68,7 @@ async function drain(owner = "test-worker", jobTypes: JobType[] = WITHOUT_VOCABU
 
 beforeEach(async () => {
   await resetTestDb();
-  Object.assign(control, { mode: "ok", calls: 0, failSlug: null });
+  Object.assign(control, { mode: "ok", calls: 0, failSlug: null, rejectSentenceChecks: 0 });
 });
 
 describe("generation batches", () => {
@@ -168,6 +174,19 @@ describe("generation batches", () => {
     await tick("w", 1);
     // A rejected key is a deployment setting: the job waits for setup instead of failing.
     expect(await db.generationJob.count({ where: { status: "blocked_configuration", errorCode: "PROVIDER_CONFIG" } })).toBe(1);
+  });
+
+  it("replaces a question that keeps failing its checks instead of failing the whole pack", async () => {
+    const u = await createUser("a@example.com");
+    await savePlan(u.id, { ...INPUT }, false);
+    await startInitialBatch(u.id, randomUUID());
+    await db.generationJob.updateMany({ where: { jobType: "task_pack", NOT: { taskSlug: "build-sentence" } }, data: { status: "cancelled" } });
+    control.rejectSentenceChecks = 3; // the first slot fails the uniqueness check on every repair attempt
+    await drain();
+    const job = await db.generationJob.findFirstOrThrow({ where: { jobType: "task_pack", taskSlug: "build-sentence" } });
+    expect(job.status).toBe("completed");
+    const items = await db.practiceItem.findMany({ where: { userId: u.id, taskSlug: "build-sentence" }, select: { itemIndex: true } });
+    expect(items.map((i) => i.itemIndex)).toEqual([1]); // slot 0 skipped, replaced by slot 1
   });
 
   it("rejects malformed output, repairs once, and never stores invalid content", async () => {

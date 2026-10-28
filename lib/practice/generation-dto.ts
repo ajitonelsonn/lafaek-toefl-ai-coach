@@ -14,6 +14,21 @@ export interface GenerationTaskDTO {
   media: { audio: GenerationStateDTO | null; image: GenerationStateDTO | null };
 }
 
+/** Work that follows the questions: AI schedule, vocabulary, audio and images. */
+export interface GenerationExtraDTO {
+  state: GenerationStateDTO | null;
+  done: number;
+  total: number;
+  failed: number;
+}
+
+export interface GenerationExtrasDTO {
+  schedule: GenerationExtraDTO;
+  vocabulary: GenerationExtraDTO & { words: number };
+  audio: GenerationExtraDTO;
+  images: GenerationExtraDTO;
+}
+
 export interface GenerationBatchDTO {
   id: string;
   status: "queued" | "running" | "completed" | "partial" | "failed";
@@ -22,4 +37,5 @@ export interface GenerationBatchDTO {
   failedTasks: number;
   createdAt: string;
   tasks: GenerationTaskDTO[];
+  extras: GenerationExtrasDTO;
 }

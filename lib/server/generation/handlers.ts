@@ -56,13 +56,15 @@ export async function runTaskPack(job: GenerationJob, workerId: string): Promise
 
   await enforceDailyLimit(job.userId);
 
-  for (let index = 0; index < items; index++) {
+  // A question that still fails its checks after repairs is skipped and replaced at the next slot
+  // (up to 10% extra slots, at least 2), so one bad question cannot hold up the whole pack.
+  const spareSlots = Math.max(2, Math.ceil(items * 0.1));
+  let storedCount = await db.practiceItem.count({ where: { studyPlanId: plan.id, taskSlug: slug, userId: job.userId } });
+  let lastRejection: string[] = [];
+  for (let index = 0; storedCount < items && index < items + spareSlots; index++) {
     const contentKey = `plan:${plan.id}:${slug}:${index}:v1`;
     const existing = await db.practiceItem.findUnique({ where: { contentKey }, select: { id: true } });
-    if (existing) {
-      await setStage(job.id, workerId, "running", index + 1);
-      continue; // checkpoint: never regenerate a stored item
-    }
+    if (existing) continue; // checkpoint: never regenerate a stored item (already counted)
     if (!(await heartbeat(job.id, workerId))) throw new JobFailure("LEASE_LOST", "Lease lost.", true);
 
     const usedTopics = (await db.practiceItem.findMany({ where: { userId: job.userId, taskSlug: slug }, select: { topic: true } })).map((t) => t.topic);
@@ -117,8 +119,9 @@ export async function runTaskPack(job: GenerationJob, workerId: string): Promise
     }
 
     if (!stored) {
-      log.warn("item rejected after repairs", { jobId: job.id, taskSlug: slug, itemIndex: index, errors: lastErrors.slice(0, 3) });
-      throw new JobFailure("INVALID_OUTPUT", `Generated content failed validation: ${lastErrors.slice(0, 2).join("; ")}`.slice(0, 280), true);
+      log.warn("item rejected after repairs; replacing it", { jobId: job.id, taskSlug: slug, itemIndex: index, errors: lastErrors.slice(0, 3) });
+      lastRejection = lastErrors;
+      continue;
     }
 
     await setStage(job.id, workerId, "storing");
@@ -143,7 +146,12 @@ export async function runTaskPack(job: GenerationJob, workerId: string): Promise
       },
     });
     await queueAssetsFor(job, item.id, slug, stored, input.accents);
-    await setStage(job.id, workerId, "running", index + 1);
+    storedCount++;
+    await setStage(job.id, workerId, "running", Math.min(storedCount, items));
+  }
+  if (storedCount < items) {
+    // Too many rejections in one run: retry later (stored questions are kept; the skipped slots are tried again).
+    throw new JobFailure("INVALID_OUTPUT", `Only ${storedCount} of ${items} questions passed the checks. Last issue: ${lastRejection.slice(0, 2).join("; ")}`.slice(0, 280), true);
   }
   await db.generationJob.update({ where: { id: job.id }, data: { provider: "meta", modelId: env().META_TEXT_MODEL, promptVersion: PROMPT_VERSION } });
 }

@@ -33,11 +33,20 @@ function combine(states: GenerationStateDTO[]): GenerationStateDTO | null {
 export async function getBatchStatus(userId: string, batchId?: string): Promise<GenerationBatchDTO | null> {
   const batch = await db.generationBatch.findFirst({ where: { userId, ...(batchId ? { id: batchId } : {}) }, orderBy: { createdAt: "desc" } });
   if (!batch) return null;
-  const [taskJobs, assetJobs, readyCounts] = await Promise.all([
+  const [taskJobs, assetJobs, readyCounts, vocabJobs, scheduleJobs, words] = await Promise.all([
     db.generationJob.findMany({ where: { batchId: batch.id, jobType: "task_pack" } }),
     db.generationJob.findMany({ where: { userId, jobType: { in: ["asset_audio", "asset_image"] } }, select: { taskSlug: true, jobType: true, status: true } }),
     db.practiceItem.groupBy({ by: ["taskSlug"], where: { userId, studyPlanId: batch.studyPlanId, validationStatus: "valid" }, _count: { _all: true } }),
+    db.generationJob.findMany({ where: { batchId: batch.id, jobType: "vocabulary_pack" }, select: { status: true } }),
+    db.generationJob.findMany({ where: { idempotencyKey: `${batch.studyPlanId}:study_schedule` }, select: { status: true } }),
+    db.vocabularyWord.count({ where: { userId, studyPlanId: batch.studyPlanId } }),
   ]);
+  const extra = (jobs: { status: JobStatus }[], expected = jobs.length) => ({
+    state: combine(jobs.map((j) => STATE[j.status])),
+    done: jobs.filter((j) => j.status === "completed").length,
+    total: Math.max(expected, jobs.filter((j) => j.status !== "cancelled").length),
+    failed: jobs.filter((j) => j.status === "failed").length,
+  });
   return {
     id: batch.id,
     status: batch.status,
@@ -62,5 +71,12 @@ export async function getBatchStatus(userId: string, batchId?: string): Promise<
         },
       };
     }),
+    extras: {
+      schedule: extra(scheduleJobs),
+      // One vocabulary job per finished practice type (12 when all are done).
+      vocabulary: { ...extra(vocabJobs, taskJobs.length), words },
+      audio: extra(assetJobs.filter((a) => a.jobType === "asset_audio")),
+      images: extra(assetJobs.filter((a) => a.jobType === "asset_image")),
+    },
   };
 }

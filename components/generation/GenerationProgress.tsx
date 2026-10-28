@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { RotateCcw, Sparkles } from "lucide-react";
 import { PRACTICE_TYPES, practiceHref } from "@/lib/config/practice-types";
-import type { GenerationBatchDTO } from "@/lib/practice/generation-dto";
+import type { GenerationBatchDTO, GenerationExtrasDTO, GenerationStateDTO } from "@/lib/practice/generation-dto";
+import { Icon3D } from "@/components/ui/Icon3D";
+import type { Icon3DName } from "@/lib/config/assets";
 import { api, errorMessage } from "@/lib/client/api";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Button, LinkButton } from "@/components/ui/Button";
@@ -14,7 +16,9 @@ import { SkillIconTile } from "@/components/practice/icons";
 import { GenerationBadge } from "./GenerationStatus";
 import { formatRelative } from "@/lib/utils/format";
 
-const ACTIVE = (b: GenerationBatchDTO) => b.status === "queued" || b.status === "running" || b.tasks.some((t) => t.state === "queued" || t.state === "generating");
+const busy = (s: GenerationStateDTO | null) => s === "queued" || s === "generating";
+const ACTIVE = (b: GenerationBatchDTO) =>
+  b.status === "queued" || b.status === "running" || b.tasks.some((t) => busy(t.state)) || Object.values(b.extras ?? {}).some((x) => busy(x.state));
 
 /** Real generation status from the server; polls while work is in progress. */
 export function GenerationProgress({ initial, hasPlan, compact = false }: { initial: GenerationBatchDTO | null; hasPlan: boolean; compact?: boolean }) {
@@ -112,6 +116,49 @@ export function GenerationProgress({ initial, hasPlan, compact = false }: { init
         </ul>
       )}
       {compact && ready === 12 && <p className="text-sm font-semibold text-success">All 12 practice types have personalised questions.</p>}
+      {!compact && batch.extras && <ExtrasProgress extras={batch.extras} />}
     </div>
+  );
+}
+
+/** Second pack of progress: the AI schedule, vocabulary, audio and pictures made after the questions. */
+function ExtrasProgress({ extras }: { extras: GenerationExtrasDTO }) {
+  const tiles: { id: string; icon: Icon3DName; title: string; x: GenerationExtrasDTO[keyof GenerationExtrasDTO]; unit: string; note: string; tone: "primary" | "success" | "listening" | "speaking" }[] = [
+    { id: "schedule", icon: "calendar", title: "AI study schedule", x: extras.schedule, unit: "schedule", note: "Your dated week-by-week plan, personalised by AI.", tone: "primary" },
+    { id: "vocabulary", icon: "reading", title: "Vocabulary", x: extras.vocabulary, unit: "practice types", note: `${extras.vocabulary.words} words picked from your own questions.`, tone: "success" },
+    { id: "audio", icon: "audio", title: "Audio", x: extras.audio, unit: "questions with audio", note: "Natural voices (ElevenLabs) for listening and speaking.", tone: "listening" },
+    { id: "images", icon: "image", title: "Pictures", x: extras.images, unit: "pictures", note: "Scene illustrations for listening questions.", tone: "speaking" },
+  ];
+  return (
+    <section aria-labelledby="extras-title" className="mt-2 rounded-2xl border border-line bg-gradient-to-br from-primary-soft/50 to-surface p-4 sm:p-5">
+      <h3 id="extras-title" className="text-base font-bold text-ink">
+        Schedule, vocabulary, audio and pictures
+      </h3>
+      <p className="mt-0.5 text-xs text-muted">Made after each practice type&apos;s questions are ready. More are added as questions finish.</p>
+      <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {tiles.map((t) => {
+          const state = t.x.state ?? "not_started";
+          return (
+            <li key={t.id} className="flex flex-col gap-2.5 rounded-xl border border-line bg-surface p-3.5 shadow-card">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-surface-muted">
+                  <Icon3D name={t.icon} size={28} />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-ink">{t.title}</p>
+                  <GenerationBadge state={state} label={state === "not_started" ? "Waiting" : undefined} />
+                </div>
+              </div>
+              <ProgressBar value={t.x.done} max={Math.max(1, t.x.total)} tone={t.tone} size="sm" label={`${t.title} progress`} />
+              <p className="text-xs font-semibold text-ink tabular-nums">
+                {t.x.total ? `${t.x.done} of ${t.x.total} ${t.unit}` : "Starts after your questions"}
+                {t.x.failed > 0 && <span className="ml-1 text-danger">· {t.x.failed} failed</span>}
+              </p>
+              <p className="text-xs text-muted">{t.note}</p>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
