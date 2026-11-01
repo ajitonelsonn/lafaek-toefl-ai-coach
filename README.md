@@ -198,9 +198,39 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
 | `npm run db:status` / `npm run db:deploy`                     | Migration status / apply                                                        |
 | `npm run worker` / `npm run worker:prod`                      | Generation worker (`--once` drains and exits)                                   |
 | `npm run assets:crop -- backgrounds`                          | Re-crops the owner's background scenes from `logo_icon/backgrounds/` into WebP  |
+| `npm run upgrade:grant -- <email> [packs] [note]`             | Upgrades an account with Boost Packs (local `.env.local` database)               |
+| `npm run upgrade:grant:prod -- <email> [packs] [note]`        | The same on the production worker (Render Shell)                                |
 
 New migrations: change `prisma/schema.prisma`, then create a migration with `prisma migrate diff` (Render users
 usually cannot create the shadow database that `migrate dev` needs) and apply it with `db:deploy`.
+
+### Upgrade an account (Boost Pack, the paid "pro" upgrade)
+
+There is no subscription. The paid upgrade is the **Boost Pack** ($5): each pack adds **1 study plan and 2 mock
+tests**, for life. Learners ask for it by email (the *Upgrade* button opens a prefilled message to `SITE.adminEmail`);
+after they have paid, the admin adds the packs:
+
+```bash
+# From your computer (uses DATABASE_URL in .env.local; that is the production database if it points there)
+npm run upgrade:grant -- learner@example.com                         # 1 pack: +1 study plan, +2 mock tests
+npm run upgrade:grant -- learner@example.com 3 "paid by bank transfer" # 3 packs, with a note
+
+# On the server: Render dashboard → the worker → Shell
+npm run upgrade:grant:prod -- learner@example.com 1 "paid by bank transfer"
+```
+
+It prints the credits added and the account's new totals, for example:
+
+```text
+Added 1 study plan(s) and 2 mock test(s) to learner@example.com.
+Now: 1 study plan(s), 2 mock test(s) left.
+```
+
+- The email must belong to an existing account (the learner signs up first). Packs are 1 to 20 per command.
+- Every grant is recorded in `credit_grants` (packs, note, who granted it), and the learner's Usage page shows the
+  new plan name, e.g. "Starter + 1 Boost Pack".
+- An admin user (`role = 'admin'`) can do the same through the API: `POST /api/admin/upgrades` with
+  `{ "email": "learner@example.com", "packs": 1, "note": "paid" }`; it also writes an audit event.
 
 ## Deployment
 
