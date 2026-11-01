@@ -19,12 +19,14 @@ const STATUS_LABEL: Record<UnitStatus, string> = {
 
 interface QuestionNavigationProps {
   title?: string;
+  /** False under test conditions (mock test): no Correct/Incorrect counts while answering. */
+  showScores?: boolean;
   items: NavItemState[];
   current: number;
   onSelect: (index: number) => void;
 }
 
-export function QuestionNavigation({ title = "Question Navigator", items, current, onSelect }: QuestionNavigationProps) {
+export function QuestionNavigation({ title = "Question Navigator", items, current, onSelect, showScores = true }: QuestionNavigationProps) {
   const counts = {
     answered: items.filter((i) => i.status === "answered").length,
     unanswered: items.filter((i) => i.status === "unanswered").length,
@@ -71,8 +73,8 @@ export function QuestionNavigation({ title = "Question Navigator", items, curren
         <LegendRow color="bg-primary" label="Current" value={1} />
         <LegendRow color="bg-surface-muted border border-line" label="Not answered" value={counts.unanswered} />
         <LegendRow color="bg-primary-soft border border-primary/40" label="Answered" value={counts.answered} />
-        <LegendRow color="bg-success" label="Correct" value={counts.correct} />
-        <LegendRow color="bg-danger" label="Incorrect" value={counts.incorrect} />
+        {showScores && <LegendRow color="bg-success" label="Correct" value={counts.correct} />}
+        {showScores && <LegendRow color="bg-danger" label="Incorrect" value={counts.incorrect} />}
         <LegendRow color="bg-warning" label="For review" value={counts.flagged} />
       </dl>
     </section>

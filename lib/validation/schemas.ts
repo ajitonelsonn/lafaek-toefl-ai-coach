@@ -25,7 +25,7 @@ export const resendSchema = z.object({ email: emailSchema });
 
 export const weekdaySchema = z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
 export const skillSchema = z.enum(["reading", "listening", "writing", "speaking"]);
-export const accentSchema = z.enum(["en-US", "en-GB", "en-AU", "en-IN"]);
+export const accentSchema = z.enum(["en-US", "en-GB", "en-AU", "en-IN", "en-ZA"]);
 
 export const studyPlanInputSchema = z.object({
   level: z.enum(["beginner", "intermediate", "upper-intermediate", "advanced"]),

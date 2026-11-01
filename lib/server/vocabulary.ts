@@ -60,7 +60,7 @@ export async function wordAudioUrl(userId: string, wordId: string): Promise<{ ur
 
   const plan = await db.studyPlan.findFirst({ where: { userId, status: "active" }, select: { accentPreferences: true } });
   const accents = Array.isArray(plan?.accentPreferences) ? (plan.accentPreferences as string[]) : [];
-  const [voice] = await pickVoices(1, accents.slice(0, 1), 0); // one steady voice for every word
+  const [voice] = await pickVoices([{ gender: null }], accents.slice(0, 1), 0); // one steady voice for every word
   const audio = await synthesizeSpeech(word.word, voice.voiceId);
 
   const assetId = randomUUID();

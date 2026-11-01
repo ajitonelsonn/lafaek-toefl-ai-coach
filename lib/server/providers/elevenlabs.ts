@@ -31,16 +31,46 @@ export interface Voice {
 let voiceCache: { at: number; voices: Voice[] } | null = null;
 
 /**
- * Voice IDs to use when the API key cannot list voices (keys can be scoped to
- * text-to-speech only). Configure with ELEVENLABS_VOICE_IDS="id1,id2,…".
- * Accents of these voices are not verified, so they are recorded as unknown.
+ * ElevenLabs' standard voices with their accent and gender, each checked with a real call on
+ * 2026-11-01. Used when the key cannot list voices, so speakers still get a voice of the right
+ * gender and accent. There are no standard Indian, African or female Australian voices: add some
+ * from the Voice Library to the account and list them in ELEVENLABS_VOICE_IDS (see below).
+ */
+export const VOICE_CATALOG: Voice[] = [
+  { voiceId: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", accent: "american", gender: "female" },
+  { voiceId: "FGY2WhTYpPnrIDTdsKH5", name: "Laura", accent: "american", gender: "female" },
+  { voiceId: "cgSgspJ2msm6clMCkdW9", name: "Jessica", accent: "american", gender: "female" },
+  { voiceId: "XrExE9yKIg1WjnnlVkGX", name: "Matilda", accent: "american", gender: "female" },
+  { voiceId: "9BWtsMINqrJLrRacOk9x", name: "Aria", accent: "american", gender: "female" },
+  { voiceId: "nPczCjzI2devNBz1zQrb", name: "Brian", accent: "american", gender: "male" },
+  { voiceId: "iP95p4xoKVk53GoZ742B", name: "Chris", accent: "american", gender: "male" },
+  { voiceId: "cjVigY5qzO86Huf0OWal", name: "Eric", accent: "american", gender: "male" },
+  { voiceId: "bIHbv24MWmeRgasZH58o", name: "Will", accent: "american", gender: "male" },
+  { voiceId: "TX3LPaxmHKxFdv7VOQHJ", name: "Liam", accent: "american", gender: "male" },
+  { voiceId: "CwhRBWXzGAHq8TQ4Fs17", name: "Roger", accent: "american", gender: "male" },
+  { voiceId: "Xb7hH8MSUJpSbSDYk0k2", name: "Alice", accent: "british", gender: "female" },
+  { voiceId: "pFZP5JQG7iQjIQuC4Bku", name: "Lily", accent: "british", gender: "female" },
+  { voiceId: "JBFqnCBsd6RMkjVDRZzb", name: "George", accent: "british", gender: "male" },
+  { voiceId: "onwK4e9ZLuTAKqWW03F9", name: "Daniel", accent: "british", gender: "male" },
+  { voiceId: "IKne3meq5aSn9XLyUdCD", name: "Charlie", accent: "australian", gender: "male" },
+];
+
+/**
+ * Extra voices from ELEVENLABS_VOICE_IDS, e.g. "id1,id2:indian:female,id3:south african:male". An
+ * entry with an accent and gender is matched like the catalog; a bare id has unknown labels.
  */
 function configuredVoices(): Voice[] {
-  const ids = (process.env.ELEVENLABS_VOICE_IDS ?? "")
+  return (process.env.ELEVENLABS_VOICE_IDS ?? "")
     .split(",")
-    .map((s) => s.trim())
-    .filter((s) => /^[A-Za-z0-9]{8,40}$/.test(s));
-  return ids.map((voiceId, i) => ({ voiceId, name: `Voice ${i + 1}`, accent: null, gender: null }));
+    .map((s) => s.trim().split(":").map((p) => p.trim()))
+    .filter(([id]) => /^[A-Za-z0-9]{8,40}$/.test(id ?? ""))
+    .map(([voiceId, accent, gender], i) => ({ voiceId, name: `Voice ${i + 1}`, accent: accent ? accent.toLowerCase() : null, gender: gender ? gender.toLowerCase() : null }));
+}
+
+/** The catalog plus configured voices, without duplicates (configured labels win). */
+function fallbackVoices(): Voice[] {
+  const configured = configuredVoices();
+  return [...configured, ...VOICE_CATALOG.filter((v) => !configured.some((c) => c.voiceId === v.voiceId))];
 }
 
 export async function listVoices(): Promise<Voice[]> {
@@ -50,21 +80,18 @@ export async function listVoices(): Promise<Voice[]> {
   try {
     res = await providerFetch(`${BASE}/voices`, { headers: { "xi-api-key": ELEVENLABS_API_KEY } }, { provider: PROVIDER, timeoutMs: 20_000, retries: 2 });
   } catch (e) {
-    const fallback = configuredVoices();
-    if (e instanceof ProviderError && e.kind === "auth" && fallback.length) {
-      voiceCache = { at: Date.now(), voices: fallback };
-      return fallback;
-    }
+    // Keys scoped to text-to-speech cannot list voices: use the checked catalog and configured voices.
     if (e instanceof ProviderError && e.kind === "auth") {
-      throw new ProviderError(PROVIDER, "not_configured", "ElevenLabs key cannot list voices: grant 'Voices: Read' or set ELEVENLABS_VOICE_IDS.");
+      voiceCache = { at: Date.now(), voices: fallbackVoices() };
+      return voiceCache.voices;
     }
     throw e;
   }
   const body = voicesResponse.safeParse(await res.json());
   if (!body.success) throw new ProviderError(PROVIDER, "invalid_output", "Unexpected voices response.");
   const voices = body.data.voices.map((v) => ({ voiceId: v.voice_id, name: v.name, accent: v.labels?.accent?.toLowerCase() ?? null, gender: v.labels?.gender?.toLowerCase() ?? null }));
-  voiceCache = { at: Date.now(), voices };
-  return voices;
+  voiceCache = { at: Date.now(), voices: voices.length ? voices : fallbackVoices() };
+  return voiceCache.voices;
 }
 
 const ACCENT_WORDS: Record<string, string[]> = {
@@ -72,30 +99,38 @@ const ACCENT_WORDS: Record<string, string[]> = {
   "en-GB": ["british", "english"],
   "en-AU": ["australian"],
   "en-IN": ["indian"],
+  "en-ZA": ["south african", "african", "nigerian", "kenyan"],
 };
+const localeOf = (accent: string | null) => Object.entries(ACCENT_WORDS).find(([, words]) => accent && words.some((w) => accent.includes(w)))?.[0] ?? "unspecified";
 
 /**
- * Picks distinct voices for the speakers of one item, preferring the learner's
- * accent choices. Only voices that exist on the account are used.
+ * Picks distinct voices for the speakers of one item. Each speaker's gender (when known) is matched
+ * first, so the voice fits the person in the picture; then one of the learner's accents, rotating by
+ * item so a plan hears all of them. A missing accent falls back to another chosen accent before any
+ * other voice. Speakers without a known gender alternate genders so they sound clearly different.
  */
-export async function pickVoices(speakerCount: number, accents: string[], seed: number): Promise<(Voice & { locale: string })[]> {
+export async function pickVoices(speakers: { gender?: string | null }[], accents: string[], seed: number): Promise<(Voice & { locale: string })[]> {
   const voices = await listVoices();
   if (!voices.length) throw new ProviderError(PROVIDER, "not_configured", "No ElevenLabs voices are available on this account.");
   const wanted = accents.length ? accents : ["en-US"];
   const out: (Voice & { locale: string })[] = [];
-  for (let i = 0; i < speakerCount; i++) {
-    const locale = wanted[(seed + i) % wanted.length];
-    const words = ACCENT_WORDS[locale] ?? [];
-    const pool = voices.filter((v) => v.accent && words.some((w) => v.accent!.includes(w)) && !out.some((o) => o.voiceId === v.voiceId));
-    const fallback = voices.filter((v) => !out.some((o) => o.voiceId === v.voiceId));
-    const choices = pool.length ? pool : fallback.length ? fallback : voices;
-    // Alternate genders where possible so two speakers sound clearly different.
-    const prevGender = out[out.length - 1]?.gender;
-    const preferred = choices.filter((v) => !prevGender || v.gender !== prevGender);
-    const list = preferred.length ? preferred : choices;
-    const v = list[(seed * 7 + i * 3) % list.length];
-    out.push({ ...v, locale: pool.includes(v) ? locale : v.accent ? locale : "unspecified" });
-  }
+  const fits = (v: Voice, locale: string) => !!v.accent && (ACCENT_WORDS[locale] ?? []).some((w) => v.accent!.includes(w));
+  speakers.forEach((speaker, i) => {
+    const unused = voices.filter((v) => !out.some((o) => o.voiceId === v.voiceId));
+    const pool = unused.length ? unused : voices;
+    const gender = speaker.gender ?? (out[out.length - 1]?.gender === "female" ? "male" : out.length ? "female" : null);
+    const byGender = gender ? pool.filter((v) => v.gender === gender) : pool;
+    // The learner's accents, starting from this item's turn.
+    const order = wanted.map((_, k) => wanted[(seed + i + k) % wanted.length]);
+    let choices: Voice[] = [];
+    for (const locale of order) {
+      choices = byGender.filter((v) => fits(v, locale));
+      if (choices.length) break;
+    }
+    if (!choices.length) choices = byGender.length ? byGender : pool;
+    const v = choices[(seed * 7 + i * 3) % choices.length];
+    out.push({ ...v, locale: localeOf(v.accent) });
+  });
   return out;
 }
 

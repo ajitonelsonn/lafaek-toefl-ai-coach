@@ -19,6 +19,11 @@ interface Options {
   unitKeys: string[];
   /** False for writing/speaking sets that are not auto-scored. */
   gradable?: boolean;
+  /**
+   * When one page holds several questions (a Complete the Words passage has 10 blanks), maps a
+   * question's position to its page, so the session reopens on the right page.
+   */
+  pageOf?: (unitIndex: number) => number;
 }
 
 /**
@@ -27,7 +32,7 @@ interface Options {
  * Answer keys never reach the browser before submission. Answers saved earlier (since the last
  * "Start over") are restored, and the session opens at the first unanswered question.
  */
-export function usePracticeSession<A>({ unitKeys, gradable = true }: Options) {
+export function usePracticeSession<A>({ unitKeys, gradable = true, pageOf }: Options) {
   const toast = useToast();
   const ctx = usePracticeProgress();
   const saved = ctx?.progress ?? null;
@@ -39,7 +44,8 @@ export function usePracticeSession<A>({ unitKeys, gradable = true }: Options) {
   );
   const [index, setIndex] = useState(() => {
     const next = unitKeys.findIndex((k) => !(saved && k in saved.results));
-    return next < 0 ? 0 : next;
+    if (next < 0) return 0;
+    return pageOf ? pageOf(next) : next;
   });
   const [flagged, setFlagged] = useState<Record<string, boolean>>({});
   const [pending, setPending] = useState(false);

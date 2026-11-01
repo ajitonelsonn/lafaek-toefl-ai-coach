@@ -62,6 +62,7 @@ const ACCENT_OPTIONS: { value: StudyPlanInput["accents"][number]; label: string 
   { value: "en-GB", label: "British English" },
   { value: "en-AU", label: "Australian English" },
   { value: "en-IN", label: "Indian English" },
+  { value: "en-ZA", label: "African English" },
 ];
 
 type Errors = Partial<Record<"targetScore" | "testDate" | "studyDays", string>>;

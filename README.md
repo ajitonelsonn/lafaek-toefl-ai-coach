@@ -112,6 +112,12 @@ Worker (npm run worker) ── claims jobs (FOR UPDATE SKIP LOCKED) ─┘
   Pronunciation uses ElevenLabs (`POST /api/vocabulary/:id/audio`): the clip is made the first time a word is
   played, in the plan's first accent, stored privately in S3 and served by 5-minute signed URLs. It is
   rate-limited to 120 new clips per hour. The browser voice is only a fallback.
+- **Voices.** Each speaker has a gender (stored with new items), and the picture must show the same people, so a
+  woman in the picture speaks with a female voice. Voices follow the accents chosen in the study plan (American,
+  British, Australian, Indian, African), rotating across items. Without *Voices → Read* on the key, the app uses a
+  catalog of ElevenLabs standard voices checked on 2026-11-01 (American and British, both genders; male
+  Australian). Indian, African and female Australian voices must be added from the Voice Library and listed in
+  `ELEVENLABS_VOICE_IDS` as `id:accent:gender`; until then the learner's other accents are used.
 - **Audio.** Meta has no text-to-speech model, so the owner approved ElevenLabs. There is one MP3 per script line,
   played as a playlist through 5-minute signed URLs. Until an item has audio, the player uses the browser's voice and
   says so; in that case the script is sent to the browser, otherwise it is withheld.

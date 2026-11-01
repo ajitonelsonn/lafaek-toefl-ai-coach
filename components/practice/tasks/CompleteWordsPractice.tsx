@@ -18,9 +18,12 @@ type Blank = Extract<CtwSegment, { type: "blank" }>;
 export function CompleteWordsPractice({ type, view, sidebarExtra }: { type: PracticeType; view: CtwView; sidebarExtra: ReactNode }) {
   const passages = view.items;
   const unitKeys = useMemo(() => passages.flatMap((p) => p.segments.filter((x): x is Blank => x.type === "blank").map((b) => unitKey(p.itemId, b.unitId))), [passages]);
-  const s = usePracticeSession<string>({ unitKeys });
+  // The session counts blanks; pages are passages. Map each blank to its passage so a reload reopens
+  // on the passage with the first unanswered blank (it used to point past the last passage and crash).
+  const passageOfBlank = useMemo(() => passages.flatMap((p, i) => p.segments.filter((x) => x.type === "blank").map(() => i)), [passages]);
+  const s = usePracticeSession<string>({ unitKeys, pageOf: (u) => passageOfBlank[u] ?? 0 });
 
-  const passage = passages[s.index];
+  const passage = passages[Math.min(s.index, passages.length - 1)];
   const blankKeys = passage.segments.filter((x): x is Blank => x.type === "blank").map((b) => unitKey(passage.itemId, b.unitId));
   const passageChecked = blankKeys.every((k) => k in s.results);
   const passageCorrect = blankKeys.filter((k) => s.statusOf(k) === "correct").length;

@@ -368,7 +368,7 @@ export function MockTestSession({ form, token, sections }: { form: MockFormItemD
         </section>
 
         <div className="order-3 flex flex-col gap-5 xl:col-start-2 xl:row-start-2">
-          <QuestionNavigation items={sectionUnits.map((u) => ({ id: u.key, status: isAnswered(u) ? "answered" : "unanswered", flagged: flagged[u.key] }))} current={index} onSelect={setIndex} />
+          <QuestionNavigation showScores={false} items={sectionUnits.map((u) => ({ id: u.key, status: isAnswered(u) ? "answered" : "unanswered", flagged: flagged[u.key] }))} current={index} onSelect={setIndex} />
           <Button variant="secondary" fullWidth leftIcon={isLastSection ? <Send className="size-4" /> : <ArrowRight className="size-4" />} onClick={() => setConfirm(true)} loading={submitting}>
             {isLastSection ? "Submit Test" : `Finish ${part.title}`}
           </Button>

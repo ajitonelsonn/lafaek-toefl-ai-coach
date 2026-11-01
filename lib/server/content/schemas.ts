@@ -18,10 +18,13 @@ const choiceQuestion = z.strictObject({
   explanation: z.string().min(10).max(400),
 });
 
+const gender = z.enum(["female", "male"]).nullable();
 const speaker = z.strictObject({
   id: z.string().regex(/^S[1-3]$/),
   role: z.enum(["student", "staff", "professor", "lecturer", "announcer", "interviewer", "narrator", "friend"]),
   name: z.string().min(1).max(40),
+  /** Picks a matching voice and must match the picture; null on items made before genders were stored. */
+  gender,
 });
 
 const scriptLine = z.strictObject({ speakerId: z.string().regex(/^S[1-3]$/), text: z.string().min(2).max(600) });
@@ -57,6 +60,7 @@ export const GEN_SCHEMAS = {
   "listen-choose-response": z.strictObject({
     ...meta,
     speakerRole: z.enum(["student", "staff", "professor", "friend"]),
+    speakerGender: gender,
     prompt: z.string().min(5).max(200),
     options: z.array(z.string().min(1).max(160)).length(4),
     answerIndex: z.number().int().min(0).max(3),
@@ -127,7 +131,7 @@ export interface StoredItem {
   explanation: Record<string, unknown>;
   rubric: Record<string, unknown> | null;
   /** Audio segments to synthesise: role → ordered lines. Empty for silent tasks. */
-  audioPlan: { role: string; lines: { speaker: { id: string; role: string; name: string }; text: string }[] }[];
+  audioPlan: { role: string; lines: { speaker: { id: string; role: string; name: string; gender?: string | null }; text: string }[] }[];
   imagePrompt: string | null;
 }
 
@@ -135,8 +139,19 @@ const LETTERS = ["A", "B", "C", "D"];
 const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
+function withSpeakerGenders(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const r = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...r };
+  if (Array.isArray(r.speakers)) out.speakers = r.speakers.map((sp) => (sp && typeof sp === "object" && !("gender" in sp) ? { ...sp, gender: null } : sp));
+  if ("speakerRole" in r && !("speakerGender" in r)) out.speakerGender = null;
+  return out;
+}
+
 /** Structural checks beyond the schema. Returns human-readable problems (empty = valid). */
 export function validateGenerated(slug: PracticeSlug, raw: unknown): { ok: true; value: unknown } | { ok: false; errors: string[] } {
+  // Items made before speakers had a gender (and the hand-written starter set) are read with gender null.
+  raw = withSpeakerGenders(raw);
   // Complete the Words: the model writes a plain paragraph and the blanks are made here, as on the real test.
   const input =
     slug === "complete-the-words" && raw && typeof raw === "object" && typeof (raw as { passage?: unknown }).passage === "string"
@@ -262,7 +277,7 @@ export function toStoredItem(slug: PracticeSlug, value: unknown): StoredItem {
       return { ...base, content: { title: v.title, paragraphs: v.paragraphs, questions: q.content }, answerKey: q.answerKey, explanation: q.explanation };
     }
     case "listen-choose-response": {
-      const sp = { id: "S1", role: String(v.speakerRole), name: "Speaker" };
+      const sp = { id: "S1", role: String(v.speakerRole), name: "Speaker", gender: (v.speakerGender as string | null) ?? null };
       return {
         ...base,
         content: { question: { id: "q1", prompt: "Choose the best response.", options: (v.options as string[]).map((t, j) => ({ id: LETTERS[j], text: t })) }, script: [{ speaker: sp, text: v.prompt }] },

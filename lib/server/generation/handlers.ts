@@ -361,8 +361,10 @@ export async function runAudioAsset(job: GenerationJob, workerId: string): Promi
   const plan = audioPlanFromContent(slug, item.contentJson as Record<string, unknown>);
 
   const speakerIds = [...new Set(plan.flatMap((s) => s.lines.map((l) => l.speaker.id)))];
+  // Each speaker's gender (new items store it) so the voice matches the person in the picture.
+  const speakers = speakerIds.map((id) => ({ gender: plan.flatMap((s) => s.lines).find((l) => l.speaker.id === id)?.speaker.gender ?? null }));
   const seed = [...item.id].reduce((n, ch) => n + ch.charCodeAt(0), 0);
-  const voices = await pickVoices(speakerIds.length, accents ?? [], seed);
+  const voices = await pickVoices(speakers, accents ?? [], seed);
   let done = 0;
   for (const segment of plan) {
     for (let n = 0; n < segment.lines.length; n++) {
@@ -406,7 +408,7 @@ export async function runAudioAsset(job: GenerationJob, workerId: string): Promi
 }
 
 function audioPlanFromContent(slug: PracticeSlug, c: Record<string, unknown>): StoredItem["audioPlan"] {
-  type Line = { speaker: { id: string; role: string; name: string }; text: string };
+  type Line = { speaker: { id: string; role: string; name: string; gender?: string | null }; text: string };
   switch (slug) {
     case "listen-choose-response":
     case "listen-conversation":
