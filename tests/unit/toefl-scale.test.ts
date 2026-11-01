@@ -29,6 +29,13 @@ describe("TOEFL 2026 score scale", () => {
     expect(studyPlanInputSchema.safeParse({ ...base, targetScore: 90 }).success).toBe(false);
   });
 
+  it("study plan input accepts every offered accent at once, including African English", () => {
+    const all = ["en-US", "en-GB", "en-AU", "en-IN", "en-ZA"];
+    const input = { level: "intermediate", targetScore: 4.5, testDate: null, dailyMinutes: 30, studyDays: ["mon", "wed"], weakAreas: [], emphasis: "balanced", accents: all, goals: "I want to continue my study in USA" };
+    expect(studyPlanInputSchema.safeParse(input).success).toBe(true);
+    expect(studyPlanInputSchema.safeParse({ ...input, accents: [...all, "en-NZ"] }).success).toBe(false);
+  });
+
   it("turns section accuracy into a rough practice band", () => {
     expect(estimateBandFromAccuracy(5, 5)).toBe(6);
     expect(estimateBandFromAccuracy(4, 5)).toBe(5);

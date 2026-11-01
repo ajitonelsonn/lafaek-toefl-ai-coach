@@ -39,7 +39,8 @@ export const studyPlanInputSchema = z.object({
   studyDays: z.array(weekdaySchema).min(1, "Choose at least one study day.").max(7),
   weakAreas: z.array(skillSchema).max(4),
   emphasis: z.enum(["balanced", "weak-areas", "test-strategy", "vocabulary"]),
-  accents: z.array(accentSchema).max(4).default(["en-US", "en-GB"]),
+  // Any of the offered accents (the limit follows the options, so adding one never breaks saving).
+  accents: z.array(accentSchema).max(accentSchema.options.length, `Choose up to ${accentSchema.options.length} accents.`).default(["en-US", "en-GB"]),
   goals: z.string().trim().max(300).default(""),
   /** The learner's local "today" (YYYY-MM-DD); the server accepts it only within a day of its own date. */
   startDate: z

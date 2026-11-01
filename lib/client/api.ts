@@ -37,5 +37,8 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 }
 
 export function errorMessage(e: unknown): string {
-  return e instanceof ApiClientError ? e.message : "Something went wrong. Please try again.";
+  if (!(e instanceof ApiClientError)) return "Something went wrong. Please try again.";
+  // Rejected input: say what was wrong ("Please check your input: Choose up to 5 accents.").
+  const detail = e.code === "VALIDATION_ERROR" && e.fields ? Object.values(e.fields)[0] : undefined;
+  return detail && detail !== e.message ? `${e.message.replace(/\.$/, "")}: ${detail}` : e.message;
 }
