@@ -22,7 +22,7 @@ const ORBIT: { icon: Icon3DName; className: string }[] = [
 ];
 
 const STATS = [
-  { value: "4", label: "guides" },
+  { value: String(DOCS.length), label: "guides" },
   { value: "12", label: "TOEFL 2026 task types" },
   { value: "5", label: "AI models" },
   { value: "MIT", label: "open source" },
@@ -96,10 +96,10 @@ export default function DocsHome() {
           <p className="mt-3 text-body">Start with why the app exists, see it in action, then go as deep into the technology as you like.</p>
         </div>
         <div className="relative mt-10">
-          <svg className="pointer-events-none absolute left-0 right-0 top-[30px] hidden h-2 w-full lg:block" viewBox="0 0 1000 8" preserveAspectRatio="none" aria-hidden>
+          <svg className="pointer-events-none absolute left-0 right-0 top-[30px] hidden h-2 w-full 2xl:block" viewBox="0 0 1000 8" preserveAspectRatio="none" aria-hidden>
             <path data-journey-line d="M 40 4 H 960" fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity="0.45" />
           </svg>
-          <ol className="relative grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+          <ol className="relative grid gap-5 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
             {DOCS.map((d, i) => (
               <li key={d.slug} data-reveal>
                 <Link

@@ -1,6 +1,9 @@
 # User guide
 
-This guide walks through LafaekTOEFL AI Coach as a learner sees it, from creating an account to earning a certificate. Every screenshot comes from the live app at [lafaektoefl.tech](https://www.lafaektoefl.tech), using a real account that has a study plan, practice history and a finished mock test.
+This guide walks through LafaekTOEFL AI Coach as a learner sees it, from creating an account to earning a certificate. Every screenshot comes from the live app at [lafaektoefl.tech](https://www.lafaektoefl.tech) and uses two real accounts:
+
+- **A brand-new account** shows sign-up, the study plan being made, and every practice and mock-test screen. Its study plan is for a test on 25 February 2027.
+- **An account with a finished mock test** shows progress, results and a certificate.
 
 ## 1. Start for free
 
@@ -20,38 +23,95 @@ There is no subscription, and credits never expire.
 
 ## 2. Create your account
 
-Sign up with your name, email and a password of at least 8 characters, including letters and a number. We email you a 6-digit code to confirm your address. The code works once and expires after 10 minutes.
+Sign up with your name, email and a password of at least 8 characters, including letters and a number.
 
-![Create an account](images/signup.webp)
+![Create an account](images/signup-filled.webp)
 
-After that, you log in with your email and password.
+The app emails you a **6-digit code** to confirm that the address is yours.
+
+![Enter the verification code](images/verify-email.webp)
+
+The code arrives within a few seconds. It works once and expires after 10 minutes; only a hash of it is stored.
+
+![The email with the code](images/email-code.webp)
+
+Type the code, and your account is ready.
+
+![The code entered](images/verify-email-code.webp)
+
+Next time, you log in with your email and password. If you forget your password, the **Forgot password** page lets you contact the administrator.
 
 ![Log in](images/login.webp)
 
+![Forgot password](images/forgot-password.webp)
+
 ## 3. Your dashboard
 
-The dashboard is your home inside the app. It shows:
+The dashboard is your home inside the app. A new account starts here, with the hand-written starter questions ready to try.
+
+![The dashboard of a new account](images/dashboard-new.webp)
+
+As you practise, it shows:
 
 - a **Continue** button that takes you back to where you stopped;
 - your **study plan**: your goal and this week's study days;
 - **your practice so far**: how many questions you have answered in each skill and practice type.
 
-![The dashboard](images/dashboard.webp)
+![The dashboard after some practice](images/dashboard.webp)
 
 ## 4. Make your study plan
 
-The study plan is where personalisation starts. You tell the app:
+The study plan is where personalisation starts. It takes four short steps, and every step can be changed before you finish.
 
-- your current level and your **target band** (1–6, for example 4.5 = B2);
-- your **test date**, the **days** you can study and **how many minutes** a day;
-- the skills you find hardest;
-- which **accents** you want to hear: American, British, Australian, Indian and African English.
+**Step 1 – Your goal.** Choose your English level, your **target band** (1–6, for example 4.5 = B2) and your **test date**. The app counts the days until your test.
 
-Saving the plan uses 1 study-plan credit. The app then shows a **week-by-week plan** for every study day until your test. A badge marks the parts that were **personalised by AI**. Each day lists the practice tasks and vocabulary review that fit in your daily minutes, and the last day before the test is a light review.
+![Step 1: Your goal](images/wizard-goal.webp)
 
-![The study plan with weekly schedule](images/study-plan.webp)
+**Step 2 – Your schedule.** Choose how many minutes you can study each day (15 to 90) and which days of the week.
 
-In the background, the AI writes about **133 personal questions** for your plan across all 12 practice types. It also makes pictures, listening audio and a vocabulary list, which takes about 10–15 minutes. Each practice type opens as soon as its questions are ready, so you can begin while the rest is still being made.
+![Step 2: Your schedule](images/wizard-schedule.webp)
+
+**Step 3 – Your focus.** Choose the skills you find hardest, what the plan should focus on, and the **accents** you want to hear in listening practice: American, British, Australian, Indian and African English. You can also write your goal in your own words.
+
+![Step 3: Your focus](images/wizard-focus.webp)
+
+**Step 4 – Review.** Check your answers. Each one has an **Edit** link.
+
+![Step 4: Review](images/wizard-review.webp)
+
+Pressing **Finish** saves the plan and uses 1 study-plan credit. The app then starts making your personal practice in the background. You don't have to wait: the starter questions are ready at once, and you can leave the page.
+
+![The plan is saved and practice is being prepared](images/plan-generating.webp)
+
+### Watch your practice being made
+
+The dashboard's **Practice Content Status** shows the work live:
+- each of the 12 practice types moves from *Queued* to *Generating* to *Ready*;
+- the AI study schedule, vocabulary, audio and pictures fill in below.
+
+About a minute after saving, the first practice type is ready:
+
+![About one minute in](images/progress-1-start.webp)
+
+Halfway through, most practice types are ready, and audio and pictures are being made:
+
+![Halfway through](images/progress-2-middle.webp)
+
+After **13 minutes**, everything is done. For this plan that was:
+- **133 personal questions** across all 12 practice types, and **120 vocabulary words**;
+- **72 questions with natural audio** and **25 pictures**;
+- the AI study schedule.
+
+![Everything is ready](images/progress-3-done.webp)
+
+### Your week-by-week plan
+
+The study plan lists **every study day until your test**: 115 days and 17 weeks for this plan.
+- Each week has a theme, focus skills and a tip, **personalised by AI**.
+- Each day lists the practice tasks and vocabulary review that fit in your daily minutes.
+- The last day before the test is a light review.
+
+![The personalised weekly plan](images/plan-personalised.webp)
 
 ## 5. Practise all 12 TOEFL task types
 
@@ -82,11 +142,29 @@ Every practice page works the same way:
 
 ![Read in Daily Life](images/read-daily-life.webp)
 
+**Read an Academic Passage** puts a short academic text next to its questions. You can move between the questions at any time.
+
+![Read an Academic Passage](images/read-academic-passage.webp)
+
 ### Listening
 
 The listening tasks play real voices. Each speaker gets a voice that matches the person in the picture, in one of the accents you chose. As in the real test, the audio plays **once**, and the questions appear when it ends.
 
+**Listen and Choose a Response:** hear one sentence, then choose the best reply.
+
+![Listen and Choose a Response](images/listen-choose-response.webp)
+
+**Listen to a Conversation:** a conversation, for example between two students on campus.
+
 ![Listen to a Conversation](images/listen-conversation.webp)
+
+**Listen to an Announcement:** a short campus or class announcement.
+
+![Listen to an Announcement](images/listen-announcement.webp)
+
+**Listen to an Academic Talk:** a short lecture, with a notes area for writing while you listen.
+
+![Listen to an Academic Talk](images/listen-academic-talk.webp)
 
 ### Writing
 
@@ -94,15 +172,30 @@ The listening tasks play real voices. Each speaker gets a voice that matches the
 
 ![Build a Sentence](images/build-sentence.webp)
 
-**Write an Email** and **Write for an Academic Discussion** give you a situation and a checklist of what to include, and count your words as you write. When you check your answer, the AI gives you a **band score (1–6)** and coaching on what to improve. It uses criteria based on the official TOEFL 2026 scoring.
+**Write an Email** gives you a situation and three things your email must do. A checklist and a word counter help while you write.
 
-![Write an Email](images/write-email.webp)
+![Writing an email](images/write-email-answer.webp)
+
+When you submit, you see quick checks (length, greeting, closing, paragraphs) and then an **AI score from 1 to 6** with coaching:
+- what went well, and what to try next time;
+- comments on each part of the score: covering every point, coherence, tone, and grammar;
+- one of your sentences rewritten to be stronger.
+
+The criteria are based on the official TOEFL 2026 scoring. This email scored **5.5 (C1)**:
+
+![AI score and coaching for an email](images/write-email-ai-score.webp)
+
+**Write for an Academic Discussion:** a professor asks a question and two students reply. You write your own post, about 100 words. It is scored by AI the same way.
+
+![Write for an Academic Discussion](images/academic-discussion.webp)
 
 ### Speaking
 
-In **Take an Interview**, an interviewer asks you four questions. You record each answer, the app turns your speech into text, and the AI scores it and gives feedback.
+**Listen and Repeat:** hear a sentence once, then record yourself saying it. A sentence counts as correct when at least 80% of its words match.
 
-In **Listen and Repeat**, you hear a sentence and say it back. A sentence counts as correct when at least 80% of its words match.
+![Listen and Repeat](images/listen-repeat.webp)
+
+**Take an Interview:** an interviewer asks you four questions. You record each answer, the app turns your speech into text, and the AI scores it and gives feedback.
 
 ![Take an Interview](images/take-interview.webp)
 
@@ -114,9 +207,13 @@ The AI chooses useful words from **your own practice questions**, so every word 
 - a simple meaning and an example sentence;
 - which practice type the word came from.
 
-Mark a word with **Know it**, send it to **Review again**, or **save** it to your own list. The word list, review queue and quiz help you go over the words again.
+Mark a word with **Know it**, send it to **Review again**, or **save** it to your own list.
 
 ![Vocabulary flashcards](images/vocabulary.webp)
+
+The **Word List** shows all your words, filtered by category or searched. The review queue and quiz help you go over them again.
+
+![The vocabulary word list](images/vocabulary-list.webp)
 
 ## 7. Track your progress
 
@@ -141,6 +238,42 @@ The mock test is a complete practice TOEFL that covers all 12 task types. It is 
 
 ![The mock test page](images/mock-test.webp)
 
+After you press **Start Mock Test**, a short screen prepares your test from your personal questions.
+
+![Preparing the mock test](images/mock-preparing.webp)
+
+The test then runs section by section:
+- The tabs at the top show where you are.
+- The timer on the right counts down.
+- **Finish** moves on to the next part. You cannot go back.
+
+**Reading** starts with Complete the Words:
+
+![Mock test: Reading](images/mock-reading.webp)
+
+**Listening:** the audio plays once.
+
+![Mock test: Listening](images/mock-listening.webp)
+
+**Writing** has a separate timer for each task: Build a Sentence 6 minutes, the email 7 minutes and the academic discussion 10 minutes.
+
+![Mock test: Build a Sentence](images/mock-build-sentence.webp)
+
+![Mock test: Write an Email](images/mock-email.webp)
+
+![Mock test: Academic Discussion](images/mock-discussion.webp)
+
+**Speaking:** each spoken answer is recorded and uploaded straight away, so submitting stays fast.
+
+![Mock test: Speaking](images/mock-speaking.webp)
+
+When you submit, an animated ring shows each real step:
+- saving your spoken answers;
+- scoring Reading and Listening;
+- queuing the AI rating for Writing and Speaking.
+
+![Submitting the mock test](images/mock-submitting.webp)
+
 ## 9. See your results
 
 Reading, Listening and Build a Sentence are scored as soon as you submit. Your email, discussion post and spoken answers are rated by AI in the background, which takes about a minute.
@@ -164,7 +297,11 @@ Not there yet? The **certificate preview** shows what you will earn, with a "Pre
 
 ![Certificate preview](images/certificate-preview.webp)
 
-## 11. Credits, usage and settings
+## 11. Profile, credits, usage and settings
+
+Your **Profile** shows your name, your plan and the study plans and mock tests you have left.
+
+![Profile](images/profile.webp)
 
 The **Usage** page shows:
 
@@ -173,7 +310,7 @@ The **Usage** page shows:
 - your upgrade history;
 - your AI and media usage.
 
-To get more credits, use **Upgrade · $5**, which opens an email to the admin.
+To get more credits, use **Upgrade · $5**, which opens an email to the admin. What one study plan costs to make is explained in [Cost per study plan](../cost/README.md).
 
 ![The Usage page](images/usage.webp)
 

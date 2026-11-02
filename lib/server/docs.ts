@@ -106,6 +106,7 @@ function imageSrc(fromFile: string, href: string): string {
 
 /** Where a link in a doc should point, or null when its target is not public. */
 function linkHref(fromFile: string, href: string): string | null {
+  if (href.startsWith(SITE.url)) return href.slice(SITE.url.length) || "/";
   if (!href || href.startsWith("#") || isExternal(href) || href.startsWith("/")) return href;
   const [target, hash = ""] = href.split("#");
   const repoPath = resolveRepoPath(fromFile, target);
