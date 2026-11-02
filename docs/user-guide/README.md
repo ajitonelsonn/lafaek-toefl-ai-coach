@@ -148,7 +148,7 @@ Every practice page works the same way:
 
 ### Listening
 
-The listening tasks play real voices. Each speaker gets a voice that matches the person in the picture, in one of the accents you chose. As in the real test, the audio plays **once**, and the questions appear when it ends.
+The listening tasks play real voices. Each speaker gets a voice that matches the person in the picture, in one of the accents you chose. American, British, Australian, Indian and African English each have a female and a male voice. As in the real test, the audio plays **once**, and the questions appear when it ends.
 
 **Listen and Choose a Response:** hear one sentence, then choose the best reply.
 

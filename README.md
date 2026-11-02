@@ -171,7 +171,27 @@ Worker (npm run worker) ── claims jobs from the queue ──────┘
 - **Voices.**
   - Each speaker has a gender, and the picture shows the same people, so a woman in the picture speaks with a female voice.
   - Voices follow the accents chosen in the study plan (American, British, Australian, Indian, African), rotating across items.
-  - The app uses a catalogue of ElevenLabs standard voices. Extra voices from the Voice Library can be listed in `ELEVENLABS_VOICE_IDS` as `id:accent:gender`.
+  - Every accent has a female and a male voice. American and British voices are ElevenLabs standard voices built into the app. The others come from the ElevenLabs Voice Library and are listed in `ELEVENLABS_VOICE_IDS` as `id:accent:gender`.
+  - **Production voices** (all tested on 2 November 2026):
+
+    | Accent | Female | Male |
+    | --- | --- | --- |
+    | American | Sarah, Laura, Jessica, Matilda, Aria (built in) | Brian, Chris, Eric, Will, Liam, Roger (built in) |
+    | British | Alice, Lily (built in) | George, Daniel (built in) |
+    | Australian | Voice Library `p43fx6U8afP2xoq1Ai9f` | Charlie (built in), Voice Library `7AJyv0vI6pBx5JTb9p6C` |
+    | Indian | Smita `ctgnaLIeDdomGMnEAjYf` | Saagar `2DRBj9T2XZ7Jmkcm6WCZ` |
+    | African (South African English) | Annabel `nV2afREa5mKDMAIpqMu0` | Sizwe `qp5KnBkVXn1iOyKYgIDA` |
+
+  - **To use the same voices in your own copy:**
+    1. Add each Voice Library voice to your own ElevenLabs account (*Add to My Voices*).
+    2. Set the following line:
+
+    ```text
+    ELEVENLABS_VOICE_IDS=ctgnaLIeDdomGMnEAjYf:indian:female,2DRBj9T2XZ7Jmkcm6WCZ:indian:male,nV2afREa5mKDMAIpqMu0:african:female,qp5KnBkVXn1iOyKYgIDA:african:male,p43fx6U8afP2xoq1Ai9f:australian:female,7AJyv0vI6pBx5JTb9p6C:australian:male
+    ```
+
+  - Set it on the worker (listening audio) and on Vercel (word pronunciation). The new voices apply to newly generated audio; questions that already exist keep their voices.
+  - If an accent has no voice of the speaker's gender, the learner's other chosen accents are used.
 - **Speaking.**
   - The browser converts recordings to 16 kHz mono WAV, and Meta `muse-voice-transcribe-1.0` transcribes them.
   - Listen and Repeat counts as correct when at least 80% of the words match.
@@ -309,7 +329,7 @@ tests/             unit, integration (isolated schema), e2e (HTTP)
 
 ## Known limitations
 
-- Indian, African and female Australian voices need extra ElevenLabs Voice Library voices listed in `ELEVENLABS_VOICE_IDS`. Until then, the learner's other chosen accents are used.
+- Indian, African and Australian voices come from the ElevenLabs Voice Library, so a self-hosted copy must add them to its own ElevenLabs account first (see *Voices*). Audio made before 2 November 2026 used the learner's other chosen accents in place of these three.
 - Starter-set items have no generated audio yet and use the browser's voice. They also predate some 2026 formats.
 - Practice AI scores and speaking transcription run in Vercel route handlers (usually 10–15 s, within the 60 s limit). If they ever time out, they can move to the worker queue, as the mock test rating already does.
 - There is no self-service password reset, and Google sign-in is not implemented.
