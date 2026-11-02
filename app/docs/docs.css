@@ -1,0 +1,360 @@
+/* Docs typography. The Markdown is rendered to plain HTML, so it is styled here with the app's
+   theme tokens (light and dark). */
+
+html:has(.docs-root) {
+  scroll-padding-top: 96px;
+}
+
+/* Header blocks rise in with GSAP (components/docs/DocsMotion.tsx). They are hidden only when JS
+   runs and motion is allowed, and still appear after 2.5 s if the animation never starts. */
+@media (prefers-reduced-motion: no-preference) {
+  html.js [data-docs-in] > *,
+  html.js [data-docs-art] {
+    visibility: hidden;
+    animation: reveal-fallback 0s linear 2.5s forwards;
+  }
+}
+
+.docs-prose {
+  color: var(--text);
+  font-size: 16.5px;
+  line-height: 1.75;
+  overflow-wrap: break-word;
+}
+
+.docs-prose > * + * {
+  margin-top: 1.1em;
+}
+
+.docs-prose h2,
+.docs-prose h3,
+.docs-prose h4 {
+  position: relative;
+  color: var(--ink);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  scroll-margin-top: 96px;
+}
+
+.docs-prose h2 {
+  margin-top: 2.6em;
+  padding-top: 1.2em;
+  border-top: 1px solid var(--line);
+  font-size: 1.65rem;
+  line-height: 1.25;
+}
+
+.docs-prose > h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.docs-prose h3 {
+  margin-top: 2em;
+  font-size: 1.25rem;
+  line-height: 1.35;
+}
+
+.docs-prose h4 {
+  margin-top: 1.6em;
+  font-size: 1.05rem;
+}
+
+.docs-anchor {
+  position: absolute;
+  left: -1.1em;
+  padding-right: 0.3em;
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.docs-heading:hover .docs-anchor,
+.docs-anchor:focus-visible {
+  opacity: 1;
+}
+
+.docs-prose p {
+  margin-top: 1em;
+}
+
+.docs-prose a {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--primary) 35%, transparent);
+  transition: text-decoration-color 0.15s;
+}
+
+.docs-prose a:hover {
+  text-decoration-color: var(--primary);
+}
+
+.docs-prose .docs-anchor {
+  text-decoration: none;
+}
+
+.docs-prose strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.docs-prose ul,
+.docs-prose ol {
+  padding-left: 1.4em;
+}
+
+.docs-prose ul {
+  list-style: none;
+}
+
+.docs-prose ul > li {
+  position: relative;
+}
+
+.docs-prose ul > li::before {
+  content: "";
+  position: absolute;
+  left: -1.05em;
+  top: 0.72em;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--primary);
+  opacity: 0.75;
+}
+
+.docs-prose ol {
+  list-style: decimal;
+}
+
+.docs-prose ol > li::marker {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.docs-prose li + li,
+.docs-prose li > ul,
+.docs-prose li > ol {
+  margin-top: 0.4em;
+}
+
+.docs-prose li > p {
+  margin-top: 0.4em;
+}
+
+.docs-prose :not(pre) > code {
+  padding: 0.12em 0.4em;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.86em;
+}
+
+.docs-prose a > code {
+  color: inherit;
+}
+
+.docs-code {
+  overflow: hidden;
+  border: 1px solid #1d2b5e;
+  border-radius: 14px;
+  background: #0d1533;
+  box-shadow: var(--card-shadow);
+}
+
+.docs-code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 8px 16px;
+  border-bottom: 1px solid #1d2b5e;
+  color: #8ea0cc;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.docs-code pre {
+  overflow-x: auto;
+  margin: 0;
+  padding: 16px 18px;
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+
+.docs-code code {
+  color: #e4ebff;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+
+.docs-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #2a3a73;
+  border-radius: 8px;
+  background: #16214a;
+  color: #c9d5f7;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.docs-copy:hover {
+  background: #1f2d60;
+  color: #fff;
+}
+
+.docs-copy[data-copied] {
+  border-color: #1f6b52;
+  background: #123a2e;
+  color: #7ee2b8;
+}
+
+.docs-table {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+}
+
+.docs-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+.docs-table th {
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.docs-table th,
+.docs-table td {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.docs-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.docs-table tbody tr:hover td {
+  background: var(--surface-soft);
+}
+
+.docs-prose blockquote {
+  padding: 14px 18px;
+  border: 1px solid var(--tip-line);
+  border-left: 4px solid var(--warning);
+  border-radius: 12px;
+  background: var(--tip);
+  color: var(--ink);
+  font-size: 1.05em;
+}
+
+.docs-prose blockquote > * + * {
+  margin-top: 0.6em;
+}
+
+.docs-prose hr {
+  margin: 2.6em 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* A rule right before a section heading would double the heading's own top border. */
+.docs-prose hr:has(+ h2) {
+  display: none;
+}
+
+.docs-figure {
+  margin-top: 1.6em;
+  margin-bottom: 1.6em;
+}
+
+.docs-zoom {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgba(16, 27, 77, 0.1);
+  cursor: zoom-in;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.docs-zoom:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 40px rgba(16, 27, 77, 0.16);
+}
+
+.docs-zoom img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.docs-figure figcaption {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13.5px;
+  text-align: center;
+}
+
+.docs-prose p > img {
+  display: inline-block;
+  max-width: 48%;
+  margin: 0 1% 0 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(16, 27, 77, 0.1);
+  vertical-align: top;
+}
+
+.docs-unlinked {
+  font-weight: 600;
+}
+
+/* The table of contents marker that slides to the active section. */
+.docs-toc-marker {
+  transition: opacity 0.2s;
+}
+
+@media (max-width: 640px) {
+  .docs-prose {
+    font-size: 16px;
+  }
+
+  .docs-prose h2 {
+    font-size: 1.4rem;
+  }
+
+  .docs-anchor {
+    display: none;
+  }
+}

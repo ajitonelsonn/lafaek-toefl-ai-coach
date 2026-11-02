@@ -11,6 +11,7 @@ const LINKS = [
   { href: "#study-plan", label: "Study Plan" },
   { href: "#pricing", label: "Pricing" },
   { href: "#about", label: "About" },
+  { href: "/docs", label: "Docs" },
 ];
 
 /** `user` is set when a session exists: show the way back into the app instead of sign-in links. */

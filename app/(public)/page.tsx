@@ -211,6 +211,9 @@ export default async function LandingPage() {
             <a href="#pricing" className="hover:text-primary">
               Pricing
             </a>
+            <Link href="/docs" className="hover:text-primary">
+              Docs
+            </Link>
             <a href={SITE.githubUrl} target="_blank" rel="noopener noreferrer" className="hover:text-primary">
               GitHub
             </a>
