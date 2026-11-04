@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, Code2, Compass, LockOpen, Sparkles } from "lucide-react";
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { LandingMotion } from "@/components/landing/LandingMotion";
+import { MetaModelsSection } from "@/components/landing/MetaModelsSection";
 import { PricingSection } from "@/components/landing/PricingSection";
 import { Logo } from "@/components/brand/Logo";
 import { LinkButton } from "@/components/ui/Button";
@@ -177,6 +178,7 @@ export default async function LandingPage() {
         </section>
 
         <PricingSection signedIn={Boolean(user)} />
+        <MetaModelsSection />
 
         {/* About */}
         <section id="about" aria-labelledby="about-title" className="scroll-mt-24 mx-auto grid max-w-7xl items-center gap-8 px-4 py-14 sm:px-6 md:grid-cols-[auto_1fr]">

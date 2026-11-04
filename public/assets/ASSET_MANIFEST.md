@@ -106,3 +106,11 @@ padded to a square and resized to 192×192.
 | `mail.png` | blue mail tile, bottom row | "How to upgrade" note |
 | `code.png` | `</>` tile, third row | "View on GitHub" button |
 | `check.png` | green check | (spare) |
+
+## Brand logos — `assets/brands/`
+
+| File | Source | Used for |
+|---|---|---|
+| `meta.svg` | Meta logo from [Simple Icons](https://simpleicons.org) v13.21.0 (CC0), filled with Meta blue `#0081FB` | "Powered by Meta" model cards on the landing page (`components/landing/MetaModelsSection.tsx`) |
+
+The Meta logo is a trademark of Meta Platforms, Inc. and is used only to name the models the app calls.
