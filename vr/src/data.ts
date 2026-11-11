@@ -70,6 +70,35 @@ export interface SpeechResult {
   correct?: boolean | null;
 }
 
+/** The progress wall's summary of the learner's real practice and latest mock test. */
+export interface ProgressSummary {
+  questionsAttempted: number;
+  /** Percent (0–100), as the progress API returns it. */
+  accuracy: number | null;
+  studyDays: number;
+  practiceMinutes: number;
+  skills: Record<'reading' | 'listening' | 'writing' | 'speaking', { done: number; available: number; accuracy: number | null; aiBand: number | null }>;
+  mockBand: number | null;
+  mockPending: boolean;
+  certificate: string | null;
+}
+
+/** Which skill each of the 12 practice types belongs to. */
+const SLUG_SKILL: Record<string, keyof ProgressSummary['skills']> = {
+  'complete-the-words': 'reading',
+  'read-in-daily-life': 'reading',
+  'read-academic-passage': 'reading',
+  'listen-choose-response': 'listening',
+  'listen-conversation': 'listening',
+  'listen-announcement': 'listening',
+  'listen-academic-talk': 'listening',
+  'build-sentence': 'writing',
+  'write-email': 'writing',
+  'academic-discussion': 'writing',
+  'listen-repeat': 'speaking',
+  'take-interview': 'speaking',
+};
+
 export type ReadingSlug = 'read-in-daily-life' | 'read-academic-passage';
 export type ListeningSlug = 'listen-choose-response' | 'listen-conversation' | 'listen-announcement' | 'listen-academic-talk';
 
@@ -154,6 +183,9 @@ async function practiceItems<T extends { itemId: string }>(slug: string, unitOf:
 }
 
 export class DataSource {
+  /** Called after the server saves an answer (checked, spoken or AI-scored), e.g. to refresh the progress wall. */
+  onSaved?: () => void;
+
   constructor(readonly user: User | null) {}
 
   get live(): boolean {
@@ -186,6 +218,51 @@ export class DataSource {
     return practiceItems<InterviewItem>('take-interview', (i) => i.questions[0]?.unitId ?? '');
   }
 
+  /** The learner's progress and latest mock test, for the progress wall. */
+  async progress(): Promise<ProgressSummary> {
+    type Progress = {
+      questionsAttempted: number;
+      accuracy: number | null;
+      practiceMinutes: number;
+      practisedDates: string[];
+      bySkill: { skill: string; accuracy: number | null; aiBand: number | null }[];
+      byTask: { slug: string; doneUnits: number; availableUnits: number }[];
+    };
+    const [{ progress: pr }, mock] = await Promise.all([
+      api<{ progress: Progress }>('/api/progress'),
+      api<{ result: { estimatedBand: number | null; scoring: string | null; certificateCode: string | null } | null }>('/api/mock-test/latest').catch(() => ({ result: null })),
+    ]);
+    const skills = {
+      reading: { done: 0, available: 0, accuracy: null, aiBand: null },
+      listening: { done: 0, available: 0, accuracy: null, aiBand: null },
+      writing: { done: 0, available: 0, accuracy: null, aiBand: null },
+      speaking: { done: 0, available: 0, accuracy: null, aiBand: null },
+    } as ProgressSummary['skills'];
+    for (const t of pr.byTask) {
+      const k = SLUG_SKILL[t.slug];
+      if (!k) continue;
+      skills[k].done += Math.min(t.doneUnits, t.availableUnits);
+      skills[k].available += t.availableUnits;
+    }
+    for (const b of pr.bySkill) {
+      const k = b.skill as keyof ProgressSummary['skills'];
+      if (skills[k]) {
+        skills[k].accuracy = b.accuracy;
+        skills[k].aiBand = b.aiBand;
+      }
+    }
+    return {
+      questionsAttempted: pr.questionsAttempted,
+      accuracy: pr.accuracy,
+      studyDays: new Set(pr.practisedDates).size,
+      practiceMinutes: Math.round(pr.practiceMinutes),
+      skills,
+      mockBand: mock.result?.estimatedBand ?? null,
+      mockPending: mock.result?.scoring === 'pending',
+      certificate: mock.result?.certificateCode ?? null,
+    };
+  }
+
   /** Checks one objective answer on the server. */
   async check(itemId: string, unitId: string, response: string | string[]): Promise<CheckResult> {
     const r = await api<{ results: Record<string, { correct: boolean | null; answer?: unknown; label?: string; explanation?: string; parts?: CheckResult['parts'] }> }>(
@@ -193,6 +270,7 @@ export class DataSource {
       json({ responses: [{ unitId, response }] }),
     );
     const u = r.results[unitId];
+    this.onSaved?.();
     return {
       correct: u?.correct ?? null,
       answer: u?.label || (typeof u?.answer === 'string' ? u.answer : undefined),
@@ -224,12 +302,14 @@ export class DataSource {
       { method: 'POST', body: form },
     );
     const u = r.results[unitId];
+    this.onSaved?.();
     return { transcript: u?.transcript ?? '', similarity: u?.similarity, expected: typeof u?.answer === 'string' ? u.answer : undefined, correct: u?.correct };
   }
 
   /** AI band score (1–6) and coaching for an interview answer. */
   async score(itemId: string, unitId: string, transcript: string): Promise<AiScore> {
     const r = await api<{ feedback: AiScore }>(`/api/practice/items/${itemId}/feedback`, json({ unitId, text: transcript }));
+    this.onSaved?.();
     return r.feedback;
   }
 }

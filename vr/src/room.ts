@@ -168,6 +168,123 @@ function loadTexture(file: string): Texture {
   return tex;
 }
 
+/** Places an object on the curved wall at an angle around the learner (0° = in front, 180° = behind). */
+export function onWall(obj: Group, angleDeg: number, y: number, inset = 0.08): Group {
+  const a = (angleDeg * Math.PI) / 180;
+  const r = WALL_R - inset;
+  obj.position.set(Math.sin(a) * r, y, -Math.cos(a) * r);
+  obj.rotation.y = -a;
+  return obj;
+}
+
+/** Wraps a flat panel (w × h) in the white rounded frame and blue LED line used on the walls. */
+export function framed(content: Group, w: number, h: number): Group {
+  const g = new Group();
+  g.add(content);
+  const frame = new Mesh(extrude(roundedShape(w + 0.1, h + 0.1, 0.08, { w: w - 0.01, h: h - 0.01, r: 0.05 }), 0.04), standard(PALETTE.white, 0.35));
+  frame.position.z = -0.012;
+  g.add(frame);
+  const led = new Mesh(extrude(roundedShape(w + 0.12, h + 0.12, 0.085, { w: w + 0.09, h: h + 0.09, r: 0.075 }), 0.002, 0), glow(PALETTE.led));
+  led.position.z = 0.03;
+  g.add(led);
+  return g;
+}
+
+/** A framed painting: the picture, a white rounded frame and a thin blue LED line. */
+function framedArt(file: string, w: number, h: number): Group {
+  const g = new Group();
+  g.add(new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ map: loadTexture(file), toneMapped: false })));
+  const frame = new Mesh(extrude(roundedShape(w + 0.12, h + 0.12, 0.06, { w: w - 0.01, h: h - 0.01, r: 0.03 }), 0.04), standard(PALETTE.white, 0.35));
+  frame.position.z = -0.01;
+  g.add(frame);
+  const led = new Mesh(extrude(roundedShape(w + 0.13, h + 0.13, 0.065, { w: w + 0.11, h: h + 0.11, r: 0.06 }), 0.002, 0), glow(PALETTE.led));
+  led.position.z = 0.03;
+  g.add(led);
+  return g;
+}
+
+/**
+ * The motto board on the back wall: "Small steps every day lead to a big score!" with the mascot
+ * and the four zone icons. Drawn on a canvas; images are added as they load.
+ */
+function mottoBoard(w: number, h: number): Group {
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * 600);
+  c.height = Math.round(h * 600);
+  const g2 = c.getContext('2d')!;
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  const imgs: Record<string, HTMLImageElement | null> = {};
+  const names = ['img/mascot-vr.png', 'icons/zone/zone-reading.png', 'icons/zone/zone-listening.png', 'icons/zone/zone-speaking.png', 'icons/zone/zone-writing.png'];
+  const draw = () => {
+    const W = c.width;
+    const H = c.height;
+    const grad = g2.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, '#101b4d');
+    grad.addColorStop(0.6, '#1d3fa8');
+    grad.addColorStop(1, '#1769f5');
+    g2.fillStyle = grad;
+    g2.fillRect(0, 0, W, H);
+    // Soft light spots.
+    for (const [x, y, r] of [[W * 0.15, H * 0.2, H * 0.6], [W * 0.85, H * 0.9, H * 0.7]]) {
+      const spot = g2.createRadialGradient(x, y, 0, x, y, r);
+      spot.addColorStop(0, 'rgba(111, 211, 255, 0.25)');
+      spot.addColorStop(1, 'rgba(111, 211, 255, 0)');
+      g2.fillStyle = spot;
+      g2.fillRect(0, 0, W, H);
+    }
+    const mascot = imgs['img/mascot-vr.png'];
+    const mh = H * 0.78;
+    if (mascot) g2.drawImage(mascot, W * 0.04, (H - mh) / 2, (mascot.width / mascot.height) * mh, mh);
+    const tx = W * 0.36;
+    g2.fillStyle = '#9fd0ff';
+    g2.font = `800 ${Math.round(H * 0.07)}px system-ui, -apple-system, Roboto, sans-serif`;
+    g2.textBaseline = 'top';
+    g2.fillText('LAFAEKTOEFL  ·  STUDY ROOM', tx, H * 0.12);
+    g2.fillStyle = '#ffffff';
+    let mottoSize = Math.round(H * 0.13);
+    const fit = () => (g2.font = `800 ${mottoSize}px system-ui, -apple-system, Roboto, sans-serif`);
+    fit();
+    while (mottoSize > 10 && g2.measureText('Small steps every day').width > W - tx - W * 0.04) {
+      mottoSize -= 1;
+      fit();
+    }
+    g2.fillText('Small steps every day', tx, H * 0.24);
+    g2.fillText('lead to a big score!', tx, H * 0.24 + mottoSize * 1.2);
+    // The four zones.
+    const zones = ['reading', 'listening', 'speaking', 'writing'];
+    const size = H * 0.2;
+    zones.forEach((z, i) => {
+      const x = tx + i * (W * 0.155);
+      const img = imgs[`icons/zone/zone-${z}.png`];
+      if (img) g2.drawImage(img, x, H * 0.6, (img.width / img.height) * size, size);
+      g2.fillStyle = '#cfe6ff';
+      g2.font = `700 ${Math.round(H * 0.055)}px system-ui, -apple-system, Roboto, sans-serif`;
+      g2.fillText(z[0].toUpperCase() + z.slice(1), x, H * 0.82);
+    });
+    tex.needsUpdate = true;
+  };
+  for (const n of names) {
+    imgs[n] = null;
+    const img = new Image();
+    img.onload = () => {
+      imgs[n] = img;
+      draw();
+    };
+    img.src = `${BASE}${n}`;
+  }
+  draw();
+  const g = new Group();
+  g.add(new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ map: tex, toneMapped: false })));
+  const frame = new Mesh(extrude(roundedShape(w + 0.1, h + 0.1, 0.08, { w: w - 0.01, h: h - 0.01, r: 0.05 }), 0.04), standard(PALETTE.white, 0.35));
+  frame.position.z = -0.01;
+  g.add(frame);
+  const led = new Mesh(extrude(roundedShape(w + 0.12, h + 0.12, 0.085, { w: w + 0.09, h: h + 0.09, r: 0.075 }), 0.002, 0), glow(PALETTE.led));
+  led.position.z = 0.03;
+  g.add(led);
+  return g;
+}
+
 /** One panoramic window on the curved wall, at an angle around the learner. */
 function windowAt(angleDeg: number, view: string, w: number, h: number, y: number): Group {
   const g = new Group();
@@ -238,6 +355,11 @@ export function buildRoom(): Room {
   room.add(windowAt(-52, 'view-left.webp', 1.45, 1.45, 1.6));
   room.add(windowAt(0, 'view-center.webp', 2.0, 1.34, 1.62));
   room.add(windowAt(52, 'view-right.webp', 1.7, 1.13, 1.6));
+
+  // The back wall (behind the learner): the live progress board in the centre (src/progress.ts,
+  // placed by the app), the motto board on its left and a painting from the app on its right.
+  room.add(onWall(mottoBoard(1.15, 0.5), 228, 1.62, 0.14));
+  room.add(onWall(framedArt('art-progress.webp', 0.84, 0.6), 132, 1.6));
 
   // White desk: rounded top with a glowing front edge, on a pedestal.
   const top = new Mesh(extrude(roundedShape(1.5, 0.62, 0.12), 0.035, 0.008), standard('#ffffff', 0.22));

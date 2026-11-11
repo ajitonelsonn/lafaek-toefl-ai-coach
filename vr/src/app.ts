@@ -6,7 +6,8 @@ import { AdditiveBlending, CapsuleGeometry, Entity, Group, Mesh, MeshBasicMateri
 import { animate, onPress } from './clicks.js';
 import { DataSource } from './data.js';
 import { Clickable } from './interaction.js';
-import { beamTexture, buildRoom, DESK_Y, DESK_Z, PALETTE, Plant } from './room.js';
+import { beamTexture, buildRoom, DESK_Y, DESK_Z, framed, onWall, PALETTE, Plant } from './room.js';
+import { ProgressBoard } from './progress.js';
 import { Sound } from './sound.js';
 import { addGlow, Button, C, font, roundRect, Scope, wrap } from './ui.js';
 
@@ -47,6 +48,12 @@ export class App {
     world.createTransformEntity(room.group);
     animate((time) => room.tick(time));
     this.companion = this.buildCompanion();
+    // The live progress board on the wall behind the learner.
+    this.board = new ProgressBoard(2.1, 1.1);
+    // Every saved answer (checked, spoken or AI-scored) refreshes the wall.
+    data.onSaved = () => this.progressChanged();
+    // Set into the room (inset) so the wide flat board stays in front of the curved wall.
+    world.createTransformEntity(onWall(framed(this.board.group, 2.1, 1.1), 180, 1.62, 0.32));
     const ws = new Group();
     ws.name = 'Workspace';
     this.workspace = world.createTransformEntity(ws);
@@ -73,6 +80,33 @@ export class App {
 
   private seated = false;
   private readonly companion: Group;
+  private readonly board: ProgressBoard;
+  private boardAt = 0;
+
+  private boardTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * An answer was saved or an activity finished: refresh the progress wall shortly after. Bursts
+   * (several answers in a row) are merged into one refresh.
+   */
+  progressChanged(): void {
+    if (this.boardTimer) clearTimeout(this.boardTimer);
+    this.boardTimer = setTimeout(() => {
+      this.boardTimer = null;
+      void this.refreshProgress(true);
+    }, 1500);
+  }
+
+  /** Refreshes the progress wall; without `force`, at most every 5 s (e.g. returning to the hub). */
+  async refreshProgress(force = false): Promise<void> {
+    if ((!force && Date.now() - this.boardAt < 5000) || !this.data.live) return;
+    this.boardAt = Date.now();
+    try {
+      this.board.draw(await this.data.progress(), this.data.user?.name?.split(' ')[0] ?? null);
+    } catch {
+      // Keep the last drawn board.
+    }
+  }
 
   /**
    * The Lafaek VR mascot as a learning companion, floating on a small hologram pad to the left of
@@ -152,6 +186,7 @@ export class App {
 
   open(name: string): void {
     this.current = name;
+    if (name === 'hub') void this.refreshProgress();
     this.screen?.screen.dispose();
     this.screen?.scope.dispose();
     const factory = this.screens.get(name);
@@ -207,7 +242,10 @@ export class App {
   completeActivity(): void {
     const today = new Date().toISOString().slice(0, 10);
     const days = this.days();
-    if (days.includes(today)) return;
+    if (days.includes(today)) {
+      this.progressChanged(); // a finished activity still updates the progress wall
+      return;
+    }
     days.push(today);
     try {
       localStorage.setItem('lafaek-vr:days', JSON.stringify(days.slice(-60)));
@@ -216,6 +254,7 @@ export class App {
     }
     this.plant.setStage(days.length);
     this.sound.play('grow', 0.6);
+    this.progressChanged();
   }
 }
 
