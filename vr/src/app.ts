@@ -2,16 +2,16 @@
  * The study room app: owns the room, the desk plant, the hub with three stations, and switching
  * between screens. Each screen builds its entities in a Scope and frees them when it closes.
  */
-import { Entity, Group, RayInteractable, Vector3, VisibilityState, World } from '@iwsdk/core';
-import { onPress } from './clicks.js';
+import { AdditiveBlending, CapsuleGeometry, Entity, Group, Mesh, MeshBasicMaterial, PlaneGeometry, RayInteractable, SRGBColorSpace, Texture, Vector3, VisibilityState, World } from '@iwsdk/core';
+import { animate, onPress } from './clicks.js';
 import { DataSource } from './data.js';
 import { Clickable } from './interaction.js';
-import { buildRoom, DESK_Y, DESK_Z, Plant } from './room.js';
+import { beamTexture, buildRoom, DESK_Y, DESK_Z, PALETTE, Plant } from './room.js';
 import { Sound } from './sound.js';
-import { Button, C, font, roundRect, Scope, wrap } from './ui.js';
+import { addGlow, Button, C, font, roundRect, Scope, wrap } from './ui.js';
 
 const BASE = import.meta.env.BASE_URL;
-const ICONS = ['writing', 'listening', 'speaking', 'home', 'retry', 'next', 'start', 'stop', 'voice', 'success', 'achievement', 'streak', 'logout', 'continue'] as const;
+const ICONS = ['writing', 'listening', 'speaking', 'home', 'retry', 'next', 'start', 'stop', 'voice', 'success', 'achievement', 'streak', 'logout', 'continue', 'vr-build-sentence', 'vr-listen', 'vr-interview'] as const;
 export type IconName = (typeof ICONS)[number];
 
 export interface Screen {
@@ -38,7 +38,10 @@ export class App {
     readonly data: DataSource,
   ) {
     this.sound = new Sound(world);
-    world.createTransformEntity(buildRoom());
+    const room = buildRoom();
+    world.createTransformEntity(room.group);
+    animate((time) => room.tick(time));
+    this.companion = this.buildCompanion();
     const ws = new Group();
     ws.name = 'Workspace';
     this.workspace = world.createTransformEntity(ws);
@@ -50,16 +53,69 @@ export class App {
     world.visibilityState.subscribe((state) => {
       if (state === VisibilityState.Visible && !this.seated) {
         this.seated = true;
-        setTimeout(() => this.recenter(), 700);
+        setTimeout(() => {
+          this.recenter();
+          this.fitToFieldOfView();
+        }, 700);
       }
       if (state === VisibilityState.NonImmersive) {
         this.seated = false;
         world.player.position.set(0, 0, 0);
+        this.workspace.object3D!.position.z = 0;
       }
     });
   }
 
   private seated = false;
+  private readonly companion: Group;
+
+  /**
+   * The Lafaek VR mascot as a learning companion, floating on a small hologram pad to the left of
+   * the desk. Shown in the hub and Build a Sentence; hidden where it could block a station.
+   */
+  private buildCompanion(): Group {
+    const g = new Group();
+    g.name = 'Companion';
+    g.position.set(-0.98, 0.98, -1.05);
+    g.rotation.y = Math.atan2(0.98, 1.05);
+    const tex = new Texture();
+    tex.colorSpace = SRGBColorSpace;
+    const img = new Image();
+    img.onload = () => {
+      tex.image = img;
+      tex.needsUpdate = true;
+    };
+    img.src = `${BASE}img/companion.webp`;
+    const cut = new Mesh(new PlaneGeometry(0.46, 0.364), new MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.04, toneMapped: false }));
+    cut.raycast = () => {};
+    g.add(cut);
+    const pad = new Mesh(new CapsuleGeometry(0.004, 0.3, 4, 8), new MeshBasicMaterial({ color: PALETTE.led, toneMapped: false }));
+    pad.rotation.z = Math.PI / 2;
+    pad.position.y = -0.2;
+    g.add(pad);
+    const beam = new Mesh(new PlaneGeometry(0.34, 0.24), new MeshBasicMaterial({ map: beamTexture(), transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
+    beam.raycast = () => {};
+    beam.position.set(0, -0.08, -0.01);
+    g.add(beam);
+    this.world.createTransformEntity(g);
+    animate((time) => {
+      cut.position.y = Math.sin(time * 1.3) * 0.012;
+      cut.rotation.z = Math.sin(time * 0.7) * 0.025;
+    });
+    return g;
+  }
+
+  /**
+   * Narrow fields of view (e.g. Meta VR Glasses) see less of the room: move the panels back a
+   * little so the stations and controls still fit in view. Quest-class headsets keep the layout.
+   */
+  private fitToFieldOfView(): void {
+    const cams = this.world.renderer.xr.getCamera().cameras;
+    const m = cams[0]?.projectionMatrix.elements;
+    if (!m) return;
+    const fovX = (2 * Math.atan(1 / m[0]) * 180) / Math.PI;
+    this.workspace.object3D!.position.z = fovX < 85 ? -0.28 : 0;
+  }
 
   register(name: string, factory: ScreenFactory): void {
     this.screens.set(name, factory);
@@ -91,6 +147,8 @@ export class App {
     this.screen?.scope.dispose();
     const factory = this.screens.get(name);
     if (!factory) return;
+    // The companion stays out of the way of the speakers and the interviewer.
+    this.companion.visible = name === 'hub' || name === 'sentence';
     const scope = new Scope(this.world, this.workspace);
     const screen = factory(this, scope);
     this.screen = { scope, screen };
@@ -154,98 +212,158 @@ export class App {
 // --- Hub ----------------------------------------------------------------------------------------
 
 const STATIONS = [
-  { id: 'sentence', title: 'Build a Sentence', body: 'Grab word tiles and put them in order.', icon: 'writing', color: C.writing, skill: 'WRITING' },
-  { id: 'listening', title: 'Listen to a Conversation', body: 'Two speakers talk around you. Answer what you heard.', icon: 'listening', color: C.listening, skill: 'LISTENING' },
-  { id: 'interview', title: 'Take an Interview', body: 'Answer the interviewer out loud and get an AI score.', icon: 'speaking', color: C.speaking, skill: 'SPEAKING' },
+  { id: 'sentence', title: 'Build a Sentence', body: 'Grab word tiles and put them in order.', icon: 'vr-build-sentence', color: C.writing, skill: 'WRITING' },
+  { id: 'listening', title: 'Listen to a Conversation', body: 'Two speakers talk around you.', icon: 'vr-listen', color: C.listening, skill: 'LISTENING' },
+  { id: 'interview', title: 'Take an Interview', body: 'Answer out loud and get an AI score.', icon: 'vr-interview', color: C.speaking, skill: 'SPEAKING' },
 ] as const;
 
-export const hubScreen: ScreenFactory = (app, scope) => ({
-  start() {
-    const name = app.data.user?.name?.split(' ')[0];
-    const { panel: title } = scope.panel(1.0, 0.25, 0, 1.47, -1.1);
-    title.draw((ctx, W) => {
-      title.card();
-      ctx.fillStyle = C.primary;
-      ctx.font = font(28, 700);
-      ctx.fillText('LAFAEKTOEFL  ·  STUDY ROOM', 50, 34);
-      ctx.fillStyle = C.ink;
-      ctx.font = font(58, 800);
-      ctx.fillText(name ? `Welcome back, ${name}` : 'Welcome back', 50, 76);
-      ctx.fillStyle = C.body;
-      ctx.font = font(32, 500);
-      wrap(ctx, 'Your own study-plan questions. Pinch a station to begin.', 50, 160, W - 100, 40, 2);
-    });
+const CARD_W = 0.36;
+const CARD_H = 0.42;
+const CARD_Y = 1.08;
 
-    STATIONS.forEach((s, i) => {
-      const x = (i - 1) * 0.43;
-      const { panel, entity } = scope.panel(0.4, 0.46, x, 1.04, -0.92 + Math.abs(i - 1) * 0.07);
-      panel.mesh.name = `Station_${s.id}`;
-      let hover = false;
-      const draw = () =>
-        panel.draw((ctx, W, H) => {
-          roundRect(ctx, 4, 4, W - 8, H - 8, 40);
-          ctx.fillStyle = hover ? '#f5f9ff' : C.surface;
-          ctx.fill();
-          ctx.lineWidth = hover ? 10 : 5;
-          ctx.strokeStyle = hover ? s.color : C.line;
-          ctx.stroke();
-          roundRect(ctx, 34, 34, 130, 130, 32);
-          ctx.fillStyle = `${s.color}1f`;
-          ctx.fill();
-          const img = app.icon(s.icon);
-          if (img) ctx.drawImage(img, 49, 49, 100, 100);
-          ctx.fillStyle = s.color;
-          ctx.font = font(24, 800);
-          ctx.fillText(s.skill, 190, 70);
-          ctx.fillStyle = C.ink;
-          ctx.font = font(40, 800);
-          const y = wrap(ctx, s.title, 34, 190, W - 68, 46, 2);
-          ctx.fillStyle = C.body;
-          ctx.font = font(28, 500);
-          wrap(ctx, s.body, 34, y + 12, W - 68, 34, 3);
-          ctx.fillStyle = hover ? s.color : C.muted;
-          ctx.font = font(26, 700);
-          ctx.fillText(hover ? 'Pinch to start  →' : 'Pinch to start', 34, H - 56);
-        });
-      entity.addComponent(RayInteractable);
-      entity.addComponent(Clickable);
-      onPress(
-        entity,
-        () => {
-          app.sound.play('open', 0.5);
-          app.open(s.id);
-        },
-        (on) => {
-          hover = on;
-          if (on) app.sound.play('hover', 0.25);
-          draw();
-        },
-      );
-      draw();
-    });
+export const hubScreen: ScreenFactory = (app, scope) => {
+  const stops: (() => void)[] = [];
+  return {
+    start() {
+      const name = app.data.user?.name?.split(' ')[0];
+      const days = app.studyDays();
 
-    // Habit line and controls lying on the desk, tilted towards the learner.
-    const { panel: habit, entity: habitE } = scope.panel(0.6, 0.08, -0.04, DESK_Y + 0.05, DESK_Z + 0.08);
-    habitE.object3D!.rotation.set(-1.0, 0, 0);
-    const days = app.studyDays();
-    habit.draw((ctx, W, H) => {
-      habit.card('rgba(255,255,255,0.92)');
-      const img = app.icon('streak');
-      if (img) ctx.drawImage(img, 18, 12, H - 24, H - 24);
-      ctx.fillStyle = C.ink;
-      ctx.font = font(27, 700);
-      ctx.textBaseline = 'middle';
-      ctx.fillText(days ? `${days} study day${days > 1 ? 's' : ''} · your plant grows each day` : 'Finish a task today to grow your plant', H, H / 2 + 2);
-    });
+      // Compact, personalised welcome panel.
+      const { panel: title } = scope.panel(0.7, 0.15, 0, 1.43, -1.08);
+      addGlow(title).setStrength(0.2);
+      title.draw((ctx, W, H) => {
+        title.card();
+        ctx.fillStyle = C.primary;
+        ctx.font = font(22, 800);
+        ctx.fillText('LAFAEKTOEFL  ·  VR STUDY ROOM', 36, 26);
+        ctx.fillStyle = C.ink;
+        ctx.font = font(44, 800);
+        ctx.fillText(name ? `Welcome back, ${name}` : 'Welcome back', 36, 60);
+        ctx.fillStyle = C.body;
+        ctx.font = font(24, 600);
+        ctx.fillText('Pinch a station to practise with your own questions.', 36, 114);
+        // Study-day chip on the right.
+        const chip = days ? `${days} day${days > 1 ? 's' : ''}` : 'Day 1';
+        ctx.font = font(24, 800);
+        const cw = ctx.measureText(chip).width + 74;
+        roundRect(ctx, W - cw - 30, 26, cw, 46, 23);
+        ctx.fillStyle = C.soft;
+        ctx.fill();
+        const flame = app.icon('streak');
+        if (flame) ctx.drawImage(flame, W - cw - 22, 30, 38, 38);
+        ctx.fillStyle = C.primaryDark;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(chip, W - cw + 22, 50);
+        void H;
+      });
 
-    const exit = new Button(scope, { w: 0.2, h: 0.07, label: 'Exit to 2D', icon: app.icon('logout'), tone: 'ghost' }, -0.5, DESK_Y + 0.05, DESK_Z + 0.08, () => app.exitTo2D());
-    exit.entity.object3D!.rotation.set(-1.0, 0, 0);
-    const center = new Button(scope, { w: 0.2, h: 0.07, label: 'Recenter', icon: app.icon('retry'), tone: 'ghost' }, 0.42, DESK_Y + 0.05, DESK_Z + 0.08, () => {
-      app.sound.play('click', 0.4);
-      app.recenter();
-    });
-    center.entity.object3D!.rotation.set(-1.0, 0, 0);
-    app.sound.play('appear', 0.35);
-  },
-  dispose() {},
-});
+      // Three floating holographic station cards, each over a light beam from the desk.
+      const beamTex = beamTexture();
+      STATIONS.forEach((s, i) => {
+        const x = (i - 1) * (CARD_W + 0.05);
+        const z = -0.9 + Math.abs(i - 1) * 0.06;
+        const { panel, entity } = scope.panel(CARD_W, CARD_H, x, CARD_Y, z);
+        panel.mesh.name = `Station_${s.id}`;
+        const glowFrame = addGlow(panel, s.color);
+        glowFrame.setStrength(0.15);
+        let hover = false;
+        const icon = app.icon(s.icon);
+        const draw = () =>
+          panel.draw((ctx, W, H) => {
+            roundRect(ctx, 4, 4, W - 8, H - 8, 34);
+            ctx.fillStyle = hover ? 'rgba(255,255,255,0.96)' : 'rgba(255,255,255,0.88)';
+            ctx.fill();
+            const shine = ctx.createLinearGradient(0, 0, 0, H * 0.55);
+            shine.addColorStop(0, `${s.color}26`);
+            shine.addColorStop(1, `${s.color}00`);
+            ctx.fillStyle = shine;
+            ctx.fill();
+            ctx.lineWidth = hover ? 8 : 4;
+            ctx.strokeStyle = hover ? s.color : 'rgba(61, 139, 255, 0.45)';
+            ctx.stroke();
+            // 3D icon, centred.
+            if (icon) {
+              const ih = 128;
+              const iw = (icon.width / icon.height) * ih;
+              ctx.drawImage(icon, (W - iw) / 2, 34, iw, ih);
+            }
+            // Skill chip.
+            ctx.font = font(20, 800);
+            const tw = ctx.measureText(s.skill).width + 28;
+            roundRect(ctx, (W - tw) / 2, 182, tw, 34, 17);
+            ctx.fillStyle = `${s.color}1f`;
+            ctx.fill();
+            ctx.fillStyle = s.color;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(s.skill, W / 2, 200);
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = C.ink;
+            ctx.font = font(34, 800);
+            const y = wrap(ctx, s.title, W / 2, 232, W - 50, 40, 2);
+            ctx.fillStyle = C.body;
+            ctx.font = font(23, 500);
+            wrap(ctx, s.body, W / 2, y + 6, W - 56, 28, 2);
+            ctx.fillStyle = hover ? s.color : C.muted;
+            ctx.font = font(22, 800);
+            ctx.fillText(hover ? 'Pinch to start  →' : 'Pinch to start', W / 2, H - 48);
+            ctx.textAlign = 'left';
+          });
+        entity.addComponent(RayInteractable);
+        entity.addComponent(Clickable);
+        onPress(
+          entity,
+          () => {
+            app.sound.play('open', 0.5);
+            app.open(s.id);
+          },
+          (on) => {
+            hover = on;
+            glowFrame.setStrength(on ? 0.85 : 0.15);
+            panel.mesh.scale.setScalar(on ? 1.03 : 1);
+            if (on) app.sound.play('hover', 0.25);
+            draw();
+          },
+        );
+        draw();
+
+        // Light beam and emitter strip on the desk under the card.
+        const beamH = CARD_Y - CARD_H / 2 - DESK_Y;
+        const beam = new Mesh(new PlaneGeometry(CARD_W * 0.8, beamH), new MeshBasicMaterial({ map: beamTex, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
+        beam.raycast = () => {};
+        beam.position.set(x, DESK_Y + beamH / 2, z);
+        beam.rotation.copy(panel.mesh.rotation);
+        scope.add(beam);
+        const emitter = new Mesh(new CapsuleGeometry(0.005, CARD_W * 0.6, 4, 8), new MeshBasicMaterial({ color: s.color, toneMapped: false }));
+        emitter.rotation.set(0, panel.mesh.rotation.y, Math.PI / 2);
+        emitter.position.set(x, DESK_Y + 0.004, z + 0.02);
+        scope.add(emitter);
+
+        // Gentle float, out of step between cards.
+        const baseY = CARD_Y;
+        stops.push(
+          animate((time) => {
+            panel.mesh.position.y = baseY + Math.sin(time * 1.1 + i * 1.7) * 0.006;
+          }),
+        );
+      });
+
+      // Control dock: Recenter and Exit to 2D, floating just above the desk front.
+      const dockY = DESK_Y + 0.13;
+      const dockZ = DESK_Z + 0.02;
+      const center = new Button(scope, { w: 0.2, h: 0.072, label: 'Recenter', icon: app.icon('retry'), tone: 'ghost' }, -0.12, dockY, dockZ, () => {
+        app.sound.play('click', 0.4);
+        app.recenter();
+      });
+      const exit = new Button(scope, { w: 0.2, h: 0.072, label: 'Exit to 2D', icon: app.icon('logout'), tone: 'ghost' }, 0.12, dockY, dockZ, () => app.exitTo2D());
+      for (const b of [center, exit]) {
+        b.entity.object3D!.rotation.set(-0.55, 0, 0);
+        addGlow(b.panel).setStrength(0.2);
+      }
+      app.sound.play('appear', 0.35);
+    },
+    dispose() {
+      stops.forEach((stop) => stop());
+    },
+  };
+};

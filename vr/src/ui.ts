@@ -3,6 +3,7 @@
  * text is drawn at 1000 px per metre, so a 36 px font is 3.6 cm tall (readable at ~1 m).
  */
 import {
+  AdditiveBlending,
   CanvasTexture,
   Entity,
   Mesh,
@@ -109,14 +110,25 @@ export class CanvasPanel {
     this.tex.needsUpdate = true;
   }
 
-  /** White card with a soft border, the base look of every panel. */
+  /**
+   * Frosted-glass card, the base look of every panel: translucent white with a soft top
+   * highlight and a thin blue edge. Coloured fills (results) are drawn solid.
+   */
   card(fill = C.surface, stroke = C.line, radius = 36): void {
     const { ctx, W, H } = this;
+    const glass = fill === C.surface;
     roundRect(ctx, 3, 3, W - 6, H - 6, radius);
-    ctx.fillStyle = fill;
+    ctx.fillStyle = glass ? 'rgba(255, 255, 255, 0.86)' : fill;
     ctx.fill();
+    if (glass) {
+      const shine = ctx.createLinearGradient(0, 0, 0, H * 0.6);
+      shine.addColorStop(0, 'rgba(234, 242, 255, 0.9)');
+      shine.addColorStop(1, 'rgba(234, 242, 255, 0)');
+      ctx.fillStyle = shine;
+      ctx.fill();
+    }
     ctx.lineWidth = 5;
-    ctx.strokeStyle = stroke;
+    ctx.strokeStyle = glass && stroke === C.line ? 'rgba(61, 139, 255, 0.45)' : stroke;
     ctx.stroke();
   }
 }
@@ -263,4 +275,32 @@ export class Button {
       ctx.globalAlpha = 1;
     });
   }
+}
+
+/**
+ * A soft glowing frame behind a panel (the "hologram" look). It is a child of the panel mesh, so
+ * it moves with it; `setStrength` brightens it on hover.
+ */
+export function addGlow(panel: CanvasPanel, color = '#3d8bff'): { setStrength: (k: number) => void } {
+  const pad = 0.035;
+  const c = document.createElement('canvas');
+  const W = (c.width = Math.round((panel.width + pad * 2) * 400));
+  const H = (c.height = Math.round((panel.height + pad * 2) * 400));
+  const g = c.getContext('2d')!;
+  const inset = pad * 400;
+  g.shadowColor = color;
+  g.shadowBlur = inset * 0.9;
+  g.strokeStyle = color;
+  g.lineWidth = 6;
+  roundRect(g, inset, inset, W - inset * 2, H - inset * 2, 16);
+  g.stroke();
+  g.stroke();
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  const mat = new MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.55, blending: AdditiveBlending, depthWrite: false, toneMapped: false });
+  const mesh = new Mesh(new PlaneGeometry(panel.width + pad * 2, panel.height + pad * 2), mat);
+  mesh.position.z = -0.004;
+  mesh.raycast = () => {}; // never blocks the pinch ray
+  panel.mesh.add(mesh);
+  return { setStrength: (k: number) => (mat.opacity = 0.35 + k * 0.6) };
 }

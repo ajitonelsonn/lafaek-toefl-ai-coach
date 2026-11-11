@@ -3,7 +3,7 @@
  * normalised to a real-world size with its feet on the floor, and reused between screens (screens
  * detach it on close instead of disposing it, so the cached GPU data stays valid).
  */
-import { AnimationMixer, AssetManager, Box3, Entity, Group, LoopRepeat, Mesh, MeshBasicMaterial, Object3D, Vector3, World } from '@iwsdk/core';
+import { AnimationMixer, AssetManager, Box3, Entity, Group, LoopRepeat, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Vector3, World } from '@iwsdk/core';
 import { animate } from './clicks.js';
 
 export type ModelId = 'school-chair' | 'loading-spinner';
@@ -56,6 +56,13 @@ export function loadModel(id: ModelId): Promise<Loaded | null> {
           action.setLoop(LoopRepeat, Infinity);
           action.play();
           mixer.update(0); // pose the model (e.g. seated) before measuring it
+        }
+        if (id === 'school-chair') {
+          // White plastic to match the futuristic room (the source texture is dark navy).
+          const white = new MeshStandardMaterial({ color: '#eef2fa', roughness: 0.35 });
+          gltf.scene.traverse((o) => {
+            if ((o as Mesh).isMesh) (o as Mesh).material = white;
+          });
         }
         if (id === 'loading-spinner') {
           // Its source material needs specular lighting and renders black here: use the brand blue.
