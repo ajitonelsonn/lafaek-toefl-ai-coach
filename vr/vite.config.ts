@@ -27,8 +27,8 @@ export default defineConfig(({ command }) => ({
       : undefined,
   },
   build: {
-    // Served by the LafaekTOEFL Next.js app at /vr (see next.config.ts rewrites).
-    outDir: '../public/vr',
+    // Served by the LafaekTOEFL Next.js app at /vr/room (see next.config.ts rewrites).
+    outDir: '../public/vr/room',
     emptyOutDir: true,
     sourcemap: false,
     target: 'esnext',
@@ -58,6 +58,6 @@ export default defineConfig(({ command }) => ({
     esbuildOptions: { target: 'esnext' },
   },
   publicDir: 'public',
-  // Production is served at /vr by the Next.js app; the managed dev server stays at /.
-  base: command === 'build' ? '/vr/' : '/',
+  // Production is served at /vr/room by the Next.js app; the managed dev server stays at /.
+  base: command === 'build' ? '/vr/room/' : '/',
 }));

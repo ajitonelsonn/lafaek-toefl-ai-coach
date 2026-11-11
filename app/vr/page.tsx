@@ -1,0 +1,236 @@
+import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
+import { Logo } from "@/components/brand/Logo";
+import { VrReadiness } from "@/components/vr/VrReadiness";
+import { VR_ASSETS } from "@/lib/config/assets";
+import { getAuth } from "@/lib/server/auth/session";
+import { getActivePlan } from "@/lib/server/study-plan";
+import { cn } from "@/lib/utils/cn";
+
+export const metadata: Metadata = {
+  title: "VR Study Room",
+  description: "Practise TOEFL Build a Sentence, Listening and the Interview in VR on Meta Quest, with your own study-plan questions and your hands.",
+};
+
+/** The 3D room (IWSDK static build in public/vr/room, source: vr/). */
+const ROOM = "/vr/room";
+
+const TASKS = [
+  {
+    id: "sentence",
+    title: "Build a Sentence",
+    body: "Arrange words to create correct sentences.",
+    icon: VR_ASSETS.buildSentence,
+    tone: "from-[#f1ecff] to-[#e9f0ff] dark:from-[#251f47] dark:to-[#1a2550]",
+  },
+  {
+    id: "listening",
+    title: "Listen to a Conversation",
+    body: "Listen to a dialogue and answer questions.",
+    icon: VR_ASSETS.listen,
+    tone: "from-[#e5f0ff] to-[#eef6ff] dark:from-[#14284f] dark:to-[#18264a]",
+  },
+  {
+    id: "interview",
+    title: "Take an Interview",
+    body: "Practise speaking and answer questions naturally.",
+    icon: VR_ASSETS.interview,
+    tone: "from-[#fff0e8] to-[#f3eeff] dark:from-[#3a2420] dark:to-[#26204a]",
+  },
+] as const;
+
+type Access = "signed-out" | "no-plan" | "ready";
+
+export default async function VrPage() {
+  const auth = await getAuth().catch(() => null);
+  const plan = auth ? await getActivePlan(auth.user.id).catch(() => null) : null;
+  const access: Access = !auth ? "signed-out" : plan ? "ready" : "no-plan";
+  const firstName = auth?.user.displayName?.trim().split(/\s+/)[0] ?? null;
+
+  // Where the main button and the task cards lead, depending on the learner's state.
+  const primary =
+    access === "ready"
+      ? { href: ROOM, label: "Enter VR Study Room", external: true }
+      : access === "no-plan"
+        ? { href: "/study-plan", label: "Create my study plan", external: false }
+        : { href: "/login?next=/vr", label: "Sign in to start", external: false };
+  const secondary =
+    access === "ready"
+      ? { href: `${ROOM}?mode=preview`, label: "Preview in Browser", external: true }
+      : access === "no-plan"
+        ? { href: "/dashboard", label: "Back to dashboard", external: false }
+        : { href: "/signup", label: "Create a free account", external: false };
+
+  return (
+    <div className="min-h-dvh bg-page text-body">
+      <VrHeader firstName={firstName} />
+
+      <main id="main">
+        {/* Hero */}
+        <section className="relative isolate overflow-hidden">
+          <Image
+            src={VR_ASSETS.background.src}
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="-z-20 object-cover object-[70%_center] opacity-90 dark:opacity-40"
+          />
+          {/* Fade the scene into the page on the left (text side) and at the bottom. */}
+          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-page via-page/85 to-page/10 lg:via-page/70 lg:to-transparent" aria-hidden />
+          <div className="absolute inset-x-0 bottom-0 -z-10 h-32 bg-gradient-to-t from-page to-transparent" aria-hidden />
+
+          <div className="mx-auto grid max-w-7xl items-center gap-6 px-4 pb-6 pt-8 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:pb-2 lg:pt-12">
+            <div>
+              <p className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-surface/80 px-4 py-1.5 text-sm font-bold text-primary shadow-sm backdrop-blur">
+                <Image src={VR_ASSETS.vr.src} alt="" width={28} height={16} className="h-4 w-7" /> Lafaek VR Study Room
+              </p>
+              <h1 className="mt-5 text-5xl font-extrabold leading-[1.02] tracking-tight text-ink sm:text-6xl">
+                Your TOEFL Journey,
+                <br />
+                Now{" "}
+                <span className="relative inline-block italic text-primary">
+                  in VR
+                  <svg className="absolute -bottom-2 left-0 h-3 w-full text-primary" viewBox="0 0 100 12" preserveAspectRatio="none" aria-hidden>
+                    <path d="M2 9 C 30 2, 70 2, 98 7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                </span>
+                .
+              </h1>
+              <p className="mt-6 max-w-xl text-lg text-body">
+                Step into your personal virtual study room and practise TOEFL skills in an immersive, interactive, and fun environment.
+              </p>
+              {access !== "ready" && (
+                <p className="mt-4 max-w-xl rounded-xl border border-primary/20 bg-primary-soft/80 px-4 py-3 text-sm font-medium text-ink">
+                  {access === "signed-out"
+                    ? "The study room uses the questions from your own study plan. Sign in, or create a free account and a study plan first."
+                    : `Hi ${firstName ?? "there"}! Create your study plan first. The study room uses the questions made for your plan.`}
+                </p>
+              )}
+
+              <div className="mt-7 flex flex-wrap gap-3">
+                <CtaLink {...primary} variant="primary" icon={access === "ready" ? VR_ASSETS.vr : null} />
+                <CtaLink {...secondary} variant="secondary" icon={access === "ready" ? VR_ASSETS.desktop : null} />
+              </div>
+              <Link href="/dashboard" className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-primary hover:underline">
+                <Image src={VR_ASSETS.back.src} alt="" width={22} height={22} className="size-5" /> Back to LafaekTOEFL
+              </Link>
+            </div>
+
+            {/* The mascot in an unbranded VR headset, overlapping the study-room scene. */}
+            <div className="relative mx-auto w-full max-w-[470px] lg:-ml-10 lg:mr-auto">
+              <div className="absolute inset-[12%] rounded-full bg-primary/15 blur-3xl" aria-hidden />
+              <Image
+                src={VR_ASSETS.mascot.src}
+                alt="The LafaekTOEFL crocodile mascot wearing a VR headset, giving a thumbs-up"
+                width={VR_ASSETS.mascot.width}
+                height={VR_ASSETS.mascot.height}
+                priority
+                sizes="(min-width: 1024px) 470px, 85vw"
+                className="relative h-auto w-full drop-shadow-[0_24px_40px_rgba(23,105,245,0.25)]"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Tasks + readiness and controls */}
+        <section className="mx-auto grid max-w-7xl gap-6 px-4 pb-14 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div>
+            <h2 className="flex items-center gap-3 text-2xl font-extrabold tracking-tight text-ink">
+              <span className="h-7 w-1.5 rounded-full bg-primary" aria-hidden /> Practise 3 TOEFL Tasks in VR
+            </h2>
+            <ul className="mt-5 grid gap-4 sm:grid-cols-3">
+              {TASKS.map((t) => (
+                <li key={t.id} className={cn("flex h-full flex-col rounded-3xl border border-line bg-gradient-to-br p-5 shadow-card", t.tone)}>
+                  <Image src={t.icon.src} alt="" width={t.icon.width} height={t.icon.height} className="mx-auto h-24 w-auto object-contain" />
+                  <h3 className="mt-4 text-lg font-extrabold text-ink">{t.title}</h3>
+                  <p className="mt-1 text-[15px] leading-snug text-body">{t.body}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <aside aria-label="VR readiness and controls" className="rounded-3xl border border-line bg-surface/90 p-4 shadow-card backdrop-blur lg:-mt-6">
+            <VrReadiness />
+            <div className="mt-4 rounded-2xl border border-line bg-surface-soft p-4">
+              <h2 className="flex items-center gap-2 text-lg font-extrabold text-ink">
+                <Image src={VR_ASSETS.pinchSelect.src} alt="" width={34} height={26} className="h-6 w-auto" /> How to Use in VR
+              </h2>
+              <ul className="mt-3 grid grid-cols-2 gap-3">
+                <HandTile image={VR_ASSETS.pinchSelect} label="Pinch to Select" hint="Touch your thumb and index finger to press a button or pick an answer." />
+                <HandTile image={VR_ASSETS.pinchHold} label="Pinch & Hold to Grab" hint="Pinch a word tile, move your hand, and let go over a slot." />
+              </ul>
+              <p className="mt-3 text-xs text-muted">No controllers needed. Sit down, and use Recenter in the room if the desk looks too high or low.</p>
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function VrHeader({ firstName }: { firstName: string | null }) {
+  return (
+    <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur">
+      <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6">
+        <span className="flex items-center gap-2">
+          <Logo size={34} href={null} />
+          <span className="rounded-full bg-primary px-2.5 py-0.5 text-sm font-extrabold text-on-primary">VR</span>
+        </span>
+        <div className="ml-auto">
+          {firstName && (
+            <span className="flex items-center gap-2 rounded-full border border-line bg-surface py-1 pl-1 pr-3 text-sm font-semibold text-ink">
+              <span className="inline-flex size-8 items-center justify-center rounded-full bg-primary-soft font-extrabold text-primary" aria-hidden>
+                {firstName[0]?.toUpperCase()}
+              </span>
+              {firstName}
+            </span>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+interface CtaProps {
+  href: string;
+  label: string;
+  external: boolean;
+  variant: "primary" | "secondary";
+  icon: { src: string; width: number; height: number } | null;
+}
+
+/** Main buttons. The 3D room is a static page outside the Next.js routes, so it uses a plain link. */
+function CtaLink({ href, label, external, variant, icon }: CtaProps) {
+  const className = cn(
+    "inline-flex h-14 items-center gap-3 rounded-2xl px-6 text-lg font-bold transition",
+    variant === "primary" ? "bg-primary text-on-primary shadow-lg shadow-primary/25 hover:bg-primary-hover" : "border-2 border-primary/30 bg-surface text-ink hover:border-primary hover:text-primary",
+  );
+  const content = (
+    <>
+      {icon && <Image src={icon.src} alt="" width={icon.width} height={icon.height} className={cn("h-6 w-auto", variant === "primary" && "brightness-0 invert")} />}
+      {label}
+      {variant === "primary" && <span aria-hidden>→</span>}
+    </>
+  );
+  return external ? (
+    <a href={href} className={className}>
+      {content}
+    </a>
+  ) : (
+    <Link href={href} className={className}>
+      {content}
+    </Link>
+  );
+}
+
+function HandTile({ image, label, hint }: { image: { src: string; width: number; height: number }; label: string; hint: string }) {
+  return (
+    <li className="flex flex-col items-center rounded-2xl border border-line bg-surface p-3 text-center" title={hint}>
+      <Image src={image.src} alt="" width={image.width} height={image.height} className="h-20 w-auto object-contain" />
+      <p className="mt-2 text-sm font-bold text-ink">{label}</p>
+      <p className="mt-1 text-xs leading-snug text-muted">{hint}</p>
+    </li>
+  );
+}

@@ -12,17 +12,21 @@ import { interviewScreen } from './interview.js';
 import { listeningScreen } from './listening.js';
 import { PinchGrabSystem, sentenceScreen } from './sentence.js';
 
+/** From the /vr page: ?mode=preview opens the room in this browser; ?open=<station> starts there. */
+const params = new URLSearchParams(location.search);
+const STATIONS = ['sentence', 'listening', 'interview'];
+const startAt = STATIONS.includes(params.get('open') ?? '') ? (params.get('open') as string) : 'hub';
+const previewNow = params.get('mode') === 'preview';
+
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const overlay = $<HTMLDivElement>('overlay');
 const enterBtn = $<HTMLButtonElement>('enter-vr');
 const previewBtn = $<HTMLButtonElement>('preview');
 const note = $<HTMLParagraphElement>('note');
-const who = $<HTMLParagraphElement>('who');
 
 /** Shows one of the overlay's action groups: ready, need-login or need-plan. */
 function showActions(id: 'ready' | 'need-login' | 'need-plan'): void {
   for (const group of ['ready', 'need-login', 'need-plan']) $(group).hidden = group !== id;
-  $('hint').hidden = id !== 'ready';
 }
 
 async function main() {
@@ -41,12 +45,10 @@ async function main() {
   overlay.classList.add('ready');
 
   if (!user) {
-    who.textContent = 'Sign in to practise in the study room. It uses the questions from your own study plan, so new learners create a free account and a study plan first.';
     showActions('need-login');
     return;
   }
   if (!(await hasStudyPlan())) {
-    who.textContent = `Hi ${user.name?.split(' ')[0] ?? 'there'}! Create your study plan first. The study room uses the questions made for your plan.`;
     showActions('need-plan');
     return;
   }
@@ -58,14 +60,13 @@ async function main() {
   app.register('listening', listeningScreen);
   app.register('interview', interviewScreen);
   await app.loadImages();
-  app.open('hub');
+  app.open(startAt);
   allowed = true;
-  who.textContent = `Signed in${user.name ? ` as ${user.name}` : ''}: you will practise with your own study-plan questions.`;
   showActions('ready');
   const xrOk = Boolean(navigator.xr && (await navigator.xr.isSessionSupported('immersive-vr').catch(() => false)));
   if (!xrOk) {
     enterBtn.disabled = true;
-    note.textContent = 'Enter VR needs a VR headset. Open lafaektoefl.tech/vr in the Meta Quest browser, or use Preview to try it here with your mouse.';
+    note.textContent = 'Start VR needs a Meta Quest headset. Use Preview to try it here.';
   }
   enterBtn.addEventListener('click', () => {
     app.sound.resume();
@@ -75,6 +76,10 @@ async function main() {
     app.sound.resume();
     overlay.hidden = true;
   });
+  if (previewNow) {
+    app.sound.resume();
+    overlay.hidden = true;
+  }
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !world.session) overlay.hidden = false;
   });

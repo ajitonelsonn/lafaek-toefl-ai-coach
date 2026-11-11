@@ -5,9 +5,10 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   outputFileTracingRoot: path.join(__dirname),
-  // The VR study room is a static IWSDK build in public/vr (source: vr/). Serve it at /vr.
+  // /vr is the VR landing page (app/vr). The 3D room is a static IWSDK build in public/vr/room
+  // (source: vr/), served at /vr/room.
   async rewrites() {
-    return [{ source: "/vr", destination: "/vr/index.html" }];
+    return [{ source: "/vr/room", destination: "/vr/room/index.html" }];
   },
 };
 

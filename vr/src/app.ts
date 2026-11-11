@@ -113,7 +113,8 @@ export class App {
   }
 
   exitTo2D(): void {
-    const target = this.data.live ? '/dashboard' : '/';
+    // Back to the VR page (/vr), where the learner came from.
+    const target = '/vr';
     if (this.world.session) {
       this.world.exitXR();
       setTimeout(() => (location.href = target), 400);
