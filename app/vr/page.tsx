@@ -10,33 +10,41 @@ import { cn } from "@/lib/utils/cn";
 
 export const metadata: Metadata = {
   title: "VR Study Room",
-  description: "Practise TOEFL Build a Sentence, Listening and the Interview in VR on Meta Quest, with your own study-plan questions and your hands.",
+  description: "Practise 9 TOEFL tasks in VR on Meta Quest (Reading, Listening, Speaking and Build a Sentence) with your own study-plan questions and your hands.",
 };
 
 /** The 3D room (IWSDK static build in public/vr/room, source: vr/). */
 const ROOM = "/vr/room";
 
-const TASKS = [
+/** The four VR zones and their activities. Write an Email and Academic Discussion stay on the website. */
+const ZONES = [
   {
-    id: "sentence",
-    title: "Build a Sentence",
-    body: "Arrange words to create correct sentences.",
-    icon: VR_ASSETS.buildSentence,
-    tone: "from-[#f1ecff] to-[#e9f0ff] dark:from-[#251f47] dark:to-[#1a2550]",
+    id: "reading",
+    title: "Reading",
+    icon: VR_ASSETS.zoneReading,
+    tone: "from-[#e8f0ff] to-[#f1ecff] dark:from-[#14284f] dark:to-[#251f47]",
+    tasks: ["Read in Daily Life", "Read an Academic Passage"],
   },
   {
     id: "listening",
-    title: "Listen to a Conversation",
-    body: "Listen to a dialogue and answer questions.",
-    icon: VR_ASSETS.listen,
+    title: "Listening",
+    icon: VR_ASSETS.zoneListening,
     tone: "from-[#e5f0ff] to-[#eef6ff] dark:from-[#14284f] dark:to-[#18264a]",
+    tasks: ["Listen and Choose a Response", "Listen to a Conversation", "Listen to an Announcement", "Listen to an Academic Talk"],
   },
   {
-    id: "interview",
-    title: "Take an Interview",
-    body: "Practise speaking and answer questions naturally.",
-    icon: VR_ASSETS.interview,
+    id: "speaking",
+    title: "Speaking",
+    icon: VR_ASSETS.zoneSpeaking,
+    tone: "from-[#f1ecff] to-[#e9f0ff] dark:from-[#251f47] dark:to-[#1a2550]",
+    tasks: ["Listen and Repeat", "Take an Interview"],
+  },
+  {
+    id: "writing",
+    title: "Writing",
+    icon: VR_ASSETS.zoneWriting,
     tone: "from-[#fff0e8] to-[#f3eeff] dark:from-[#3a2420] dark:to-[#26204a]",
+    tasks: ["Build a Sentence with 3D word tiles"],
   },
 ] as const;
 
@@ -138,17 +146,25 @@ export default async function VrPage() {
         <section className="mx-auto grid max-w-7xl gap-6 px-4 pb-14 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div>
             <h2 className="flex items-center gap-3 text-2xl font-extrabold tracking-tight text-ink">
-              <span className="h-7 w-1.5 rounded-full bg-primary" aria-hidden /> Practise 3 TOEFL Tasks in VR
+              <span className="h-7 w-1.5 rounded-full bg-primary" aria-hidden /> Practise 9 TOEFL Tasks in 4 VR Zones
             </h2>
-            <ul className="mt-5 grid gap-4 sm:grid-cols-3">
-              {TASKS.map((t) => (
-                <li key={t.id} className={cn("flex h-full flex-col rounded-3xl border border-line bg-gradient-to-br p-5 shadow-card", t.tone)}>
-                  <Image src={t.icon.src} alt="" width={t.icon.width} height={t.icon.height} className="mx-auto h-24 w-auto object-contain" />
-                  <h3 className="mt-4 text-lg font-extrabold text-ink">{t.title}</h3>
-                  <p className="mt-1 text-[15px] leading-snug text-body">{t.body}</p>
+            <ul className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {ZONES.map((z) => (
+                <li key={z.id} className={cn("flex h-full flex-col rounded-3xl border border-line bg-gradient-to-br p-5 shadow-card", z.tone)}>
+                  <Image src={z.icon.src} alt="" width={z.icon.width} height={z.icon.height} className="mx-auto h-24 w-auto object-contain" />
+                  <h3 className="mt-3 text-lg font-extrabold text-ink">{z.title}</h3>
+                  <ul className="mt-2 space-y-1.5 text-[14px] leading-snug text-body">
+                    {z.tasks.map((t) => (
+                      <li key={t} className="flex gap-2">
+                        <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
+                        {t}
+                      </li>
+                    ))}
+                  </ul>
                 </li>
               ))}
             </ul>
+            <p className="mt-4 text-sm text-muted">Write an Email and Write for an Academic Discussion are typing tasks, so they stay on the website. All 12 tasks are always available there.</p>
           </div>
 
           <aside aria-label="VR readiness and controls" className="rounded-3xl border border-line bg-surface/90 p-4 shadow-card backdrop-blur lg:-mt-6">

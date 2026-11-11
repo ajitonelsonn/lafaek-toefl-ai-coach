@@ -5,16 +5,18 @@
  */
 import { World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
-import { App, hubScreen } from './app.js';
+import { App, hubScreen, ZONES, zoneScreen } from './app.js';
 import { ClickSystem } from './clicks.js';
 import { currentUser, DataSource, hasStudyPlan } from './data.js';
 import { interviewScreen } from './interview.js';
-import { listeningScreen } from './listening.js';
+import { makeListeningScreen } from './listening.js';
+import { makeReadingScreen } from './reading.js';
+import { repeatScreen } from './repeat.js';
 import { PinchGrabSystem, sentenceScreen } from './sentence.js';
 
 /** From the /vr page: ?mode=preview opens the room in this browser; ?open=<station> starts there. */
 const params = new URLSearchParams(location.search);
-const STATIONS = ['sentence', 'listening', 'interview'];
+const STATIONS = ['zone-reading', 'zone-listening', 'zone-speaking', 'zone-writing', 'reading-daily', 'reading-academic', 'sentence', 'listen-response', 'listen-conversation', 'listen-announcement', 'listen-talk', 'repeat', 'interview'];
 const startAt = STATIONS.includes(params.get('open') ?? '') ? (params.get('open') as string) : 'hub';
 const previewNow = params.get('mode') === 'preview';
 
@@ -56,8 +58,16 @@ async function main() {
   // Signed in with a plan: build the room and allow VR.
   const app = new App(world, new DataSource(user));
   app.register('hub', hubScreen);
+  // Three zones (Reading & Word Puzzle, Listening, Speaking) and their activities. Writing stays 2D.
+  for (const z of ZONES) app.register(z.id, zoneScreen(z.id));
+  app.register('reading-daily', makeReadingScreen('read-in-daily-life', 'Read in Daily Life'));
+  app.register('reading-academic', makeReadingScreen('read-academic-passage', 'Read an Academic Passage'));
   app.register('sentence', sentenceScreen);
-  app.register('listening', listeningScreen);
+  app.register('listen-response', makeListeningScreen('listen-choose-response', 'Listen and Choose a Response'));
+  app.register('listen-conversation', makeListeningScreen('listen-conversation', 'Listen to a Conversation'));
+  app.register('listen-announcement', makeListeningScreen('listen-announcement', 'Listen to an Announcement'));
+  app.register('listen-talk', makeListeningScreen('listen-academic-talk', 'Listen to an Academic Talk'));
+  app.register('repeat', repeatScreen);
   app.register('interview', interviewScreen);
   await app.loadImages();
   app.open(startAt);

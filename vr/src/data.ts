@@ -31,10 +31,47 @@ export interface ChoiceQuestion {
 export interface ListeningItem {
   itemId: string;
   title: string;
+  /** conversation | announcement | lecture | response (Listen and Choose a Response). */
+  scene?: string;
   imageAssetId: string | null;
   audio: Audio;
   questions: ChoiceQuestion[];
 }
+
+export type ReadingDocument =
+  | { type: 'email'; from: string; to: string; subject: string; body: string[]; signOff: string }
+  | { type: 'notice'; heading: string; body: string[]; footer?: string }
+  | { type: 'chat'; title: string; messages: { sender: string; text: string; time: string }[] };
+
+export interface ReadingItem {
+  itemId: string;
+  title: string;
+  /** Read in Daily Life: an email, notice or chat. */
+  document?: ReadingDocument;
+  /** Read an Academic Passage: the passage paragraphs. */
+  paragraphs?: string[];
+  questions: ChoiceQuestion[];
+}
+
+export interface RepeatItem {
+  itemId: string;
+  situation: string;
+  imageAssetId: string | null;
+  sentences: { unitId: string; audio: Audio; responseSeconds: number }[];
+}
+
+/** Result of a spoken answer: the transcript, and for Listen and Repeat the word match. */
+export interface SpeechResult {
+  transcript: string;
+  /** Listen and Repeat: share of the sentence's words that matched (0–1). */
+  similarity?: number;
+  /** Listen and Repeat: the sentence the learner should have said. */
+  expected?: string;
+  correct?: boolean | null;
+}
+
+export type ReadingSlug = 'read-in-daily-life' | 'read-academic-passage';
+export type ListeningSlug = 'listen-choose-response' | 'listen-conversation' | 'listen-announcement' | 'listen-academic-talk';
 
 export interface InterviewItem {
   itemId: string;
@@ -128,8 +165,21 @@ export class DataSource {
     return practiceItems<SentenceItem>('build-sentence', (i) => i.unitId);
   }
 
-  listening(): Promise<ListeningItem[]> {
-    return practiceItems<ListeningItem>('listen-conversation', (i) => i.questions[0]?.unitId ?? '');
+  /** Any of the four listening tasks. Listen and Choose a Response is shaped like the others. */
+  async listening(slug: ListeningSlug = 'listen-conversation'): Promise<ListeningItem[]> {
+    if (slug === 'listen-choose-response') {
+      const items = await practiceItems<{ itemId: string; audio: Audio; question: ChoiceQuestion }>(slug, (i) => i.question.unitId);
+      return items.map((i) => ({ itemId: i.itemId, title: 'Choose the best response', scene: 'response', imageAssetId: null, audio: i.audio, questions: [i.question] }));
+    }
+    return practiceItems<ListeningItem>(slug, (i) => i.questions[0]?.unitId ?? '');
+  }
+
+  reading(slug: ReadingSlug): Promise<ReadingItem[]> {
+    return practiceItems<ReadingItem>(slug, (i) => i.questions[0]?.unitId ?? '');
+  }
+
+  repeat(): Promise<RepeatItem[]> {
+    return practiceItems<RepeatItem>('listen-repeat', (i) => i.sentences[0]?.unitId ?? '');
   }
 
   interview(): Promise<InterviewItem[]> {
@@ -161,11 +211,20 @@ export class DataSource {
 
   /** Uploads a spoken answer (16 kHz WAV) and returns the transcript. */
   async transcribe(itemId: string, unitId: string, wav: Blob): Promise<string> {
+    return (await this.speak(itemId, unitId, wav)).transcript;
+  }
+
+  /** Uploads a spoken answer; for Listen and Repeat the result includes the word match. */
+  async speak(itemId: string, unitId: string, wav: Blob): Promise<SpeechResult> {
     const form = new FormData();
     form.set('unitId', unitId);
     form.set('audio', wav, 'answer.wav');
-    const r = await api<{ results: Record<string, { transcript?: string }> }>(`/api/practice/items/${itemId}/speaking`, { method: 'POST', body: form });
-    return r.results[unitId]?.transcript ?? '';
+    const r = await api<{ results: Record<string, { transcript?: string; similarity?: number; answer?: unknown; correct?: boolean | null }> }>(
+      `/api/practice/items/${itemId}/speaking`,
+      { method: 'POST', body: form },
+    );
+    const u = r.results[unitId];
+    return { transcript: u?.transcript ?? '', similarity: u?.similarity, expected: typeof u?.answer === 'string' ? u.answer : undefined, correct: u?.correct };
   }
 
   /** AI band score (1–6) and coaching for an interview answer. */

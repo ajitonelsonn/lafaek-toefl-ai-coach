@@ -6,11 +6,10 @@
 import { CapsuleGeometry, Color, Entity, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, RayInteractable, SphereGeometry, TorusGeometry, Vector3 } from '@iwsdk/core';
 import type { App, ScreenFactory } from './app.js';
 import { animate, onPress } from './clicks.js';
-import { errorMessage, type ListeningItem } from './data.js';
+import { errorMessage, type ListeningItem, type ListeningSlug } from './data.js';
 import { Placed, Spinner, yawToViewer } from './models.js';
 import { speak, stopSpeaking, type Voice } from './sound.js';
-import { Button, C, CanvasPanel, font, roundRect, wrap, type Scope } from './ui.js';
-import { Clickable } from './interaction.js';
+import { Button, C, font, OptionCard, roundRect, wrap, type Scope } from './ui.js';
 
 type Gender = 'female' | 'male';
 
@@ -27,6 +26,8 @@ interface Speaker {
   talking: boolean;
   /** Marks this speaker as talking (halo + filled name tag) or not. */
   setTalking: (on: boolean) => void;
+  /** Shows or hides this speaker (one-voice tasks use a single speaker). */
+  setVisible: (on: boolean) => void;
   dispose: () => void;
 }
 
@@ -51,6 +52,7 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
   const groupEntity = scope.add(group);
 
   const tag = scope.panel(0.28, 0.07, x * 0.92, 1.36, z + 0.05).panel;
+  let chairRef: Placed | null = null;
   let name = slot === 0 ? 'Speaker A' : 'Speaker B';
   let talking = false;
   const voiceIcon = app.icon('voice');
@@ -77,6 +79,8 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
   let disposed = false;
   void Placed.place(app.world, groupEntity, 'school-chair', new Vector3(0, 0, -0.05), 0).then((p) => {
     chair = p;
+    chairRef = p;
+    if (p) p.root.visible = group.visible;
     if (disposed) p?.remove();
   });
 
@@ -86,6 +90,11 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
     voice: app.sound.voice(head),
     label,
     talking: false,
+    setVisible(on: boolean) {
+      group.visible = on;
+      tag.mesh.visible = on;
+      if (chairRef) chairRef.root.visible = on;
+    },
     setTalking(on: boolean) {
       this.talking = talking = on;
       drawTag();
@@ -97,145 +106,26 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
   };
 }
 
-/** Which place speaks each segment: by gender when the two speakers differ, else alternating. */
-function speakerPlan(item: ListeningItem): { byGender: boolean; who: (i: number) => 0 | 1 } {
+/**
+ * Which place speaks each segment: one speaker for announcements, talks and Choose a Response
+ * (left for a woman, right for a man); for conversations by gender when the two speakers differ,
+ * else alternating.
+ */
+function speakerPlan(item: ListeningItem): { byGender: boolean; single: 0 | 1 | null; who: (i: number) => 0 | 1 } {
   const genders = item.audio.speakers ?? [];
+  if (item.scene && item.scene !== 'conversation') {
+    const slot: 0 | 1 = genders.find((g) => g) === 'female' ? 0 : 1;
+    return { byGender: false, single: slot, who: () => slot };
+  }
   const distinct = new Set(genders.filter((g): g is Gender => g === 'female' || g === 'male'));
-  if (distinct.size === 2 && genders.every((g) => g)) return { byGender: true, who: (i) => (genders[i] === 'female' ? 0 : 1) };
+  if (distinct.size === 2 && genders.every((g) => g)) return { byGender: true, single: null, who: (i) => (genders[i] === 'female' ? 0 : 1) };
   const script = item.audio.script ?? [];
   const names = [...new Set(script.map((l) => l.speaker))];
-  return { byGender: false, who: (i) => ((script[i] ? Math.max(0, names.indexOf(script[i].speaker)) : i) % 2) as 0 | 1 };
+  return { byGender: false, single: null, who: (i) => ((script[i] ? Math.max(0, names.indexOf(script[i].speaker)) : i) % 2) as 0 | 1 };
 }
 
-type OptionState = 'idle' | 'selected' | 'correct' | 'wrong' | 'dim';
-
-/** An answer card: round letter badge (✓ / ✗ after checking) and text that wraps to two lines. */
-class OptionCard {
-  private readonly panel: CanvasPanel;
-  private readonly entity: Entity;
-  private letter = '';
-  private text = '';
-  private state: OptionState = 'idle';
-  private enabled = true;
-  private hover = false;
-
-  constructor(app: App, scope: Scope, i: number, x: number, y: number, z: number, onPick: () => void) {
-    const made = scope.panel(0.45, 0.088, x, y, z);
-    this.panel = made.panel;
-    this.entity = made.entity;
-    this.panel.mesh.name = `Option_${'ABCD'[i]}`;
-    this.entity.addComponent(RayInteractable);
-    this.entity.addComponent(Clickable);
-    onPress(
-      this.entity,
-      () => this.enabled && onPick(),
-      (on) => {
-        this.hover = on && this.enabled;
-        if (this.hover) app.sound.play('hover', 0.2);
-        this.render();
-      },
-    );
-    this.visible = false;
-  }
-
-  set visible(v: boolean) {
-    this.panel.mesh.visible = v;
-    this.entity.setValue(Clickable, 'enabled', v && this.enabled);
-  }
-
-  set(letter: string, text: string): void {
-    this.letter = letter;
-    this.text = text;
-    this.state = 'idle';
-    this.setEnabled(true);
-  }
-
-  setEnabled(on: boolean): void {
-    this.enabled = on;
-    this.entity.setValue(Clickable, 'enabled', on && this.panel.mesh.visible);
-    if (!on) this.hover = false;
-    this.render();
-  }
-
-  setState(state: OptionState): void {
-    this.state = state;
-    this.render();
-  }
-
-  private render(): void {
-    const { state, hover } = this;
-    const look: Record<OptionState, { fill: string; stroke: string; badge: string; text: string }> = {
-      idle: { fill: hover ? '#f1f6ff' : 'rgba(255,255,255,0.92)', stroke: hover ? C.primary : 'rgba(61,139,255,0.4)', badge: C.primary, text: C.ink },
-      selected: { fill: C.soft, stroke: C.primary, badge: C.primary, text: C.ink },
-      correct: { fill: C.successSoft, stroke: C.success, badge: C.success, text: C.success },
-      wrong: { fill: C.dangerSoft, stroke: C.danger, badge: C.danger, text: C.danger },
-      dim: { fill: 'rgba(255,255,255,0.7)', stroke: C.line, badge: '#9aa6c2', text: C.muted },
-    };
-    const l = look[state];
-    this.panel.draw((ctx, W, H) => {
-      roundRect(ctx, 4, 4, W - 8, H - 8, 24);
-      ctx.fillStyle = l.fill;
-      ctx.fill();
-      ctx.lineWidth = state === 'idle' && !hover ? 4 : 7;
-      ctx.strokeStyle = l.stroke;
-      ctx.stroke();
-      // Letter badge, or ✓ / ✗ once checked.
-      const cx = 46;
-      const cy = H / 2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 24, 0, Math.PI * 2);
-      ctx.fillStyle = l.badge;
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.fillStyle = '#ffffff';
-      ctx.lineWidth = 5;
-      if (state === 'correct' || state === 'wrong') {
-        ctx.beginPath();
-        if (state === 'correct') {
-          ctx.moveTo(cx - 10, cy);
-          ctx.lineTo(cx - 3, cy + 8);
-          ctx.lineTo(cx + 11, cy - 8);
-        } else {
-          ctx.moveTo(cx - 8, cy - 8);
-          ctx.lineTo(cx + 8, cy + 8);
-          ctx.moveTo(cx + 8, cy - 8);
-          ctx.lineTo(cx - 8, cy + 8);
-        }
-        ctx.stroke();
-      } else {
-        ctx.font = font(24, 800);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(this.letter, cx, cy + 1);
-        ctx.textAlign = 'left';
-      }
-      // Answer text: up to two lines, slightly smaller only when it would need three.
-      ctx.fillStyle = l.text;
-      ctx.textBaseline = 'top';
-      let size = 27;
-      const maxW = W - 100;
-      const lines = (sz: number) => {
-        ctx.font = font(sz, 700);
-        let n = 1;
-        let line = '';
-        for (const word of this.text.split(/\s+/)) {
-          const test = line ? `${line} ${word}` : word;
-          if (ctx.measureText(test).width > maxW && line) {
-            n++;
-            line = word;
-          } else line = test;
-        }
-        return n;
-      };
-      while (size > 21 && lines(size) > 2) size -= 1;
-      const n = Math.min(2, lines(size));
-      const lh = size * 1.2;
-      wrap(ctx, this.text, 84, (H - n * lh) / 2 + 2, maxW, lh, 2);
-    });
-  }
-}
-
-export const listeningScreen: ScreenFactory = (app, scope) => {
+/** The four listening tasks share this screen; `label` is shown on the panel. */
+export const makeListeningScreen = (slug: ListeningSlug, label: string): ScreenFactory => (app, scope) => {
   let items: ListeningItem[] = [];
   let index = 0;
   let q = 0;
@@ -244,7 +134,7 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
   let cancelled = false;
   /** One decode per audio segment, started when the item loads and awaited in order on play. */
   let buffers: Promise<AudioBuffer | null>[] | null = null;
-  let plan: ReturnType<typeof speakerPlan> = { byGender: false, who: (i) => (i % 2) as 0 | 1 };
+  let plan: ReturnType<typeof speakerPlan> = { byGender: false, single: null, who: (i) => (i % 2) as 0 | 1 };
 
   const picture = scope.panel(0.66, 0.38, 0, 1.43, -1.15).panel;
   const info = scope.panel(0.94, 0.21, 0, 1.115, -0.95).panel;
@@ -258,14 +148,14 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
   });
 
   // Controls sit between the answers and the speakers: Room on the left, Replay / Next on the right.
-  new Button(scope, { w: 0.2, h: 0.075, label: 'Room', icon: app.icon('home'), tone: 'ghost' }, -0.69, 0.93, -0.86, () => app.goHub());
+  new Button(scope, { w: 0.2, h: 0.075, label: 'Back', icon: app.icon('ctl-back'), tone: 'ghost' }, -0.69, 0.93, -0.86, () => app.goHub());
   // Starts disabled: it is enabled only after the picture and all audio have loaded (loadItem).
   const play = new Button(scope, { w: 0.36, h: 0.09, label: 'Loading conversation…', tone: 'primary', enabled: false }, 0, 0.93, -0.9, () => void playConversation());
   play.panel.mesh.name = 'Btn_Playconversation';
   const replay = new Button(scope, { w: 0.2, h: 0.075, label: 'Replay', icon: app.icon('retry'), tone: 'ghost' }, 0.69, 0.93, -0.86, () => void playConversation());
   replay.visible = false;
   // 2 x 2 answer cards with a letter badge; text wraps instead of shrinking.
-  const options = [0, 1, 2, 3].map((i) => new OptionCard(app, scope, i, (i % 2 ? 1 : -1) * 0.235, 0.93 - Math.floor(i / 2) * 0.1, -0.9, () => void answer(i)));
+  const options = [0, 1, 2, 3].map((i) => new OptionCard(app.sound, scope, i, (i % 2 ? 1 : -1) * 0.235, 0.93 - Math.floor(i / 2) * 0.1, -0.9, () => void answer(i)));
   const next = new Button(scope, { w: 0.2, h: 0.075, label: 'Next', icon: app.icon('next'), tone: 'primary' }, 0.69, 0.835, -0.86, () => {
     if (nextItemPending) {
       nextItemPending = false;
@@ -307,7 +197,7 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
       info.card();
       ctx.fillStyle = C.listening;
       ctx.font = font(22, 800);
-      ctx.fillText('LISTEN TO A CONVERSATION', 36, 22);
+      ctx.fillText(label.toUpperCase(), 36, 22);
       if (counter) {
         // "Question 1 of 2" chip on the right.
         ctx.font = font(20, 800);
@@ -374,12 +264,16 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     replay.visible = false;
     play.visible = true;
     drawPicture(null, item.title);
+    // Choose a Response has no picture: just the voice, the question and the answers.
+    picture.mesh.visible = item.scene !== 'response';
     plan = speakerPlan(item);
+    speakers.forEach((sp, k) => sp.setVisible(plan.single === null || plan.single === k));
     // Name tags: the script's names when known, otherwise Speaker A / B.
     const script = item.audio.script ?? [];
     ([0, 1] as const).forEach((slot) => {
       const line = script.find((_, i) => plan.who(i) === slot);
-      speakers[slot].label(line?.speaker ?? (slot === 0 ? 'Speaker A' : 'Speaker B'));
+      const role = item.scene === 'lecture' ? 'Professor' : item.scene === 'announcement' ? 'Announcer' : 'Speaker';
+      speakers[slot].label(line?.speaker ?? (plan.single !== null ? role : slot === 0 ? 'Speaker A' : 'Speaker B'));
     });
     // Nothing can be pressed until the picture and every audio clip have loaded.
     play.update({ enabled: false, label: 'Loading conversation…', icon: null });
@@ -415,8 +309,15 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     await Promise.all(buffers ?? []);
     if (cancelled) return;
     void spinner.show(false);
-    play.update({ enabled: true, label: 'Play conversation', icon: app.icon('start') });
-    message('Pinch "Play conversation". Listen to who is speaking and where.');
+    // Wording per task: conversations have two speakers, the others one voice.
+    const copy: Record<string, [string, string]> = {
+      response: ['Play', 'Pinch "Play" to hear one line, then choose the best reply.'],
+      announcement: ['Play announcement', 'Pinch "Play announcement" and listen for the key details.'],
+      lecture: ['Play talk', 'Pinch "Play talk" and listen to the main ideas.'],
+    };
+    const [playLabel, hint] = copy[item.scene ?? ''] ?? ['Play conversation', 'Pinch "Play conversation". Listen to who is speaking and where.'];
+    play.update({ enabled: true, label: playLabel, icon: app.icon('start') });
+    message(hint);
   };
 
   const playConversation = async () => {
@@ -535,7 +436,7 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     async start() {
       message('Loading your conversation…', C.primary);
       try {
-        items = await app.data.listening();
+        items = await app.data.listening(slug);
         if (!items.length) {
           play.visible = false;
           message('These questions are not ready yet. They appear here as soon as your study plan finishes making them. Try another station or come back in a few minutes.', C.muted);

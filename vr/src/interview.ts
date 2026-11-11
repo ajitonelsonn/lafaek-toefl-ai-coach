@@ -47,7 +47,7 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
 
   const panel = scope.panel(0.94, 0.27, 0, 1.0, -0.92).panel;
   const spinner = new Spinner(app, new Vector3(0.36, 1.18, -0.9));
-  new Button(scope, { w: 0.2, h: 0.075, label: 'Room', icon: app.icon('home'), tone: 'ghost' }, -0.6, 0.82, -0.84, () => app.goHub());
+  new Button(scope, { w: 0.2, h: 0.075, label: 'Back', icon: app.icon('ctl-back'), tone: 'ghost' }, -0.6, 0.82, -0.84, () => app.goHub());
   // Starts disabled: enabled only after the first question's audio has loaded (start()).
   const ask = new Button(scope, { w: 0.28, h: 0.08, label: 'Loading…', icon: app.icon('voice'), tone: 'soft', enabled: false }, -0.17, 0.82, -0.86, () => void askQuestion());
   ask.panel.mesh.name = 'Btn_Hearquestion';

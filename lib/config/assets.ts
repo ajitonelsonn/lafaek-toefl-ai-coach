@@ -31,6 +31,10 @@ export const VR_ASSETS = {
   check: img("/assets/vr/icon-check.png", 48, 49),
   pinchSelect: img("/assets/vr/hand-pinch-select.png", 252, 189),
   pinchHold: img("/assets/vr/hand-pinch-hold.png", 301, 171),
+  zoneReading: img("/assets/vr/zone-reading.png", 236, 200),
+  zoneListening: img("/assets/vr/zone-listening.png", 232, 200),
+  zoneSpeaking: img("/assets/vr/zone-speaking.png", 218, 200),
+  zoneWriting: img("/assets/vr/zone-writing.png", 227, 200),
 } as const;
 
 export const BACKGROUNDS = {

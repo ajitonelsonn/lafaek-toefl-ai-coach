@@ -304,3 +304,132 @@ export function addGlow(panel: CanvasPanel, color = '#3d8bff'): { setStrength: (
   panel.mesh.add(mesh);
   return { setStrength: (k: number) => (mat.opacity = 0.35 + k * 0.6) };
 }
+
+/** An answer card: round letter badge (check / cross after checking) and text that wraps to two lines. */
+export type OptionState = 'idle' | 'selected' | 'correct' | 'wrong' | 'dim';
+
+export class OptionCard {
+  private readonly panel: CanvasPanel;
+  private readonly entity: Entity;
+  private letter = '';
+  private text = '';
+  private state: OptionState = 'idle';
+  private enabled = true;
+  private hover = false;
+
+  constructor(sound: { play: (name: 'hover', volume?: number) => void }, scope: Scope, i: number, x: number, y: number, z: number, onPick: () => void, size: { w: number; h: number } = { w: 0.45, h: 0.088 }) {
+    const made = scope.panel(size.w, size.h, x, y, z);
+    this.panel = made.panel;
+    this.entity = made.entity;
+    this.panel.mesh.name = `Option_${'ABCD'[i]}`;
+    this.entity.addComponent(RayInteractable);
+    this.entity.addComponent(Clickable);
+    onPress(
+      this.entity,
+      () => this.enabled && onPick(),
+      (on) => {
+        this.hover = on && this.enabled;
+        if (this.hover) sound.play('hover', 0.2);
+        this.render();
+      },
+    );
+    this.visible = false;
+  }
+
+  set visible(v: boolean) {
+    this.panel.mesh.visible = v;
+    this.entity.setValue(Clickable, 'enabled', v && this.enabled);
+  }
+
+  set(letter: string, text: string): void {
+    this.letter = letter;
+    this.text = text;
+    this.state = 'idle';
+    this.setEnabled(true);
+  }
+
+  setEnabled(on: boolean): void {
+    this.enabled = on;
+    this.entity.setValue(Clickable, 'enabled', on && this.panel.mesh.visible);
+    if (!on) this.hover = false;
+    this.render();
+  }
+
+  setState(state: OptionState): void {
+    this.state = state;
+    this.render();
+  }
+
+  private render(): void {
+    const { state, hover } = this;
+    const look: Record<OptionState, { fill: string; stroke: string; badge: string; text: string }> = {
+      idle: { fill: hover ? '#f1f6ff' : 'rgba(255,255,255,0.92)', stroke: hover ? C.primary : 'rgba(61,139,255,0.4)', badge: C.primary, text: C.ink },
+      selected: { fill: C.soft, stroke: C.primary, badge: C.primary, text: C.ink },
+      correct: { fill: C.successSoft, stroke: C.success, badge: C.success, text: C.success },
+      wrong: { fill: C.dangerSoft, stroke: C.danger, badge: C.danger, text: C.danger },
+      dim: { fill: 'rgba(255,255,255,0.7)', stroke: C.line, badge: '#9aa6c2', text: C.muted },
+    };
+    const l = look[state];
+    this.panel.draw((ctx, W, H) => {
+      roundRect(ctx, 4, 4, W - 8, H - 8, 24);
+      ctx.fillStyle = l.fill;
+      ctx.fill();
+      ctx.lineWidth = state === 'idle' && !hover ? 4 : 7;
+      ctx.strokeStyle = l.stroke;
+      ctx.stroke();
+      // Letter badge, or ✓ / ✗ once checked.
+      const cx = 46;
+      const cy = H / 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 24, 0, Math.PI * 2);
+      ctx.fillStyle = l.badge;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.fillStyle = '#ffffff';
+      ctx.lineWidth = 5;
+      if (state === 'correct' || state === 'wrong') {
+        ctx.beginPath();
+        if (state === 'correct') {
+          ctx.moveTo(cx - 10, cy);
+          ctx.lineTo(cx - 3, cy + 8);
+          ctx.lineTo(cx + 11, cy - 8);
+        } else {
+          ctx.moveTo(cx - 8, cy - 8);
+          ctx.lineTo(cx + 8, cy + 8);
+          ctx.moveTo(cx + 8, cy - 8);
+          ctx.lineTo(cx - 8, cy + 8);
+        }
+        ctx.stroke();
+      } else {
+        ctx.font = font(24, 800);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.letter, cx, cy + 1);
+        ctx.textAlign = 'left';
+      }
+      // Answer text: up to two lines, slightly smaller only when it would need three.
+      ctx.fillStyle = l.text;
+      ctx.textBaseline = 'top';
+      let size = 27;
+      const maxW = W - 100;
+      const lines = (sz: number) => {
+        ctx.font = font(sz, 700);
+        let n = 1;
+        let line = '';
+        for (const word of this.text.split(/\s+/)) {
+          const test = line ? `${line} ${word}` : word;
+          if (ctx.measureText(test).width > maxW && line) {
+            n++;
+            line = word;
+          } else line = test;
+        }
+        return n;
+      };
+      while (size > 21 && lines(size) > 2) size -= 1;
+      const n = Math.min(2, lines(size));
+      const lh = size * 1.2;
+      wrap(ctx, this.text, 84, (H - n * lh) / 2 + 2, maxW, lh, 2);
+    });
+  }
+}
+

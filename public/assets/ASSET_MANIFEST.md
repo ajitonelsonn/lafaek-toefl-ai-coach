@@ -124,3 +124,6 @@ Files in `public/assets/vr/`, listed in `VR_ASSETS` (`lib/config/assets.ts`).
 | `mascot-vr.webp` | `Hack/3d/logo_3d.png`: the mascot in an unbranded VR headset, resized to 1100 px |
 | `bg-study-room.webp` | `Hack/3d/vr_page_ilu/bg1.png`: the study-room scene used behind the hero |
 | `icon-build-sentence.png`, `icon-listen.png`, `icon-interview.png`, `icon-vr.png`, `icon-desktop.png`, `icon-back.png`, `icon-arrow-right.png`, `icon-check.png`, `hand-pinch-select.png`, `hand-pinch-hold.png` | Cropped from `Hack/3d/vr_page_ilu/all_icon.png` (transparent PNG) and trimmed |
+| `zone-reading.png`, `zone-listening.png`, `zone-speaking.png`, `zone-writing.png` | Cropped from `Hack/3d/vr_page_ilu/new_add/all_icon_for.png` (the four VR zone icons) |
+
+The VR room's own copies of the zone, activity and control icons are in `vr/public/icons/zone/` (same source sheet).
