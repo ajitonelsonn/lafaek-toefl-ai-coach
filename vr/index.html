@@ -43,6 +43,9 @@
       #enter-vr:disabled { opacity: 0.45; cursor: not-allowed; }
       #preview, a.btn { border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
       #preview:hover, a.btn:hover { border-color: var(--primary); color: var(--primary); }
+      a.btn.primary { border: 0; background: var(--primary); color: #fff; }
+      a.btn.primary:hover { background: var(--primary-hover); color: #fff; }
+      .actions[hidden], .hint[hidden] { display: none; }
       #note { margin-top: 14px; font-size: 13px; }
       .hint { margin-top: 10px; font-size: 13px; }
     </style>
@@ -55,14 +58,26 @@
         <p class="eyebrow">LAFAEKTOEFL · STUDY ROOM</p>
         <h1>Practise the TOEFL in VR</h1>
         <p>Sit down, use your hands, and practise three TOEFL tasks in a calm study room: Build a Sentence, Listen to a Conversation, and Take an Interview.</p>
-        <p id="who"></p>
-        <div class="actions">
+        <p id="who">Checking your account…</p>
+        <!-- Shown when signed in with a study plan. -->
+        <div id="ready" class="actions" hidden>
           <button id="enter-vr" type="button">Enter VR</button>
           <button id="preview" type="button">Preview in this browser</button>
-          <a id="back-2d" class="btn" href="/">Back to LafaekTOEFL</a>
+          <a class="btn" href="/dashboard">Back to LafaekTOEFL</a>
+        </div>
+        <!-- Shown when not signed in. -->
+        <div id="need-login" class="actions" hidden>
+          <a class="btn primary" href="/login?next=/vr">Sign in</a>
+          <a class="btn" href="/signup">Create a free account</a>
+          <a class="btn" href="/">Back to LafaekTOEFL</a>
+        </div>
+        <!-- Shown when signed in without a study plan. -->
+        <div id="need-plan" class="actions" hidden>
+          <a class="btn primary" href="/study-plan">Create my study plan</a>
+          <a class="btn" href="/dashboard">Back to LafaekTOEFL</a>
         </div>
         <p id="note"></p>
-        <p class="hint">No controllers needed: pinch to choose, pinch and hold to grab.</p>
+        <p id="hint" class="hint" hidden>No controllers needed: pinch to choose, pinch and hold to grab.</p>
       </div>
     </div>
     <script type="module" src="/src/index.ts"></script>

@@ -13,7 +13,8 @@ import { AuthHeading, OrDivider } from "./AuthLayout";
 import { GoogleButton } from "./GoogleButton";
 import { fieldErrors } from "./field-errors";
 
-export function LoginForm() {
+/** `returnTo`: an allow-listed page (e.g. the VR room at /vr) to open after login instead of the dashboard. */
+export function LoginForm({ returnTo }: { returnTo?: string } = {}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,6 +33,8 @@ export function LoginForm() {
       const r = await api<{ next: string; needsVerification?: boolean }>("/api/auth/login", { body: parsed.data });
       setPassword("");
       if (r.needsVerification) setPendingEmail(parsed.data.email);
+      // /vr is a static page outside the Next.js routes, so it needs a full page load.
+      if (returnTo && r.next === "/dashboard") return window.location.assign(returnTo);
       router.replace(r.next);
       router.refresh();
     } catch (err) {

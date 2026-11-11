@@ -88,6 +88,16 @@ export async function currentUser(): Promise<User | null> {
   }
 }
 
+/** Whether the signed-in learner has an active study plan (the room uses its questions). */
+export async function hasStudyPlan(): Promise<boolean> {
+  try {
+    const r = await api<{ plan: unknown }>('/api/study-plan');
+    return Boolean(r.plan);
+  } catch {
+    return false;
+  }
+}
+
 interface PracticeSet<T> {
   view: { items: T[] };
   progress: { results: Record<string, unknown> };
