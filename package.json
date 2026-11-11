@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "assets:crop": "node scripts/crop-assets.mjs",
+    "vr:dev": "npm --prefix vr run dev",
+    "vr:build": "npm --prefix vr run build",
     "postinstall": "prisma generate",
     "test": "vitest run",
     "db:generate": "prisma generate",
