@@ -42,10 +42,17 @@ export interface InterviewItem {
   questions: { unitId: string; audio: Audio; responseSeconds: number; text?: string }[];
 }
 
+export type PartRole = 'opener' | 'connector' | 'subject' | 'verb' | 'object' | 'rest';
+
 export interface CheckResult {
   correct: boolean | null;
+  /** The correct answer as text (the sentence, or the option letter). */
   answer?: string;
   explanation?: string;
+  /** Build a Sentence: the correct token order (token ids). */
+  order?: string[];
+  /** Build a Sentence: the grammatical parts of the correct sentence ("Why this order?"). */
+  parts?: { role: PartRole; text: string }[];
 }
 
 export interface AiScore {
@@ -131,12 +138,18 @@ export class DataSource {
 
   /** Checks one objective answer on the server. */
   async check(itemId: string, unitId: string, response: string | string[]): Promise<CheckResult> {
-    const r = await api<{ results: Record<string, { correct: boolean | null; answer?: unknown; label?: string; explanation?: string }> }>(
+    const r = await api<{ results: Record<string, { correct: boolean | null; answer?: unknown; label?: string; explanation?: string; parts?: CheckResult['parts'] }> }>(
       `/api/practice/items/${itemId}/submit`,
       json({ responses: [{ unitId, response }] }),
     );
     const u = r.results[unitId];
-    return { correct: u?.correct ?? null, answer: u?.label || (typeof u?.answer === 'string' ? u.answer : undefined), explanation: u?.explanation };
+    return {
+      correct: u?.correct ?? null,
+      answer: u?.label || (typeof u?.answer === 'string' ? u.answer : undefined),
+      explanation: u?.explanation,
+      order: Array.isArray(u?.answer) ? u.answer.map(String) : undefined,
+      parts: u?.parts,
+    };
   }
 
   /** Same-origin media bytes (images and audio) for an asset the learner owns. */
