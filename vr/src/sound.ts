@@ -140,7 +140,7 @@ export class Voice {
   }
 }
 
-/** Speaks text with the browser voice (demo mode fallback when no audio file exists). */
+/** Speaks text with the browser voice (fallback while a question's audio file is not ready yet). */
 export function speak(text: string, opts: { pitch?: number; rate?: number } = {}): Promise<void> {
   return new Promise((resolve) => {
     const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;

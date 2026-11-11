@@ -5,7 +5,7 @@ import type { AudioDTO, PracticeView } from "@/lib/practice/dto";
 import { shuffleOptions } from "./choice-order";
 
 export type ItemWithMedia = PracticeItem & { media: MediaAsset[] };
-type Line = { speaker: { id: string; role: string; name: string }; text: string };
+type Line = { speaker: { id: string; role: string; name: string; gender?: "female" | "male" | null }; text: string };
 type Json = Record<string, unknown>;
 
 /** Ready audio for a segment role, in playback order, or [] if any segment is missing. */
@@ -27,6 +27,8 @@ function audioFor(item: ItemWithMedia, role: string, lines: Line[]): AudioDTO {
     // The script is withheld whenever real audio exists (exam-like listening).
     script: complete ? null : lines.map((l) => ({ speaker: l.speaker.name, text: l.text })),
     estimatedSeconds: Math.max(2, Math.round(words / 2.4)),
+    // Who speaks each segment (gender only, never the words), so a voice can come from the matching person.
+    speakers: lines.map((l) => l.speaker.gender ?? null),
     source: { itemId: item.id, role },
   };
 }

@@ -3,56 +3,110 @@
  * left and right and each voice comes from where that person stands (spatial audio). After the
  * conversation the learner pinches an answer for each question.
  */
-import { CapsuleGeometry, Color, Group, Mesh, MeshLambertMaterial, SphereGeometry, TorusGeometry, MeshBasicMaterial } from '@iwsdk/core';
+import { CapsuleGeometry, Color, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, SphereGeometry, TorusGeometry, Vector3 } from '@iwsdk/core';
 import type { App, ScreenFactory } from './app.js';
 import { animate } from './clicks.js';
 import { errorMessage, type ListeningItem } from './data.js';
+import { Placed, Spinner, yawToViewer } from './models.js';
 import { speak, stopSpeaking, type Voice } from './sound.js';
 import { Button, C, font, roundRect, wrap, type Scope } from './ui.js';
 
-const BASE = import.meta.env.BASE_URL;
+type Gender = 'female' | 'male';
 
+/**
+ * One of the two speakers, left and right of the desk: a simple figure seated on a school chair.
+ * The voice comes from the figure's head (spatial audio). While it talks, a halo glows around its
+ * head and its name tag fills with colour.
+ */
 interface Speaker {
   group: Group;
   ring: Mesh;
   voice: Voice;
   label: (name: string) => void;
   talking: boolean;
+  /** Marks this speaker as talking (halo + filled name tag) or not. */
+  setTalking: (on: boolean) => void;
+  dispose: () => void;
 }
 
-function makeSpeaker(app: App, scope: Scope, x: number, color: string, pitchHint: string): Speaker {
+function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speaker {
+  const x = slot === 0 ? -0.95 : 0.95;
+  const z = -1.25;
   const group = new Group();
-  group.position.set(x, 0.72, -1.2);
-  group.rotation.y = Math.atan2(-x, 1.2);
-  const mat = new MeshLambertMaterial({ color: new Color(color) });
-  const body = new Mesh(new CapsuleGeometry(0.12, 0.28, 6, 14), mat);
-  body.position.y = 0.26;
-  group.add(body);
+  group.position.set(x, 0, z);
+  group.rotation.y = yawToViewer(x, z);
+  // Seated figure: body resting on the chair seat (about 45 cm high).
+  const body = new Mesh(new CapsuleGeometry(0.13, 0.26, 6, 14), new MeshLambertMaterial({ color: new Color(color) }));
+  body.position.set(0, 0.73, -0.06);
   const head = new Mesh(new SphereGeometry(0.1, 20, 14), new MeshLambertMaterial({ color: new Color('#f1c9a5') }));
-  head.position.y = 0.6;
-  group.add(head);
-  const ring = new Mesh(new TorusGeometry(0.17, 0.008, 8, 40), new MeshBasicMaterial({ color: new Color(color), toneMapped: false }));
-  ring.position.y = 0.6;
+  head.position.set(0, 1.1, -0.06);
+  group.add(body, head);
+  // Glowing halo around the head while this speaker talks (visible above the desk).
+  const ring = new Mesh(new TorusGeometry(0.15, 0.014, 10, 48), new MeshBasicMaterial({ color: new Color(color), toneMapped: false }));
+  ring.position.set(0, 1.1, -0.06);
   ring.visible = false;
   group.add(ring);
-  scope.add(group);
-  const tag = scope.panel(0.26, 0.07, x, 1.5, -1.2).panel;
-  const label = (name: string) =>
+  const groupEntity = scope.add(group);
+
+  const tag = scope.panel(0.28, 0.07, x * 0.92, 1.36, z + 0.05).panel;
+  let name = slot === 0 ? 'Speaker A' : 'Speaker B';
+  let talking = false;
+  const voiceIcon = app.icon('voice');
+  const drawTag = () =>
     tag.draw((ctx, W, H) => {
-      tag.card('rgba(255,255,255,0.94)', color, 30);
-      ctx.fillStyle = color;
+      tag.card(talking ? color : 'rgba(255,255,255,0.94)', color, 30);
+      ctx.fillStyle = talking ? '#ffffff' : color;
       ctx.font = font(34, 800);
-      ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(name, W / 2, H / 2 + 2);
+      const iconSize = talking && voiceIcon ? H - 22 : 0;
+      const textW = ctx.measureText(name).width;
+      const x0 = (W - textW - (iconSize ? iconSize + 10 : 0)) / 2;
+      if (iconSize && voiceIcon) ctx.drawImage(voiceIcon, x0, (H - iconSize) / 2, iconSize, iconSize);
+      ctx.fillText(name, x0 + (iconSize ? iconSize + 10 : 0), H / 2 + 2);
     });
-  label(pitchHint);
-  return { group, ring, voice: app.sound.voice(head), label, talking: false };
+  const label = (n: string) => {
+    name = n;
+    drawTag();
+  };
+  drawTag();
+
+  // The CC0 school chair loads in the background (chair front faces +Z, like the figure).
+  let chair: Placed | null = null;
+  let disposed = false;
+  void Placed.place(app.world, groupEntity, 'school-chair', new Vector3(0, 0, -0.05), 0).then((p) => {
+    chair = p;
+    if (disposed) p?.remove();
+  });
+
+  return {
+    group,
+    ring,
+    voice: app.sound.voice(head),
+    label,
+    talking: false,
+    setTalking(on: boolean) {
+      this.talking = talking = on;
+      drawTag();
+    },
+    dispose: () => {
+      disposed = true;
+      chair?.remove();
+    },
+  };
+}
+
+/** Which place speaks each segment: by gender when the two speakers differ, else alternating. */
+function speakerPlan(item: ListeningItem): { byGender: boolean; who: (i: number) => 0 | 1 } {
+  const genders = item.audio.speakers ?? [];
+  const distinct = new Set(genders.filter((g): g is Gender => g === 'female' || g === 'male'));
+  if (distinct.size === 2 && genders.every((g) => g)) return { byGender: true, who: (i) => (genders[i] === 'female' ? 0 : 1) };
+  const script = item.audio.script ?? [];
+  const names = [...new Set(script.map((l) => l.speaker))];
+  return { byGender: false, who: (i) => ((script[i] ? Math.max(0, names.indexOf(script[i].speaker)) : i) % 2) as 0 | 1 };
 }
 
 export const listeningScreen: ScreenFactory = (app, scope) => {
   let items: ListeningItem[] = [];
-  let demo = false;
   let index = 0;
   let q = 0;
   let correctCount = 0;
@@ -60,14 +114,16 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
   let cancelled = false;
   /** One decode per audio segment, started when the item loads and awaited in order on play. */
   let buffers: Promise<AudioBuffer | null>[] | null = null;
+  let plan: ReturnType<typeof speakerPlan> = { byGender: false, who: (i) => (i % 2) as 0 | 1 };
 
   const picture = scope.panel(0.72, 0.42, 0, 1.4, -1.15).panel;
   const info = scope.panel(0.94, 0.17, 0, 1.08, -0.95).panel;
-  const speakers = [makeSpeaker(app, scope, -0.9, C.listening, 'Speaker A'), makeSpeaker(app, scope, 0.9, C.speaking, 'Speaker B')];
+  const speakers = [makeSpeaker(app, scope, 0, C.listening), makeSpeaker(app, scope, 1, C.speaking)];
+  const spinner = new Spinner(app, new Vector3(0.36, 1.08, -0.84));
   const stopPulse = animate((time) => {
     for (const s of speakers) {
       s.ring.visible = s.talking;
-      if (s.talking) s.ring.scale.setScalar(1 + Math.sin(time * 9) * 0.08);
+      if (s.talking) s.ring.scale.setScalar(1 + Math.sin(time * 9) * 0.1);
     }
   });
 
@@ -123,7 +179,7 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
       info.card(tone === 'success' ? C.successSoft : tone === 'danger' ? C.dangerSoft : C.surface, tone === 'success' ? C.success : tone === 'danger' ? C.danger : C.line);
       ctx.fillStyle = C.listening;
       ctx.font = font(24, 800);
-      ctx.fillText(`LISTEN TO A CONVERSATION${demo ? '  ·  DEMO' : ''}`, 40, 24);
+      ctx.fillText('LISTEN TO A CONVERSATION', 40, 24);
       draw(ctx, W, H);
     });
 
@@ -144,11 +200,15 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     replay.visible = false;
     play.visible = true;
     drawPicture(null, item.title);
-    const names = [...new Set((item.audio.script ?? []).map((l) => l.speaker))];
-    speakers[0].label(names[0] ?? 'Speaker A');
-    speakers[1].label(names[1] ?? 'Speaker B');
+    plan = speakerPlan(item);
+    // Name tags: the script's names when known, otherwise Speaker A / B.
+    const script = item.audio.script ?? [];
+    ([0, 1] as const).forEach((slot) => {
+      const line = script.find((_, i) => plan.who(i) === slot);
+      speakers[slot].label(line?.speaker ?? (slot === 0 ? 'Speaker A' : 'Speaker B'));
+    });
     message('Pinch "Play conversation". Listen to who is speaking and where.');
-    // Picture: the learner's Muse Image scene, or the demo illustration.
+    // Picture: the learner's Muse Image scene.
     const loadImg = (src: string) =>
       new Promise<HTMLImageElement | null>((resolve) => {
         const img = new Image();
@@ -164,7 +224,7 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
       } catch {
         // Picture is optional; keep the placeholder.
       }
-    } else if (demo) drawPicture(await loadImg(`${BASE}img/demo-conversation.png`), item.title);
+    }
     // Audio files (signed in): start downloading every segment now; playback begins as soon as
     // the first one is ready and later ones keep loading in the background.
     if (item.audio.assetIds.length) {
@@ -187,19 +247,29 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     play.update({ enabled: false, label: 'Listening…' });
     replay.update({ enabled: false });
     const script = item.audio.script ?? [];
-    const names = [...new Set(script.map((l) => l.speaker))];
     const segments = buffers?.length ?? script.length;
     for (let i = 0; i < segments && !cancelled; i++) {
-      // Who speaks: from the script when known, otherwise the two voices take turns.
-      const who = script[i] ? Math.max(0, names.indexOf(script[i].speaker)) % 2 : i % 2;
+      // Who speaks: matched by gender when known, otherwise from the script or taking turns.
+      const who = plan.who(i);
       const s = speakers[who];
-      s.talking = true;
-      message(`${script[i]?.speaker ?? (who ? 'Speaker B' : 'Speaker A')} is speaking…  (${i + 1} of ${segments})`, who ? C.speaking : C.listening);
-      const buf = buffers?.[i] ? await buffers[i] : null;
+      const name = script[i]?.speaker ?? (who ? 'Speaker B' : 'Speaker A');
+      let buf: AudioBuffer | null = null;
+      if (buffers?.[i]) {
+        // Show the spinner only if this clip is still downloading.
+        const waiting = setTimeout(() => {
+          message('Loading the next part…', C.muted);
+          void spinner.show(true);
+        }, 150);
+        buf = await buffers[i];
+        clearTimeout(waiting);
+        void spinner.show(false);
+      }
       if (cancelled) break;
+      s.setTalking(true);
+      message(`${name} is speaking…  (${i + 1} of ${segments})`, who ? C.speaking : C.listening);
       if (buf) await s.voice.play(buf);
-      else if (script[i]) await speak(script[i].text, { pitch: who ? 0.85 : 1.15 });
-      s.talking = false;
+      else if (script[i]) await speak(script[i].text, { pitch: item.audio.speakers?.[i] === 'male' || (!item.audio.speakers && who) ? 0.85 : 1.15 });
+      s.setTalking(false);
     }
     playing = false;
     if (cancelled) return;
@@ -222,7 +292,7 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
       wrap(ctx, question.prompt, 40, 64, W - 80, 44, 2);
     });
     question.options.slice(0, 4).forEach((opt, i) => {
-      options[i].update({ label: `${opt.id}.  ${opt.text}`, tone: 'secondary', enabled: true });
+      options[i].update({ label: `${opt.id}.  ${opt.text}`, tone: 'secondary', enabled: true, selected: false });
       options[i].visible = true;
     });
     app.sound.play('appear', 0.3);
@@ -234,9 +304,14 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     const opt = question.options[i];
     if (!opt) return;
     options.forEach((o) => o.update({ enabled: false }));
+    // Show at once which answer was chosen and that it is being checked.
+    options[i].update({ tone: 'soft', enabled: false, selected: true });
     app.sound.play('click', 0.4);
+    message('Checking your answer…', C.primary);
+    void spinner.show(true);
     try {
       const r = await app.data.check(item.itemId, question.unitId, opt.id);
+      void spinner.show(false);
       if (r.correct) correctCount++;
       app.sound.play(r.correct ? 'done' : 'toggle', 0.5);
       options[i].update({ tone: r.correct ? 'success' : 'danger', enabled: false });
@@ -253,8 +328,9 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
       next.update({ label: q + 1 < item.questions.length ? 'Next' : 'Finish' });
       next.visible = true;
     } catch (e) {
+      void spinner.show(false);
       message(errorMessage(e), C.danger);
-      options.forEach((o) => o.update({ enabled: true }));
+      options.forEach((o) => o.update({ enabled: true, tone: 'secondary', selected: false }));
     }
   };
 
@@ -288,7 +364,12 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     async start() {
       message('Loading your conversation…', C.primary);
       try {
-        ({ items, demo } = await app.data.listening());
+        items = await app.data.listening();
+        if (!items.length) {
+          play.visible = false;
+          message('These questions are not ready yet. They appear here as soon as your study plan finishes making them. Try another station or come back in a few minutes.', C.muted);
+          return;
+        }
         await loadItem();
       } catch (e) {
         message(errorMessage(e), C.danger);
@@ -297,8 +378,12 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     dispose() {
       cancelled = true;
       stopSpeaking();
-      speakers.forEach((s) => s.voice.dispose());
+      speakers.forEach((s) => {
+        s.voice.dispose();
+        s.dispose();
+      });
       stopPulse();
+      spinner.dispose();
     },
   };
 };

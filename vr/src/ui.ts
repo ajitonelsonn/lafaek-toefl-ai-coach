@@ -167,6 +167,8 @@ export interface ButtonSpec {
   icon?: HTMLImageElement | null;
   tone?: Tone;
   enabled?: boolean;
+  /** The learner's chosen answer: stays fully visible while disabled. */
+  selected?: boolean;
 }
 
 /** A pinchable button: a canvas panel with RayInteractable + Clickable and hover feedback. */
@@ -216,7 +218,7 @@ export class Button {
   }
 
   private render(): void {
-    const { label, sub, icon, tone = 'secondary', enabled = true } = this.spec;
+    const { label, sub, icon, tone = 'secondary', enabled = true, selected = false } = this.spec;
     const hover = this.hovered && enabled;
     const palette: Record<Tone, [string, string, string]> = {
       primary: [hover ? C.primaryDark : C.primary, C.primaryDark, '#ffffff'],
@@ -229,7 +231,7 @@ export class Button {
     const [fill, stroke, text] = palette[tone];
     this.panel.draw((ctx, W, H) => {
       // Answered choices (success/danger) stay fully visible even though they are disabled.
-      ctx.globalAlpha = enabled || tone === 'success' || tone === 'danger' ? 1 : 0.45;
+      ctx.globalAlpha = enabled || selected || tone === 'success' || tone === 'danger' ? 1 : 0.45;
       roundRect(ctx, 4, 4, W - 8, H - 8, Math.min(H / 2 - 4, 40));
       ctx.fillStyle = fill;
       ctx.fill();

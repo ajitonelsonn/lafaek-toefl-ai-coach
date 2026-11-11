@@ -10,12 +10,13 @@ import { errorMessage, type AiScore, type InterviewItem } from './data.js';
 import { speak, stopSpeaking } from './sound.js';
 import { Button, C, font, roundRect, wrap } from './ui.js';
 import { toWav16k } from './wav.js';
+import { Spinner } from './models.js';
+import { Vector3 } from '@iwsdk/core';
 
 type Phase = 'idle' | 'asking' | 'ready' | 'recording' | 'scoring' | 'result';
 
 export const interviewScreen: ScreenFactory = (app, scope) => {
   let item: InterviewItem | null = null;
-  let demo = false;
   let q = 0;
   let phase: Phase = 'idle';
   let recorder: MediaRecorder | null = null;
@@ -45,6 +46,7 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
   });
 
   const panel = scope.panel(0.94, 0.27, 0, 1.0, -0.92).panel;
+  const spinner = new Spinner(app, new Vector3(0.36, 1.18, -0.9));
   new Button(scope, { w: 0.2, h: 0.075, label: 'Room', icon: app.icon('home'), tone: 'ghost' }, -0.6, 0.82, -0.84, () => app.goHub());
   const ask = new Button(scope, { w: 0.28, h: 0.08, label: 'Hear question', icon: app.icon('voice'), tone: 'soft' }, -0.17, 0.82, -0.86, () => void askQuestion());
   const rec = new Button(scope, { w: 0.28, h: 0.08, label: 'Answer', icon: app.icon('start'), tone: 'primary', enabled: false }, 0.17, 0.82, -0.86, () => void toggleRecording());
@@ -54,7 +56,7 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
   const header = (ctx: CanvasRenderingContext2D, W: number) => {
     ctx.fillStyle = C.speaking;
     ctx.font = font(24, 800);
-    ctx.fillText(`TAKE AN INTERVIEW${demo ? '  ·  DEMO' : ''}`, 40, 26);
+    ctx.fillText('TAKE AN INTERVIEW', 40, 26);
     if (item) {
       ctx.fillStyle = C.muted;
       ctx.font = font(24, 700);
@@ -202,23 +204,17 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
   const finishRecording = async () => {
     if (disposed || !item) return;
     const question = item.questions[q];
-    const seconds = Math.round((performance.now() - startedAt) / 1000);
     phase = 'scoring';
     rec.update({ enabled: false, label: 'Answer', icon: app.icon('start'), tone: 'primary' });
-    if (demo || !app.data.live) {
-      phase = 'result';
-      app.completeActivity();
-      show(`Recorded ${seconds} seconds. Nice!`, 'Sign in on lafaektoefl.tech to get your transcript and an AI band score for every answer.', { tone: 'success' });
-      afterResult();
-      return;
-    }
     show('Scoring your answer…', 'Muse Voice Transcribe is writing down what you said, then Muse Spark scores it. This takes about 15 seconds.', { color: C.primary });
     app.sound.startLoop('thinking', 0.18);
+    void spinner.show(true);
     try {
       const wav = await toWav16k(new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' }));
       const transcript = await app.data.transcribe(item.itemId, question.unitId, wav);
       if (transcript.length < 20) {
         app.sound.stopLoop();
+        void spinner.show(false);
         phase = 'result';
         show('Say a little more', `We heard: "${transcript || '…'}". Answer in a few full sentences to get an AI score.`, { tone: 'danger' });
         afterResult();
@@ -226,6 +222,7 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
       }
       const score = await app.data.score(item.itemId, question.unitId, transcript);
       app.sound.stopLoop();
+      void spinner.show(false);
       if (disposed) return;
       phase = 'result';
       app.sound.play('done', 0.6);
@@ -233,6 +230,7 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
       showScore(transcript, score);
     } catch (e) {
       app.sound.stopLoop();
+      void spinner.show(false);
       phase = 'result';
       show('Could not score this answer', errorMessage(e), { tone: 'danger' });
     }
@@ -262,9 +260,12 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
     async start() {
       show('Loading your interview…', '', { color: C.primary });
       try {
-        const r = await app.data.interview();
-        item = r.items[0];
-        demo = r.demo;
+        item = (await app.data.interview())[0] ?? null;
+        if (!item) {
+          show('No interview yet', 'These questions are not ready yet. They appear here as soon as your study plan finishes making them. Try another station or come back in a few minutes.');
+          ask.update({ enabled: false });
+          return;
+        }
         show('Ready when you are', `${item.scenario} Pinch "Hear question" to begin.`);
         ask.update({ enabled: true, label: 'Hear question' });
       } catch (e) {
@@ -283,6 +284,7 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
       app.sound.stopLoop();
       voice.dispose();
       stopBob();
+      spinner.dispose();
     },
   };
 };

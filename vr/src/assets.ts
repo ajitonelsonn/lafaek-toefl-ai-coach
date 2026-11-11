@@ -1,8 +1,19 @@
 /**
- * Asset manifest shared by the runtime and the IWSDK editor. The study room is built in code
- * (src/room.ts) and question media is loaded at runtime from the LafaekTOEFL API, so the
- * manifest stays empty.
+ * Asset manifest shared by the runtime and the IWSDK editor. The room itself is built in code
+ * (src/room.ts) and question media comes from the LafaekTOEFL API at runtime. The school chair
+ * and loading spinner are glTF files in public/models (credits: public/models/CREDITS.md),
+ * loaded lazily so the room opens without waiting for them.
  */
-import { defineAssets } from '@iwsdk/core';
+import { AssetType, defineAssets } from '@iwsdk/core';
 
-export default defineAssets({});
+const model = (file: string, name: string) => ({
+  url: `${import.meta.env.BASE_URL}models/${file}`,
+  type: AssetType.GLTF,
+  name,
+  priority: 'lazy' as const,
+});
+
+export default defineAssets({
+  'school-chair': model('school-chair.glb', 'School chair'),
+  'loading-spinner': model('loading.glb', 'Loading spinner'),
+});

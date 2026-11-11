@@ -169,18 +169,10 @@ export const hubScreen: ScreenFactory = (app, scope) => ({
       ctx.fillText('LAFAEKTOEFL  ·  STUDY ROOM', 50, 34);
       ctx.fillStyle = C.ink;
       ctx.font = font(58, 800);
-      ctx.fillText(name ? `Welcome back, ${name}` : 'Practise for the TOEFL in VR', 50, 76);
+      ctx.fillText(name ? `Welcome back, ${name}` : 'Welcome back', 50, 76);
       ctx.fillStyle = C.body;
       ctx.font = font(32, 500);
-      wrap(
-        ctx,
-        app.data.live ? 'Your own study-plan questions. Pinch a station to begin.' : 'Demo questions. Sign in on lafaektoefl.tech for your personal plan.',
-        50,
-        160,
-        W - 100,
-        40,
-        2,
-      );
+      wrap(ctx, 'Your own study-plan questions. Pinch a station to begin.', 50, 160, W - 100, 40, 2);
     });
 
     STATIONS.forEach((s, i) => {

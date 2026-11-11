@@ -127,7 +127,6 @@ function tileMesh(text: string, w: number): Mesh {
 
 export const sentenceScreen: ScreenFactory = (app, scope) => {
   let items: SentenceItem[] = [];
-  let demo = false;
   let index = 0;
   let tiles: { entity: Entity; mesh: Mesh; home: Vector3; homeQ: Quaternion; token: number; slot: number; dragAt: number; grabFrom: Vector3 }[] = [];
   const drags: Partial<Record<Hand, { tile: (typeof tiles)[number]; offset: Vector3 }>> = {};
@@ -165,7 +164,7 @@ export const sentenceScreen: ScreenFactory = (app, scope) => {
       header.card(tone === C.success ? C.successSoft : tone === C.danger ? C.dangerSoft : C.surface, tone ?? C.line);
       ctx.fillStyle = C.writing;
       ctx.font = font(26, 800);
-      ctx.fillText(`BUILD A SENTENCE  ·  ${index + 1} OF ${items.length}${demo ? '  ·  DEMO' : ''}`, 44, 30);
+      ctx.fillText(`BUILD A SENTENCE  ·  ${index + 1} OF ${items.length}`, 44, 30);
       if (!item) return;
       if (result?.error) {
         ctx.fillStyle = C.danger;
@@ -446,7 +445,12 @@ export const sentenceScreen: ScreenFactory = (app, scope) => {
     async start() {
       drawStatus('Loading your sentences…', C.primary);
       try {
-        ({ items, demo } = await app.data.sentences());
+        items = await app.data.sentences();
+        if (!items.length) {
+          drawHeader({ correct: null, error: 'These questions are not ready yet. They appear here as soon as your study plan finishes making them. Try another station or come back in a few minutes.' });
+          drawStatus('No sentences yet', C.muted);
+          return;
+        }
         buildRound();
       } catch (e) {
         drawHeader({ correct: null, error: errorMessage(e) });

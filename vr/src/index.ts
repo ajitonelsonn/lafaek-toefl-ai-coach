@@ -30,13 +30,14 @@ async function main() {
   world.registerSystem(ClickSystem);
   world.registerSystem(PinchGrabSystem);
 
-  const app = new App(world, new DataSource(user));
-  app.register('hub', hubScreen);
-  app.register('sentence', sentenceScreen);
-  app.register('listening', listeningScreen);
-  app.register('interview', interviewScreen);
-  await app.loadImages();
-  app.open('hub');
+  // VR is only for signed-in learners with a study plan. Until that check passes, any XR session
+  // (the browser's own Enter VR prompt, or the dev emulator) is ended at once.
+  let allowed = false;
+  world.visibilityState.subscribe(() => {
+    if (!world.session) return;
+    if (allowed) overlay.hidden = true;
+    else world.exitXR();
+  });
   overlay.classList.add('ready');
 
   if (!user) {
@@ -50,6 +51,15 @@ async function main() {
     return;
   }
 
+  // Signed in with a plan: build the room and allow VR.
+  const app = new App(world, new DataSource(user));
+  app.register('hub', hubScreen);
+  app.register('sentence', sentenceScreen);
+  app.register('listening', listeningScreen);
+  app.register('interview', interviewScreen);
+  await app.loadImages();
+  app.open('hub');
+  allowed = true;
   who.textContent = `Signed in${user.name ? ` as ${user.name}` : ''}: you will practise with your own study-plan questions.`;
   showActions('ready');
   const xrOk = Boolean(navigator.xr && (await navigator.xr.isSessionSupported('immersive-vr').catch(() => false)));
@@ -64,9 +74,6 @@ async function main() {
   previewBtn.addEventListener('click', () => {
     app.sound.resume();
     overlay.hidden = true;
-  });
-  world.visibilityState.subscribe(() => {
-    if (world.session) overlay.hidden = true;
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !world.session) overlay.hidden = false;

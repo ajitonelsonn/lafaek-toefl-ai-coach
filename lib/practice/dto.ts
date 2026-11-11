@@ -13,6 +13,8 @@ export interface AudioDTO {
   /** Script for the browser-voice fallback; only sent when no audio file is ready. */
   script: { speaker: string; text: string }[] | null;
   estimatedSeconds: number;
+  /** Speaker gender for each segment, in order (null on older items). Never contains the script. */
+  speakers?: ("female" | "male" | null)[];
   /** Where to ask again for files that were not ready when the page loaded (GET /api/practice/items/:itemId/audio?role=). */
   source?: { itemId: string; role: string };
 }
