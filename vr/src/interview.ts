@@ -48,7 +48,9 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
   const panel = scope.panel(0.94, 0.27, 0, 1.0, -0.92).panel;
   const spinner = new Spinner(app, new Vector3(0.36, 1.18, -0.9));
   new Button(scope, { w: 0.2, h: 0.075, label: 'Room', icon: app.icon('home'), tone: 'ghost' }, -0.6, 0.82, -0.84, () => app.goHub());
-  const ask = new Button(scope, { w: 0.28, h: 0.08, label: 'Hear question', icon: app.icon('voice'), tone: 'soft' }, -0.17, 0.82, -0.86, () => void askQuestion());
+  // Starts disabled: enabled only after the first question's audio has loaded (start()).
+  const ask = new Button(scope, { w: 0.28, h: 0.08, label: 'Loading…', icon: app.icon('voice'), tone: 'soft', enabled: false }, -0.17, 0.82, -0.86, () => void askQuestion());
+  ask.panel.mesh.name = 'Btn_Hearquestion';
   const rec = new Button(scope, { w: 0.28, h: 0.08, label: 'Answer', icon: app.icon('start'), tone: 'primary', enabled: false }, 0.17, 0.82, -0.86, () => void toggleRecording());
   const next = new Button(scope, { w: 0.2, h: 0.075, label: 'Next', icon: app.icon('next'), tone: 'primary' }, 0.6, 0.82, -0.84, () => nextQuestion());
   next.visible = false;
@@ -139,6 +141,15 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
     show(questionText() ?? 'Listen to the question, then answer.', `Pinch Answer and speak for up to ${total} seconds. Pinch Stop when you finish.`);
   };
 
+  /** Question audio, downloaded ahead so a question plays at once (unitId -> decoded clips). */
+  const audio = new Map<string, Promise<(AudioBuffer | null)[]>>();
+  const preload = (unitId: string, assetIds: string[]) => {
+    if (!audio.has(unitId)) {
+      audio.set(unitId, Promise.all(assetIds.map((id) => app.data.media(id).then((b) => b.arrayBuffer()).then((ab) => app.sound.decode(ab)).catch(() => null))));
+    }
+    return audio.get(unitId)!;
+  };
+
   const askQuestion = async () => {
     if (!item || phase === 'asking' || phase === 'recording' || phase === 'scoring') return;
     const question = item.questions[q];
@@ -146,16 +157,29 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
     next.visible = false;
     ask.update({ enabled: false });
     rec.update({ enabled: false });
-    show('The interviewer is asking…', questionText() ? '' : 'Listen carefully.');
     app.sound.resume();
     try {
       if (question.audio.assetIds.length) {
-        for (const id of question.audio.assetIds) {
-          const buf = await app.sound.decode(await (await app.data.media(id)).arrayBuffer());
+        // Wait (with the spinner) if this question's audio is still downloading.
+        const pending = preload(question.unitId, question.audio.assetIds);
+        const waiting = setTimeout(() => {
+          show('Loading the question…', '', { color: C.muted });
+          void spinner.show(true);
+        }, 150);
+        const clips = await pending;
+        clearTimeout(waiting);
+        void spinner.show(false);
+        if (disposed) return;
+        show('The interviewer is asking…', questionText() ? '' : 'Listen carefully.');
+        // Start loading the next question while this one plays.
+        const nextQ = item.questions[q + 1];
+        if (nextQ?.audio.assetIds.length) void preload(nextQ.unitId, nextQ.audio.assetIds);
+        for (const buf of clips) {
           if (disposed) return;
-          await voice.play(buf);
+          if (buf) await voice.play(buf);
         }
       } else {
+        show('The interviewer is asking…', questionText() ? '' : 'Listen carefully.');
         for (const line of question.audio.script ?? []) await speak(line.text, { pitch: 1.0, rate: 0.92 });
       }
     } catch {
@@ -266,6 +290,14 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
           ask.update({ enabled: false });
           return;
         }
+        // "Hear question" stays off until the first question's audio has loaded.
+        const first = item.questions[0];
+        ask.update({ enabled: false, label: 'Loading…' });
+        show('Loading the interview…', item.scenario, { color: C.muted });
+        void spinner.show(true);
+        if (first?.audio.assetIds.length) await preload(first.unitId, first.audio.assetIds);
+        void spinner.show(false);
+        if (disposed) return;
         show('Ready when you are', `${item.scenario} Pinch "Hear question" to begin.`);
         ask.update({ enabled: true, label: 'Hear question' });
       } catch (e) {

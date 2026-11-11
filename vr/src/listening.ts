@@ -3,13 +3,14 @@
  * left and right and each voice comes from where that person stands (spatial audio). After the
  * conversation the learner pinches an answer for each question.
  */
-import { CapsuleGeometry, Color, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, SphereGeometry, TorusGeometry, Vector3 } from '@iwsdk/core';
+import { CapsuleGeometry, Color, Entity, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, RayInteractable, SphereGeometry, TorusGeometry, Vector3 } from '@iwsdk/core';
 import type { App, ScreenFactory } from './app.js';
-import { animate } from './clicks.js';
+import { animate, onPress } from './clicks.js';
 import { errorMessage, type ListeningItem } from './data.js';
 import { Placed, Spinner, yawToViewer } from './models.js';
 import { speak, stopSpeaking, type Voice } from './sound.js';
-import { Button, C, font, roundRect, wrap, type Scope } from './ui.js';
+import { Button, C, CanvasPanel, font, roundRect, wrap, type Scope } from './ui.js';
+import { Clickable } from './interaction.js';
 
 type Gender = 'female' | 'male';
 
@@ -30,8 +31,9 @@ interface Speaker {
 }
 
 function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speaker {
-  const x = slot === 0 ? -0.95 : 0.95;
-  const z = -1.25;
+  // Out to the sides (about 48°), clear of the answers and the Room / Replay / Next buttons.
+  const x = slot === 0 ? -1.3 : 1.3;
+  const z = -1.15;
   const group = new Group();
   group.position.set(x, 0, z);
   group.rotation.y = yawToViewer(x, z);
@@ -105,6 +107,134 @@ function speakerPlan(item: ListeningItem): { byGender: boolean; who: (i: number)
   return { byGender: false, who: (i) => ((script[i] ? Math.max(0, names.indexOf(script[i].speaker)) : i) % 2) as 0 | 1 };
 }
 
+type OptionState = 'idle' | 'selected' | 'correct' | 'wrong' | 'dim';
+
+/** An answer card: round letter badge (✓ / ✗ after checking) and text that wraps to two lines. */
+class OptionCard {
+  private readonly panel: CanvasPanel;
+  private readonly entity: Entity;
+  private letter = '';
+  private text = '';
+  private state: OptionState = 'idle';
+  private enabled = true;
+  private hover = false;
+
+  constructor(app: App, scope: Scope, i: number, x: number, y: number, z: number, onPick: () => void) {
+    const made = scope.panel(0.45, 0.088, x, y, z);
+    this.panel = made.panel;
+    this.entity = made.entity;
+    this.panel.mesh.name = `Option_${'ABCD'[i]}`;
+    this.entity.addComponent(RayInteractable);
+    this.entity.addComponent(Clickable);
+    onPress(
+      this.entity,
+      () => this.enabled && onPick(),
+      (on) => {
+        this.hover = on && this.enabled;
+        if (this.hover) app.sound.play('hover', 0.2);
+        this.render();
+      },
+    );
+    this.visible = false;
+  }
+
+  set visible(v: boolean) {
+    this.panel.mesh.visible = v;
+    this.entity.setValue(Clickable, 'enabled', v && this.enabled);
+  }
+
+  set(letter: string, text: string): void {
+    this.letter = letter;
+    this.text = text;
+    this.state = 'idle';
+    this.setEnabled(true);
+  }
+
+  setEnabled(on: boolean): void {
+    this.enabled = on;
+    this.entity.setValue(Clickable, 'enabled', on && this.panel.mesh.visible);
+    if (!on) this.hover = false;
+    this.render();
+  }
+
+  setState(state: OptionState): void {
+    this.state = state;
+    this.render();
+  }
+
+  private render(): void {
+    const { state, hover } = this;
+    const look: Record<OptionState, { fill: string; stroke: string; badge: string; text: string }> = {
+      idle: { fill: hover ? '#f1f6ff' : 'rgba(255,255,255,0.92)', stroke: hover ? C.primary : 'rgba(61,139,255,0.4)', badge: C.primary, text: C.ink },
+      selected: { fill: C.soft, stroke: C.primary, badge: C.primary, text: C.ink },
+      correct: { fill: C.successSoft, stroke: C.success, badge: C.success, text: C.success },
+      wrong: { fill: C.dangerSoft, stroke: C.danger, badge: C.danger, text: C.danger },
+      dim: { fill: 'rgba(255,255,255,0.7)', stroke: C.line, badge: '#9aa6c2', text: C.muted },
+    };
+    const l = look[state];
+    this.panel.draw((ctx, W, H) => {
+      roundRect(ctx, 4, 4, W - 8, H - 8, 24);
+      ctx.fillStyle = l.fill;
+      ctx.fill();
+      ctx.lineWidth = state === 'idle' && !hover ? 4 : 7;
+      ctx.strokeStyle = l.stroke;
+      ctx.stroke();
+      // Letter badge, or ✓ / ✗ once checked.
+      const cx = 46;
+      const cy = H / 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 24, 0, Math.PI * 2);
+      ctx.fillStyle = l.badge;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.fillStyle = '#ffffff';
+      ctx.lineWidth = 5;
+      if (state === 'correct' || state === 'wrong') {
+        ctx.beginPath();
+        if (state === 'correct') {
+          ctx.moveTo(cx - 10, cy);
+          ctx.lineTo(cx - 3, cy + 8);
+          ctx.lineTo(cx + 11, cy - 8);
+        } else {
+          ctx.moveTo(cx - 8, cy - 8);
+          ctx.lineTo(cx + 8, cy + 8);
+          ctx.moveTo(cx + 8, cy - 8);
+          ctx.lineTo(cx - 8, cy + 8);
+        }
+        ctx.stroke();
+      } else {
+        ctx.font = font(24, 800);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.letter, cx, cy + 1);
+        ctx.textAlign = 'left';
+      }
+      // Answer text: up to two lines, slightly smaller only when it would need three.
+      ctx.fillStyle = l.text;
+      ctx.textBaseline = 'top';
+      let size = 27;
+      const maxW = W - 100;
+      const lines = (sz: number) => {
+        ctx.font = font(sz, 700);
+        let n = 1;
+        let line = '';
+        for (const word of this.text.split(/\s+/)) {
+          const test = line ? `${line} ${word}` : word;
+          if (ctx.measureText(test).width > maxW && line) {
+            n++;
+            line = word;
+          } else line = test;
+        }
+        return n;
+      };
+      while (size > 21 && lines(size) > 2) size -= 1;
+      const n = Math.min(2, lines(size));
+      const lh = size * 1.2;
+      wrap(ctx, this.text, 84, (H - n * lh) / 2 + 2, maxW, lh, 2);
+    });
+  }
+}
+
 export const listeningScreen: ScreenFactory = (app, scope) => {
   let items: ListeningItem[] = [];
   let index = 0;
@@ -116,10 +246,10 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
   let buffers: Promise<AudioBuffer | null>[] | null = null;
   let plan: ReturnType<typeof speakerPlan> = { byGender: false, who: (i) => (i % 2) as 0 | 1 };
 
-  const picture = scope.panel(0.72, 0.42, 0, 1.4, -1.15).panel;
-  const info = scope.panel(0.94, 0.17, 0, 1.08, -0.95).panel;
+  const picture = scope.panel(0.66, 0.38, 0, 1.43, -1.15).panel;
+  const info = scope.panel(0.94, 0.21, 0, 1.115, -0.95).panel;
   const speakers = [makeSpeaker(app, scope, 0, C.listening), makeSpeaker(app, scope, 1, C.speaking)];
-  const spinner = new Spinner(app, new Vector3(0.36, 1.08, -0.84));
+  const spinner = new Spinner(app, new Vector3(0.4, 1.115, -0.86));
   const stopPulse = animate((time) => {
     for (const s of speakers) {
       s.ring.visible = s.talking;
@@ -127,18 +257,16 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     }
   });
 
-  new Button(scope, { w: 0.2, h: 0.075, label: 'Room', icon: app.icon('home'), tone: 'ghost' }, -0.6, 0.95, -0.84, () => app.goHub());
-  const play = new Button(scope, { w: 0.34, h: 0.085, label: 'Play conversation', icon: app.icon('start'), tone: 'primary' }, 0, 0.94, -0.88, () => void playConversation());
-  const replay = new Button(scope, { w: 0.2, h: 0.075, label: 'Replay', icon: app.icon('retry'), tone: 'ghost' }, 0.6, 0.95, -0.84, () => void playConversation());
+  // Controls sit between the answers and the speakers: Room on the left, Replay / Next on the right.
+  new Button(scope, { w: 0.2, h: 0.075, label: 'Room', icon: app.icon('home'), tone: 'ghost' }, -0.69, 0.93, -0.86, () => app.goHub());
+  // Starts disabled: it is enabled only after the picture and all audio have loaded (loadItem).
+  const play = new Button(scope, { w: 0.36, h: 0.09, label: 'Loading conversation…', tone: 'primary', enabled: false }, 0, 0.93, -0.9, () => void playConversation());
+  play.panel.mesh.name = 'Btn_Playconversation';
+  const replay = new Button(scope, { w: 0.2, h: 0.075, label: 'Replay', icon: app.icon('retry'), tone: 'ghost' }, 0.69, 0.93, -0.86, () => void playConversation());
   replay.visible = false;
-  const options = [0, 1, 2, 3].map(
-    (i) => new Button(scope, { w: 0.46, h: 0.07, label: '', tone: 'secondary' }, (i % 2 ? 1 : -1) * 0.24, 0.94 - Math.floor(i / 2) * 0.08, -0.88, () => void answer(i)),
-  );
-  options.forEach((o, i) => {
-    o.visible = false;
-    o.panel.mesh.name = `Option_${'ABCD'[i]}`;
-  });
-  const next = new Button(scope, { w: 0.2, h: 0.075, label: 'Next', icon: app.icon('next'), tone: 'primary' }, 0.6, 0.86, -0.84, () => {
+  // 2 x 2 answer cards with a letter badge; text wraps instead of shrinking.
+  const options = [0, 1, 2, 3].map((i) => new OptionCard(app, scope, i, (i % 2 ? 1 : -1) * 0.235, 0.93 - Math.floor(i / 2) * 0.1, -0.9, () => void answer(i)));
+  const next = new Button(scope, { w: 0.2, h: 0.075, label: 'Next', icon: app.icon('next'), tone: 'primary' }, 0.69, 0.835, -0.86, () => {
     if (nextItemPending) {
       nextItemPending = false;
       index++;
@@ -174,20 +302,66 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
       ctx.fillText(title, 40, H - 70);
     });
 
-  const drawInfo = (draw: (ctx: CanvasRenderingContext2D, W: number, H: number) => void, tone?: 'success' | 'danger') =>
+  const drawInfo = (draw: (ctx: CanvasRenderingContext2D, W: number, H: number) => void, counter?: string) =>
     info.draw((ctx, W, H) => {
-      info.card(tone === 'success' ? C.successSoft : tone === 'danger' ? C.dangerSoft : C.surface, tone === 'success' ? C.success : tone === 'danger' ? C.danger : C.line);
+      info.card();
       ctx.fillStyle = C.listening;
-      ctx.font = font(24, 800);
-      ctx.fillText('LISTEN TO A CONVERSATION', 40, 24);
+      ctx.font = font(22, 800);
+      ctx.fillText('LISTEN TO A CONVERSATION', 36, 22);
+      if (counter) {
+        // "Question 1 of 2" chip on the right.
+        ctx.font = font(20, 800);
+        const cw = ctx.measureText(counter).width + 28;
+        roundRect(ctx, W - cw - 30, 16, cw, 34, 17);
+        ctx.fillStyle = C.soft;
+        ctx.fill();
+        ctx.fillStyle = C.primaryDark;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(counter, W - cw - 16, 34);
+        ctx.textBaseline = 'top';
+      }
       draw(ctx, W, H);
     });
+
+  /** Result banner (✓ / ✗ and a title) plus the explanation, inside the info panel. */
+  const drawResult = (ok: boolean, title: string, body: string, counter?: string) =>
+    drawInfo((ctx, W) => {
+      roundRect(ctx, 24, 60, W - 48, 62, 18);
+      ctx.fillStyle = ok ? C.successSoft : C.dangerSoft;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(64, 91, 19, 0, Math.PI * 2);
+      ctx.fillStyle = ok ? C.success : C.danger;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      if (ok) {
+        ctx.moveTo(55, 91);
+        ctx.lineTo(62, 98);
+        ctx.lineTo(74, 84);
+      } else {
+        ctx.moveTo(57, 84);
+        ctx.lineTo(71, 98);
+        ctx.moveTo(71, 84);
+        ctx.lineTo(57, 98);
+      }
+      ctx.stroke();
+      ctx.fillStyle = ok ? C.success : C.danger;
+      ctx.font = font(32, 800);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(title, 96, 92);
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = C.body;
+      ctx.font = font(24, 500);
+      wrap(ctx, body, 36, 134, W - 72, 29, 2);
+    }, counter);
 
   const message = (text: string, color: string = C.ink) =>
     drawInfo((ctx, W) => {
       ctx.fillStyle = color;
       ctx.font = font(36, 700);
-      wrap(ctx, text, 40, 66, W - 80, 44, 2);
+      wrap(ctx, text, 36, 70, W - 72, 44, 3);
     });
 
   const loadItem = async () => {
@@ -207,7 +381,20 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
       const line = script.find((_, i) => plan.who(i) === slot);
       speakers[slot].label(line?.speaker ?? (slot === 0 ? 'Speaker A' : 'Speaker B'));
     });
-    message('Pinch "Play conversation". Listen to who is speaking and where.');
+    // Nothing can be pressed until the picture and every audio clip have loaded.
+    play.update({ enabled: false, label: 'Loading conversation…', icon: null });
+    message('Loading the picture and the conversation…', C.muted);
+    void spinner.show(true);
+    // Audio: start downloading every segment now, in parallel with the picture.
+    buffers = item.audio.assetIds.length
+      ? item.audio.assetIds.map((id) =>
+          app.data
+            .media(id)
+            .then((b) => b.arrayBuffer())
+            .then((ab) => app.sound.decode(ab))
+            .catch(() => null),
+        )
+      : null;
     // Picture: the learner's Muse Image scene.
     const loadImg = (src: string) =>
       new Promise<HTMLImageElement | null>((resolve) => {
@@ -225,17 +412,11 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
         // Picture is optional; keep the placeholder.
       }
     }
-    // Audio files (signed in): start downloading every segment now; playback begins as soon as
-    // the first one is ready and later ones keep loading in the background.
-    if (item.audio.assetIds.length) {
-      buffers = item.audio.assetIds.map((id) =>
-        app.data
-          .media(id)
-          .then((b) => b.arrayBuffer())
-          .then((ab) => app.sound.decode(ab))
-          .catch(() => null),
-      );
-    }
+    await Promise.all(buffers ?? []);
+    if (cancelled) return;
+    void spinner.show(false);
+    play.update({ enabled: true, label: 'Play conversation', icon: app.icon('start') });
+    message('Pinch "Play conversation". Listen to who is speaking and where.');
   };
 
   const playConversation = async () => {
@@ -284,16 +465,14 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     const question = item.questions[q];
     next.visible = false;
     drawInfo((ctx, W) => {
-      ctx.fillStyle = C.muted;
-      ctx.font = font(26, 700);
-      ctx.fillText(`Question ${q + 1} of ${item.questions.length}`, W - 300, 24);
       ctx.fillStyle = C.ink;
-      ctx.font = font(36, 700);
-      wrap(ctx, question.prompt, 40, 64, W - 80, 44, 2);
-    });
-    question.options.slice(0, 4).forEach((opt, i) => {
-      options[i].update({ label: `${opt.id}.  ${opt.text}`, tone: 'secondary', enabled: true, selected: false });
-      options[i].visible = true;
+      ctx.font = font(36, 800);
+      wrap(ctx, question.prompt, 36, 72, W - 72, 44, 3);
+    }, `Question ${q + 1} of ${item.questions.length}`);
+    options.forEach((o, i) => {
+      const opt = question.options[i];
+      o.visible = Boolean(opt);
+      if (opt) o.set(opt.id, opt.text);
     });
     app.sound.play('appear', 0.3);
   };
@@ -303,9 +482,9 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     const question = item.questions[q];
     const opt = question.options[i];
     if (!opt) return;
-    options.forEach((o) => o.update({ enabled: false }));
+    options.forEach((o) => o.setEnabled(false));
     // Show at once which answer was chosen and that it is being checked.
-    options[i].update({ tone: 'soft', enabled: false, selected: true });
+    options[i].setState('selected');
     app.sound.play('click', 0.4);
     message('Checking your answer…', C.primary);
     void spinner.show(true);
@@ -314,23 +493,18 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
       void spinner.show(false);
       if (r.correct) correctCount++;
       app.sound.play(r.correct ? 'done' : 'toggle', 0.5);
-      options[i].update({ tone: r.correct ? 'success' : 'danger', enabled: false });
       const right = question.options.findIndex((o) => o.id === r.answer || o.text === r.answer);
-      if (!r.correct && right >= 0) options[right].update({ tone: 'success', enabled: false });
-      drawInfo((ctx, W) => {
-        ctx.fillStyle = r.correct ? C.success : C.danger;
-        ctx.font = font(36, 800);
-        ctx.fillText(r.correct ? 'Correct!' : 'Not quite.', 40, 62);
-        ctx.fillStyle = C.body;
-        ctx.font = font(28, 500);
-        wrap(ctx, r.explanation ?? '', 40, 108, W - 80, 34, 2);
-      }, r.correct ? 'success' : 'danger');
+      options.forEach((o, k) => o.setState(k === i ? (r.correct ? 'correct' : 'wrong') : k === right ? 'correct' : 'dim'));
+      drawResult(Boolean(r.correct), r.correct ? 'Correct!' : 'Not quite.', r.explanation ?? '', `Question ${q + 1} of ${item.questions.length}`);
       next.update({ label: q + 1 < item.questions.length ? 'Next' : 'Finish' });
       next.visible = true;
     } catch (e) {
       void spinner.show(false);
       message(errorMessage(e), C.danger);
-      options.forEach((o) => o.update({ enabled: true, tone: 'secondary', selected: false }));
+      options.forEach((o) => {
+        o.setState('idle');
+        o.setEnabled(true);
+      });
     }
   };
 
@@ -345,14 +519,11 @@ export const listeningScreen: ScreenFactory = (app, scope) => {
     // Finished this conversation.
     next.visible = false;
     app.completeActivity();
-    drawInfo((ctx, W) => {
-      ctx.fillStyle = C.ink;
-      ctx.font = font(40, 800);
-      ctx.fillText(`You got ${correctCount} of ${item.questions.length} right.`, 40, 62);
-      ctx.fillStyle = C.body;
-      ctx.font = font(30, 500);
-      wrap(ctx, index + 1 < items.length ? 'Pinch Next for another conversation, or go back to the room.' : 'Nice work. Go back to the room for another station.', 40, 114, W - 80, 36, 2);
-    }, correctCount === item.questions.length ? 'success' : undefined);
+    drawResult(
+      correctCount === item.questions.length,
+      `You got ${correctCount} of ${item.questions.length} right.`,
+      index + 1 < items.length ? 'Pinch Next for another conversation, or go back to the room.' : 'Nice work. Go back to the room for another station.',
+    );
     if (index + 1 < items.length) {
       next.update({ label: 'Next' });
       next.visible = true;
