@@ -5,6 +5,7 @@ import type { GenerationJob, JobType } from "@prisma/client";
 import { features } from "../env";
 import { log } from "../log";
 import { pruneRateLimits } from "../rate-limit";
+import { pruneDeviceLinks } from "../auth/device-link";
 import { claimJobs, completeJob, failJob, heartbeat, recoverExpiredLeases, unblockJobs } from "./queue";
 import { JobFailure, reconcileMedia, runAudioAsset, runDeleteUserAssets, runImageAsset, runTaskPack, toJobFailure } from "./handlers";
 import { backfillVocabularyJobs, queueVocabularyFor, runVocabularyPack } from "./vocabulary";
@@ -112,6 +113,7 @@ export async function tick(owner: string, concurrency = 3, jobTypes?: JobType[])
 
 export async function housekeeping() {
   await pruneRateLimits().catch(() => undefined);
+  await pruneDeviceLinks().catch(() => undefined);
   const r = await reconcileMedia().catch(() => ({ attached: 0, failed: 0 }));
   if (r.attached || r.failed) log.info("media reconciled", r);
   const vocab = await backfillVocabularyJobs().catch(() => 0);

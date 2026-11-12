@@ -8,7 +8,7 @@ import { BACKGROUNDS } from "@/lib/config/assets";
 export const metadata: Metadata = { title: "Log In" };
 
 /** Pages a login may return to, besides the default. Only exact matches, so it cannot redirect off-site. */
-const RETURN_TO = new Set(["/vr"]);
+const RETURN_TO = new Set(["/vr", "/link"]);
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const next = (await searchParams).next;

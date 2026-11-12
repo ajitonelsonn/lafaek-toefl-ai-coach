@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
+import { ShareDeviceButton } from "@/components/auth/DeviceSignIn";
 import { VrReadiness } from "@/components/vr/VrReadiness";
 import { VR_ASSETS } from "@/lib/config/assets";
 import { getAuth } from "@/lib/server/auth/session";
@@ -15,6 +16,9 @@ export const metadata: Metadata = {
 
 /** The 3D room (IWSDK static build in public/vr/room, source: vr/). */
 const ROOM = "/vr/room";
+/** This page: where a Quest lands after signing in with a code. */
+const ROOM_PAGE = "/vr";
+const KEY_ICON = { src: "/assets/icons/key.png", width: 65, height: 65 };
 
 /** The four VR zones and their activities. Write an Email and Academic Discussion stay on the website. */
 const ZONES = [
@@ -68,7 +72,8 @@ export default async function VrPage() {
       ? { href: `${ROOM}?mode=preview`, label: "Preview in Browser", external: true }
       : access === "no-plan"
         ? { href: "/dashboard", label: "Back to dashboard", external: false }
-        : { href: "/signup", label: "Create a free account", external: false };
+        : { href: "/link?next=/vr", label: "Sign in with a code", external: false };
+  const secondaryIcon = access === "ready" ? VR_ASSETS.desktop : access === "signed-out" ? KEY_ICON : null;
 
   return (
     <div className="min-h-dvh bg-page text-body">
@@ -119,11 +124,20 @@ export default async function VrPage() {
 
               <div className="mt-7 flex flex-wrap gap-3">
                 <CtaLink {...primary} variant="primary" icon={access === "ready" ? VR_ASSETS.vr : null} />
-                <CtaLink {...secondary} variant="secondary" icon={access === "ready" ? VR_ASSETS.desktop : null} />
+                <CtaLink {...secondary} variant="secondary" icon={secondaryIcon} />
+                {/* Signed in here (phone or computer): a one-time code / QR code signs the Quest in. */}
+                {access !== "signed-out" && <ShareDeviceButton returnTo={ROOM_PAGE} className={ctaClass("secondary")} />}
               </div>
-              <Link href="/dashboard" className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-primary hover:underline">
-                <Image src={VR_ASSETS.back.src} alt="" width={22} height={22} className="size-5" /> Back to LafaekTOEFL
-              </Link>
+              <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2">
+                <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm font-bold text-primary hover:underline">
+                  <Image src={VR_ASSETS.back.src} alt="" width={22} height={22} className="size-5" /> Back to LafaekTOEFL
+                </Link>
+                {access === "signed-out" && (
+                  <Link href="/signup" className="text-sm font-bold text-primary hover:underline">
+                    New here? Create a free account
+                  </Link>
+                )}
+              </div>
             </div>
 
             {/* The mascot in an unbranded VR headset, overlapping the study-room scene. */}
@@ -218,11 +232,15 @@ interface CtaProps {
 }
 
 /** Main buttons. The 3D room is a static page outside the Next.js routes, so it uses a plain link. */
-function CtaLink({ href, label, external, variant, icon }: CtaProps) {
-  const className = cn(
+function ctaClass(variant: "primary" | "secondary") {
+  return cn(
     "inline-flex h-14 items-center gap-3 rounded-2xl px-6 text-lg font-bold transition",
     variant === "primary" ? "bg-primary text-on-primary shadow-lg shadow-primary/25 hover:bg-primary-hover" : "border-2 border-primary/30 bg-surface text-ink hover:border-primary hover:text-primary",
   );
+}
+
+function CtaLink({ href, label, external, variant, icon }: CtaProps) {
+  const className = ctaClass(variant);
   const content = (
     <>
       {icon && <Image src={icon.src} alt="" width={icon.width} height={icon.height} className={cn("h-6 w-auto", variant === "primary" && "brightness-0 invert")} />}
