@@ -28,8 +28,8 @@ enum OtpPurpose {
   password_reset
 }
 
-/// share: a signed-in device made the code, another device enters it to sign in.
-/// request: a signed-out device (e.g. a headset) shows the code, a signed-in device approves it.
+/// share: a signed-in device shows the code; another device enters it and the signed-in device approves.
+/// request: not used any more (an earlier design); kept so the enum matches the deployed migration.
 enum DeviceLinkKind {
   share
   request
@@ -169,17 +169,17 @@ model Session {
   @@map("sessions")
 }
 
-/// Short-lived pairing code that signs another device in (headset, phone) without a password.
-/// Only hashes are stored; a code works once and expires after a few minutes.
+/// Short-lived pairing code that signs another device in (headset, phone) without a password, once the
+/// signed-in device approves. Only hashes are stored; a code works once and expires after a few minutes.
 model DeviceLink {
   id             String         @id @default(uuid()) @db.Uuid
   kind           DeviceLinkKind
   codeHash       String         @unique @map("code_hash")
-  /// request only: the waiting device proves it is the one that asked.
+  /// Set when a device enters the code: that device polls with the secret until approved.
   pollSecretHash String?        @unique @map("poll_secret_hash")
-  /// share: the account to sign in. request: set when someone approves.
+  /// The account that made the code.
   userId         String?        @map("user_id") @db.Uuid
-  /// request only: the waiting device's browser, shown to the person approving.
+  /// The browser that entered the code, shown to the learner approving it.
   userAgent      String?        @map("user_agent")
   expiresAt      DateTime       @map("expires_at")
   approvedAt     DateTime?      @map("approved_at")

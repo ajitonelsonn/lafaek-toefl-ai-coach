@@ -34,9 +34,8 @@ export function LoginForm({ returnTo }: { returnTo?: string } = {}) {
       const r = await api<{ next: string; needsVerification?: boolean }>("/api/auth/login", { body: parsed.data });
       setPassword("");
       if (r.needsVerification) setPendingEmail(parsed.data.email);
-      // /vr is a static page outside the Next.js routes, so it needs a full page load. /link (approving
-      // a headset's code) does not need a study plan, so it is the next page either way.
-      if (returnTo && !r.needsVerification && (r.next === "/dashboard" || returnTo === "/link")) return window.location.assign(returnTo);
+      // /vr is a static page outside the Next.js routes, so it needs a full page load.
+      if (returnTo && r.next === "/dashboard") return window.location.assign(returnTo);
       router.replace(r.next);
       router.refresh();
     } catch (err) {

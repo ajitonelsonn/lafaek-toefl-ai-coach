@@ -23,7 +23,8 @@ export const loginSchema = z.object({ email: emailSchema, password: z.string().m
 export const verifyEmailSchema = z.object({ email: emailSchema, code: z.string().trim().regex(/^\d{6}$/, "Enter all 6 digits.") });
 export const resendSchema = z.object({ email: emailSchema });
 /** Pairing code for signing in another device; checked against the code alphabet by the server. */
-export const deviceCodeSchema = z.object({ code: z.string().trim().min(1, "Enter the code.").max(20), approve: z.boolean().optional() });
+export const deviceCodeSchema = z.object({ code: z.string().trim().min(1, "Enter the code.").max(20) });
+export const deviceDecisionSchema = z.object({ approve: z.boolean() });
 export const devicePollSchema = z.object({ secret: z.string().min(20).max(100) });
 
 export const weekdaySchema = z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
