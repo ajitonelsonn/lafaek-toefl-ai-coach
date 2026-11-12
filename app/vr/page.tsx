@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 import { ShareDeviceButton } from "@/components/auth/DeviceSignIn";
+import { VrAccountMenu } from "@/components/vr/VrAccountMenu";
 import { VrReadiness } from "@/components/vr/VrReadiness";
 import { VR_ASSETS } from "@/lib/config/assets";
 import { getAuth } from "@/lib/server/auth/session";
@@ -200,24 +201,16 @@ export default async function VrPage() {
   );
 }
 
+/** Logo goes back to the main site (dashboard when signed in); the name chip opens a Log out menu. */
 function VrHeader({ firstName }: { firstName: string | null }) {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6">
         <span className="flex items-center gap-2">
-          <Logo size={34} href={null} />
+          <Logo size={34} href={firstName ? "/dashboard" : "/"} />
           <span className="rounded-full bg-primary px-2.5 py-0.5 text-sm font-extrabold text-on-primary">VR</span>
         </span>
-        <div className="ml-auto">
-          {firstName && (
-            <span className="flex items-center gap-2 rounded-full border border-line bg-surface py-1 pl-1 pr-3 text-sm font-semibold text-ink">
-              <span className="inline-flex size-8 items-center justify-center rounded-full bg-primary-soft font-extrabold text-primary" aria-hidden>
-                {firstName[0]?.toUpperCase()}
-              </span>
-              {firstName}
-            </span>
-          )}
-        </div>
+        <div className="ml-auto">{firstName && <VrAccountMenu firstName={firstName} />}</div>
       </div>
     </header>
   );
