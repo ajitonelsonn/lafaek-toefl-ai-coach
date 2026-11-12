@@ -8,13 +8,17 @@ import projectOptions from 'virtual:iwsdk-project';
 import { App, hubScreen, ZONES, zoneScreen } from './app.js';
 import { ClickSystem } from './clicks.js';
 import { currentUser, DataSource, hasStudyPlan } from './data.js';
+import { FpsSystem } from './fps.js';
 import { interviewScreen } from './interview.js';
 import { makeListeningScreen } from './listening.js';
 import { makeReadingScreen } from './reading.js';
 import { repeatScreen } from './repeat.js';
 import { PinchGrabSystem, sentenceScreen } from './sentence.js';
 
-/** From the /vr page: ?mode=preview opens the room in this browser; ?open=<station> starts there. */
+/**
+ * From the /vr page: ?mode=preview opens the room in this browser; ?open=<station> starts there.
+ * For testing: ?fps=1 shows a frame-rate readout in the corner of your view.
+ */
 const params = new URLSearchParams(location.search);
 const STATIONS = ['zone-reading', 'zone-listening', 'zone-speaking', 'zone-writing', 'reading-daily', 'reading-academic', 'sentence', 'listen-response', 'listen-conversation', 'listen-announcement', 'listen-talk', 'repeat', 'interview'];
 const startAt = STATIONS.includes(params.get('open') ?? '') ? (params.get('open') as string) : 'hub';
@@ -35,6 +39,7 @@ async function main() {
   const [world, user] = await Promise.all([World.create($<HTMLDivElement>('scene-container'), projectOptions), currentUser()]);
   world.registerSystem(ClickSystem);
   world.registerSystem(PinchGrabSystem);
+  if (params.get('fps') === '1') world.registerSystem(FpsSystem);
 
   // VR is only for signed-in learners with a study plan. Until that check passes, any XR session
   // (the browser's own Enter VR prompt, or the dev emulator) is ended at once.
