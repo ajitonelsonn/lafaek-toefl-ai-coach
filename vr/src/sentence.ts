@@ -40,6 +40,11 @@ const pinchHooks: {
 export class PinchGrabSystem extends createSystem({}) {
   private readonly at = new Vector3();
   private readonly held: Record<Hand, boolean> = { left: false, right: false };
+  /** Whether each hand is really pinching (or pulling the trigger) right now. */
+  private readonly selecting: Record<Hand, boolean> = { left: false, right: false };
+  /** Frames the hand ray has claimed to be selecting while no pinch is held. */
+  private readonly stuck: Record<Hand, number> = { left: 0, right: 0 };
+  private readonly upEvent = { button: 0, timeStamp: 0 };
   private bound: XRSession | null = null;
 
   private point(hand: Hand, source: XRInputSource): Vector3 {
@@ -51,6 +56,7 @@ export class PinchGrabSystem extends createSystem({}) {
   private readonly onStart = (e: XRInputSourceEvent) => {
     const hand = e.inputSource.handedness;
     if (hand !== 'left' && hand !== 'right') return;
+    if (e.type === 'selectstart') this.selecting[hand] = true;
     // Hands grab with a pinch (select); controllers with the grip (squeeze).
     if ((e.type === 'selectstart') !== Boolean(e.inputSource.hand)) return;
     this.held[hand] = pinchHooks.start?.(hand, this.point(hand, e.inputSource)) ?? false;
@@ -58,21 +64,37 @@ export class PinchGrabSystem extends createSystem({}) {
 
   private readonly onEnd = (e: XRInputSourceEvent) => {
     const hand = e.inputSource.handedness;
+    if ((hand === 'left' || hand === 'right') && e.type === 'selectend') this.selecting[hand] = false;
     if ((hand !== 'left' && hand !== 'right') || !this.held[hand]) return;
     this.held[hand] = false;
     pinchHooks.end?.(hand);
   };
 
+  /** Hand tracking lost (or the hand/controller removed) while holding a tile: let it go safely. */
+  private readonly onSourcesChange = (e: XRInputSourcesChangeEvent) => {
+    for (const source of e.removed) {
+      const hand = source.handedness;
+      if (hand === 'left' || hand === 'right') this.selecting[hand] = false;
+      if ((hand === 'left' || hand === 'right') && this.held[hand]) {
+        this.held[hand] = false;
+        pinchHooks.end?.(hand);
+      }
+    }
+  };
+
   private bind(session: XRSession | null): void {
     if (this.bound) {
+      this.bound.removeEventListener('inputsourceschange', this.onSourcesChange);
       for (const t of ['selectstart', 'squeezestart'] as const) this.bound.removeEventListener(t, this.onStart);
       for (const t of ['selectend', 'squeezeend'] as const) this.bound.removeEventListener(t, this.onEnd);
     }
     this.bound = session;
     this.held.left = this.held.right = false;
+    this.selecting.left = this.selecting.right = false;
     if (!session) return;
     for (const t of ['selectstart', 'squeezestart'] as const) session.addEventListener(t, this.onStart);
     for (const t of ['selectend', 'squeezeend'] as const) session.addEventListener(t, this.onEnd);
+    session.addEventListener('inputsourceschange', this.onSourcesChange);
   }
 
   update(): void {
@@ -83,6 +105,29 @@ export class PinchGrabSystem extends createSystem({}) {
       const hand = source.handedness;
       if ((hand === 'left' || hand === 'right') && this.held[hand]) pinchHooks.move?.(hand, this.point(hand, source));
     }
+    this.unstick('left');
+    this.unstick('right');
+  }
+
+  /**
+   * Works around an IWSDK input bug: when the object a ray pinch is pressing vanishes or moves
+   * out of the ray before the pinch ends (a tile carried by a near grab, a closed panel), the
+   * ray never leaves its select state. Every later pinch is then swallowed and finger touch is
+   * never checked. If the ray still says "selecting" a few frames after the pinch really ended,
+   * release it.
+   */
+  private unstick(hand: Hand): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- internal state of IWSDK's MultiPointer
+    const mp = this.input.xr.multiPointers[hand] as any;
+    if (!mp?.pointerStates || mp.pointerStates.get('ray') !== 'select' || this.selecting[hand]) {
+      this.stuck[hand] = 0;
+      return;
+    }
+    if (++this.stuck[hand] < 3) return;
+    this.stuck[hand] = 0;
+    this.upEvent.timeStamp = performance.now();
+    mp.ray.pointer.up(this.upEvent);
+    mp.pointerStates.set('ray', 'normal');
   }
 }
 
@@ -107,7 +152,7 @@ function measure(text: string): number {
   return Math.max(0.13, Math.min(0.3, (c.measureText(text).width + 60) / 1000));
 }
 
-type TileState = 'idle' | 'correct' | 'wrong';
+type TileState = 'idle' | 'hover' | 'correct' | 'wrong';
 
 /** A word tile: a thin box whose front face is a canvas, redrawn for its state after Check. */
 function tileView(text: string, w: number): { mesh: Mesh; setState: (state: TileState) => void } {
@@ -121,7 +166,7 @@ function tileView(text: string, w: number): { mesh: Mesh; setState: (state: Tile
   const face = new MeshBasicMaterial({ map: tex, toneMapped: false, transparent: true });
   const mesh = new Mesh(new BoxGeometry(w, TILE_H, 0.018), [side, side, side, side, face, side]);
   const setState = (state: TileState) => {
-    const look = { idle: ['#ffffff', C.primary, C.ink], correct: [C.successSoft, C.success, C.success], wrong: [C.dangerSoft, C.danger, C.danger] }[state];
+    const look = { idle: ['#ffffff', C.primary, C.ink], hover: [C.soft, C.primaryDark, C.primaryDark], correct: [C.successSoft, C.success, C.success], wrong: [C.dangerSoft, C.danger, C.danger] }[state];
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     roundRect(ctx, 3, 3, canvas.width - 6, canvas.height - 6, 16);
     ctx.fillStyle = look[0];
@@ -141,7 +186,7 @@ function tileView(text: string, w: number): { mesh: Mesh; setState: (state: Tile
       const tw = Math.min(ctx.measureText(text).width, canvas.width - 30);
       ctx.fillRect((canvas.width - tw) / 2, canvas.height / 2 - 1, tw, 5);
     }
-    side.color.set(state === 'idle' ? '#c9dbfb' : look[1]);
+    side.color.set(state === 'idle' || state === 'hover' ? '#c9dbfb' : look[1]);
     tex.needsUpdate = true;
   };
   setState('idle');
@@ -607,12 +652,19 @@ export const sentenceScreen: ScreenFactory = (app, scope) => {
         entity.addComponent(WordTile, { token: j, slot: -1 });
         const t = { entity, mesh, setState, home, homeQ: tilt.clone(), token: j, slot: -1, dragAt: 0, grabFrom: new Vector3() };
         tiles.push(t);
-        // A ray pinch (or click) from a distance is a tap. Skip it when the same pinch started a
-        // near grab, which handles its own tap on release.
-        onPress(entity, () =>
-          setTimeout(() => {
-            if (performance.now() - t.dragAt > 400 && !Object.values(drags).some((d) => d?.tile === t)) tap(t);
-          }, 60),
+        // A ray pinch (or click) from a distance is a tap, on release. Skip it when the same pinch
+        // started a near grab (it begins just before the ray press), which handles its own tap.
+        let downAt = 0;
+        onPress(
+          entity,
+          () => {
+            if (t.dragAt < downAt - 150 && !Object.values(drags).some((d) => d?.tile === t)) tap(t);
+          },
+          // Hover highlight while the hand ray points at the tile (not after Check).
+          (on) => {
+            if (!finished) setState(on ? 'hover' : 'idle');
+          },
+          () => (downAt = performance.now()),
         );
       });
     });

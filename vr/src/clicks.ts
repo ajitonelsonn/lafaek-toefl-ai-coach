@@ -8,12 +8,20 @@ import { Clickable } from './interaction.js';
 interface Handlers {
   press?: () => void;
   hover?: (on: boolean) => void;
+  down?: () => void;
 }
 
 const handlers = new Map<Entity, Handlers>();
 
-export function onPress(entity: Entity, press: () => void, hover?: (on: boolean) => void): void {
-  handlers.set(entity, { press, hover });
+/**
+ * Runs `press` when a pinch, trigger, click or finger touch on the entity is released (a select
+ * fires on release, as on Quest). Release matters: if the pressed object vanished or moved away
+ * while the pinch was still held (a card that opens a new screen, a word tile flying to its
+ * slot), IWSDK's hand ray would stay stuck in its select state, the next pinch would be lost
+ * and finger touch would stop working. `down` runs at the start of the press.
+ */
+export function onPress(entity: Entity, press: () => void, hover?: (on: boolean) => void, down?: () => void): void {
+  handlers.set(entity, { press, hover, down });
 }
 
 export function forget(entity: Entity): void {
@@ -63,8 +71,15 @@ export class ClickSystem extends createSystem({
   init(): void {
     this.cleanupFuncs.push(
       this.queries.pressed.subscribe('qualify', (entity) => {
+        if (entity.getValue(Clickable, 'enabled')) handlers.get(entity)?.down?.();
+      }),
+      // Released. Sliding off the target first (Hovered already gone) cancels, like a button on
+      // the web; a disposed entity has left `handlers` / lost Clickable, so it does nothing.
+      this.queries.pressed.subscribe('disqualify', (entity) => {
+        const h = handlers.get(entity);
+        if (!h || !entity.hasComponent(Clickable) || !entity.hasComponent(Hovered)) return;
         if (!entity.getValue(Clickable, 'enabled')) return;
-        handlers.get(entity)?.press?.();
+        h.press?.();
       }),
       this.queries.hovered.subscribe('qualify', (entity) => {
         if (entity.getValue(Clickable, 'enabled')) handlers.get(entity)?.hover?.(true);

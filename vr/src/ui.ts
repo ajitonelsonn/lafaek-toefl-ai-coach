@@ -10,6 +10,7 @@ import {
   MeshBasicMaterial,
   Object3D,
   PlaneGeometry,
+  PokeInteractable,
   RayInteractable,
   SRGBColorSpace,
   World,
@@ -133,6 +134,20 @@ export class CanvasPanel {
   }
 }
 
+/**
+ * Hidden objects must not catch the hand ray (an invisible panel would block what is behind it),
+ * so hiding removes the pointer components and showing adds them back.
+ */
+export function setPointerTarget(entity: Entity, on: boolean, poke = false): void {
+  if (on) {
+    if (!entity.hasComponent(RayInteractable)) entity.addComponent(RayInteractable);
+    if (poke && !entity.hasComponent(PokeInteractable)) entity.addComponent(PokeInteractable);
+  } else {
+    if (entity.hasComponent(RayInteractable)) entity.removeComponent(RayInteractable);
+    if (entity.hasComponent(PokeInteractable)) entity.removeComponent(PokeInteractable);
+  }
+}
+
 /** Tracks the entities one screen creates, so leaving the screen frees all of them. */
 export class Scope {
   private readonly entities: Entity[] = [];
@@ -181,6 +196,8 @@ export interface ButtonSpec {
   enabled?: boolean;
   /** The learner's chosen answer: stays fully visible while disabled. */
   selected?: boolean;
+  /** Also pressable by touching it with the index finger (for buttons within arm's reach). */
+  poke?: boolean;
 }
 
 /** A pinchable button: a canvas panel with RayInteractable + Clickable and hover feedback. */
@@ -203,6 +220,7 @@ export class Button {
     this.entity = made.entity;
     this.panel.mesh.name = `Btn_${spec.label.replace(/\W+/g, '')}`;
     this.entity.addComponent(RayInteractable);
+    if (spec.poke) this.entity.addComponent(PokeInteractable);
     this.entity.addComponent(Clickable, { enabled: spec.enabled !== false });
     onPress(
       this.entity,
@@ -227,6 +245,7 @@ export class Button {
   set visible(v: boolean) {
     this.panel.mesh.visible = v;
     this.entity.setValue(Clickable, 'enabled', v && this.spec.enabled !== false);
+    setPointerTarget(this.entity, v, this.spec.poke);
   }
 
   private render(): void {
@@ -301,6 +320,8 @@ export function addGlow(panel: CanvasPanel, color = '#3d8bff'): { setStrength: (
   const mesh = new Mesh(new PlaneGeometry(panel.width + pad * 2, panel.height + pad * 2), mat);
   mesh.position.z = -0.004;
   mesh.raycast = () => {}; // never blocks the pinch ray
+  // Nor a finger touch: the glow is larger than its panel, so neighbouring glows overlap.
+  (mesh as unknown as { pointerEvents: string }).pointerEvents = 'none';
   panel.mesh.add(mesh);
   return { setStrength: (k: number) => (mat.opacity = 0.35 + k * 0.6) };
 }
@@ -339,6 +360,7 @@ export class OptionCard {
   set visible(v: boolean) {
     this.panel.mesh.visible = v;
     this.entity.setValue(Clickable, 'enabled', v && this.enabled);
+    setPointerTarget(this.entity, v);
   }
 
   set(letter: string, text: string): void {

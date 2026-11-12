@@ -9,7 +9,7 @@ import { Clickable } from './interaction.js';
 import { beamTexture, buildRoom, DESK_Y, DESK_Z, framed, onWall, PALETTE, Plant } from './room.js';
 import { ProgressBoard } from './progress.js';
 import { Sound } from './sound.js';
-import { addGlow, Button, C, font, roundRect, Scope, wrap } from './ui.js';
+import { addGlow, Button, C, font, roundRect, Scope, setPointerTarget, wrap } from './ui.js';
 
 const BASE = import.meta.env.BASE_URL;
 const ICONS = [
@@ -35,6 +35,9 @@ export class App {
   readonly workspace: Entity;
   readonly icons = new Map<string, HTMLImageElement>();
   mascot: HTMLImageElement | null = null;
+  /** Hand pictures for the hands tutorial. */
+  handSelect: HTMLImageElement | null = null;
+  handHold: HTMLImageElement | null = null;
   private screen: { scope: Scope; screen: Screen } | null = null;
   private readonly plant = new Plant();
   private readonly screens = new Map<string, ScreenFactory>();
@@ -175,6 +178,8 @@ export class App {
         if (img) this.icons.set(n, img);
       }),
       load(`${BASE}img/mascot.png`).then((img) => (this.mascot = img)),
+      load(`${BASE}img/hand-pinch-select.png`).then((img) => (this.handSelect = img)),
+      load(`${BASE}img/hand-pinch-hold.png`).then((img) => (this.handHold = img)),
     ]);
   }
 
@@ -485,15 +490,103 @@ function headerPanel(scope: Scope, eyebrow: string, title: string, line: string,
 }
 
 /** Recenter / Exit to 2D dock (hub) or Back / Recenter (zones), floating above the desk front. */
-function dock(app: App, scope: Scope, left: { label: string; icon: IconName; act: () => void }, right: { label: string; icon: IconName; act: () => void }) {
-  const y = DESK_Y + 0.13;
-  const z = DESK_Z + 0.02;
-  const a = new Button(scope, { w: 0.2, h: 0.072, label: left.label, icon: app.icon(left.icon), tone: 'ghost' }, -0.12, y, z, left.act);
-  const b = new Button(scope, { w: 0.2, h: 0.072, label: right.label, icon: app.icon(right.icon), tone: 'ghost' }, 0.12, y, z, right.act);
-  for (const btn of [a, b]) {
-    btn.entity.object3D!.rotation.set(-0.55, 0, 0);
+/**
+ * The dock floats just above the desk front, within arm's reach (about 45 cm, Meta's touch range):
+ * its buttons work with a pinch from the hand ray or by touching them with the index finger.
+ */
+function dock(app: App, scope: Scope, left: { label: string; icon: IconName; act: () => void }, right: { label: string; icon: IconName; act: () => void }, help: () => void) {
+  const y = DESK_Y + 0.11;
+  const z = DESK_Z + 0.22;
+  const items: [number, { label: string; icon: IconName | null; act: () => void }][] = [
+    [-0.24, left],
+    [0, { label: 'How to use', icon: null, act: help }],
+    [0.24, right],
+  ];
+  for (const [x, it] of items) {
+    const btn = new Button(scope, { w: 0.19, h: 0.07, label: it.label, icon: it.icon ? app.icon(it.icon) : app.handSelect, tone: 'ghost', poke: true }, x, y, z, it.act);
+    btn.entity.object3D!.rotation.set(-0.6, 0, 0);
     addGlow(btn.panel).setStrength(0.2);
   }
+}
+
+/**
+ * Hands tutorial inside VR: shown on the first visit to the hub and again from "How to use".
+ * It covers the three hand actions the room uses: point and pinch, pinch and hold, and touch.
+ */
+function handTips(app: App, scope: Scope): { open: () => void } {
+  const { panel, entity } = scope.panel(0.86, 0.42, 0, 1.2, -0.72);
+  // A pinch on the panel itself does nothing, so cards behind it cannot be pressed by mistake.
+  entity.addComponent(RayInteractable);
+  entity.addComponent(Clickable);
+  onPress(entity, () => {});
+  addGlow(panel).setStrength(0.5);
+  panel.draw((ctx, W) => {
+    panel.card();
+    ctx.fillStyle = C.primary;
+    ctx.font = font(22, 800);
+    ctx.fillText('HOW TO USE YOUR HANDS', 36, 26);
+    ctx.fillStyle = C.ink;
+    ctx.font = font(40, 800);
+    ctx.fillText('No controllers needed', 36, 58);
+    const rows: [HTMLImageElement | null, string, string][] = [
+      [app.handSelect, 'Point and pinch to choose', 'Point your hand at a card or an answer, then touch your thumb to your index finger.'],
+      [app.handHold, 'Pinch and hold to grab', 'In Build a Sentence, pick up a word tile, move your hand and let go over a slot.'],
+      [null, 'Touch nearby buttons', 'The buttons just above the desk can also be pressed with your index finger.'],
+    ];
+    rows.forEach(([img, title, body], i) => {
+      const y = 120 + i * 86;
+      roundRect(ctx, 36, y, 96, 72, 18);
+      ctx.fillStyle = C.soft;
+      ctx.fill();
+      if (img) ctx.drawImage(img, 40, y + 4, 88, (img.height / img.width) * 88);
+      else {
+        // A touch target: ring and dot.
+        ctx.strokeStyle = C.primary;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(84, y + 36, 22, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = C.primary;
+        ctx.beginPath();
+        ctx.arc(84, y + 36, 9, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = C.ink;
+      ctx.font = font(28, 800);
+      ctx.fillText(title, 154, y + 4);
+      ctx.fillStyle = C.body;
+      ctx.font = font(22, 500);
+      wrap(ctx, body, 154, y + 40, W - 190, 26, 1);
+    });
+  });
+  const ok = new Button(scope, { w: 0.2, h: 0.07, label: 'Got it', icon: app.icon('success'), tone: 'primary', poke: true }, 0, 0.94, -0.7, () => {
+    app.sound.play('click', 0.4);
+    show(false);
+    try {
+      localStorage.setItem('lafaek-vr:hand-tips', '1');
+    } catch {
+      // Storage blocked: the tips just show again next time.
+    }
+  });
+  const show = (on: boolean) => {
+    panel.mesh.visible = on;
+    entity.setValue(Clickable, 'enabled', on);
+    setPointerTarget(entity, on); // a hidden panel must not block the cards behind it
+    ok.visible = on;
+  };
+  let seen = false;
+  try {
+    seen = localStorage.getItem('lafaek-vr:hand-tips') === '1';
+  } catch {
+    // Storage blocked: show the tips.
+  }
+  show(!seen);
+  return {
+    open: () => {
+      app.sound.play('open', 0.4);
+      show(true);
+    },
+  };
 }
 
 const recenterAction = (app: App) => ({
@@ -524,7 +617,8 @@ export const hubScreen: ScreenFactory = (app, scope) => {
           holoCard(app, scope, { name: `Station_${z.id}`, title: z.title, body: z.body, skill: `${vr} IN VR`, color: z.color, icon: z.icon, tile: false }, p.x, p.z, w, 0.42, i, () => app.open(z.id), beamTex),
         );
       });
-      dock(app, scope, recenterAction(app), { label: 'Exit to 2D', icon: 'ctl-exit', act: () => app.exitTo2D() });
+      const tips = handTips(app, scope);
+      dock(app, scope, recenterAction(app), { label: 'Exit to 2D', icon: 'ctl-exit', act: () => app.exitTo2D() }, tips.open);
       app.sound.play('appear', 0.35);
     },
     dispose() {
@@ -550,7 +644,8 @@ export const zoneScreen =
             holoCard(app, scope, { name: `Station_${m.screen}`, title: m.title, body: m.body, skill: zone.skill, color: zone.color, icon: m.icon, tile: !m.website, website: m.website }, p.x, p.z, w, 0.4, i, () => app.open(m.screen), beamTex),
           );
         });
-        dock(app, scope, { label: 'Back', icon: 'ctl-back', act: () => app.goHub() }, recenterAction(app));
+        const tips = handTips(app, scope);
+        dock(app, scope, { label: 'Back', icon: 'ctl-back', act: () => app.goHub() }, recenterAction(app), tips.open);
         app.sound.play('appear', 0.35);
       },
       dispose() {
