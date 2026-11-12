@@ -7,6 +7,8 @@ import { db } from "../db";
 import { env } from "../env";
 import { ApiError } from "../http";
 import { randomToken, sha256 } from "../crypto";
+import { describeDevice, type DeviceKind } from "@/lib/utils/user-agent";
+import { MAX_DEVICES } from "@/lib/utils/device-code";
 
 const isProd = () => env().NODE_ENV === "production";
 /** `__Host-` requires Secure, Path=/ and no Domain, which we always set in production. */
@@ -17,6 +19,12 @@ export interface AuthContext {
   sessionId: string;
 }
 
+export { MAX_DEVICES };
+
+/**
+ * Signs this browser in. If that puts the account over MAX_DEVICES, the devices used longest ago
+ * are signed out, so a new sign-in always works and nobody is locked out.
+ */
 export async function createSession(userId: string, userAgent: string | null): Promise<void> {
   const token = randomToken(32);
   const days = env().SESSION_TTL_DAYS;
@@ -32,6 +40,58 @@ export async function createSession(userId: string, userAgent: string | null): P
     path: "/",
     expires: expiresAt,
   });
+  await enforceDeviceLimit(userId);
+}
+
+const activeWhere = (userId: string) => ({ userId, revokedAt: null, expiresAt: { gt: new Date() } });
+/** Most recently used first; the new session (lastSeenAt = now) is always among the kept ones. */
+const recentFirst = [{ lastSeenAt: "desc" as const }, { createdAt: "desc" as const }];
+
+async function enforceDeviceLimit(userId: string): Promise<void> {
+  const extra = await db.session.findMany({ where: activeWhere(userId), orderBy: recentFirst, skip: MAX_DEVICES, select: { id: true } });
+  if (extra.length) await db.session.updateMany({ where: { id: { in: extra.map((x) => x.id) }, revokedAt: null }, data: { revokedAt: new Date() } });
+}
+
+export interface DeviceUsage {
+  count: number;
+  max: number;
+  /** At the limit: the device the next sign-in would sign out. */
+  willSignOut: string | null;
+}
+
+export async function deviceUsage(userId: string): Promise<DeviceUsage> {
+  const sessions = await db.session.findMany({ where: activeWhere(userId), orderBy: recentFirst, select: { userAgent: true } });
+  const oldest = sessions.length >= MAX_DEVICES ? sessions[MAX_DEVICES - 1] : null;
+  return { count: Math.min(sessions.length, MAX_DEVICES), max: MAX_DEVICES, willSignOut: oldest ? describeDevice(oldest.userAgent).label : null };
+}
+
+export interface SignedInDevice {
+  id: string;
+  label: string;
+  kind: DeviceKind;
+  current: boolean;
+  signedInAt: string;
+  lastActiveAt: string;
+}
+
+/** The account's signed-in devices, most recently used first. */
+export async function listDevices(userId: string, currentSessionId: string): Promise<SignedInDevice[]> {
+  const sessions = await db.session.findMany({ where: activeWhere(userId), orderBy: recentFirst, take: MAX_DEVICES + 5 });
+  return sessions.map((x) => {
+    const { label, kind } = describeDevice(x.userAgent);
+    return { id: x.id, label, kind, current: x.id === currentSessionId, signedInAt: x.createdAt.toISOString(), lastActiveAt: x.lastSeenAt.toISOString() };
+  });
+}
+
+/** Signs one of the learner's own devices out. Returns false if it was not theirs or already out. */
+export async function revokeDevice(userId: string, sessionId: string): Promise<boolean> {
+  const r = await db.session.updateMany({ where: { id: sessionId, userId, revokedAt: null }, data: { revokedAt: new Date() } });
+  return r.count === 1;
+}
+
+export async function revokeOtherDevices(userId: string, currentSessionId: string): Promise<number> {
+  const r = await db.session.updateMany({ where: { userId, revokedAt: null, id: { not: currentSessionId } }, data: { revokedAt: new Date() } });
+  return r.count;
 }
 
 /** Revokes the session in the current cookie (if any) and clears the cookie. */

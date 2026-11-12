@@ -6,6 +6,9 @@
 export const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const CODE_LENGTH = 8;
 
+/** An account can be signed in on this many devices (browsers) at once. */
+export const MAX_DEVICES = 3;
+
 /** Upper-cases and strips spaces and dashes. Returns null unless the result is a well-formed code. */
 export function normalizeCode(input: string): string | null {
   const code = input.toUpperCase().replace(/[\s-]/g, "");

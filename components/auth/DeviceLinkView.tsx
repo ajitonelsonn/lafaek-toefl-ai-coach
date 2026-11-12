@@ -59,6 +59,10 @@ export function DeviceLinkView({ signedIn, firstName, returnTo }: { signedIn: bo
             <p className="text-center text-sm md:col-span-2">
               <Link href={returnTo ?? "/dashboard"} className="font-semibold text-primary hover:underline">
                 {returnTo === "/vr" ? "Back to the VR Study Room" : "Back to my dashboard"}
+              </Link>{" "}
+              ·{" "}
+              <Link href="/settings#devices" className="font-semibold text-primary hover:underline">
+                See my signed-in devices
               </Link>
             </p>
           </div>

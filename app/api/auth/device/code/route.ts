@@ -1,7 +1,7 @@
 import { ApiError, clientIp, json, parseBody, route } from "@/lib/server/http";
 import { rateLimit } from "@/lib/server/rate-limit";
 import { nextRouteFor } from "@/lib/server/auth/service";
-import { createSession, destroyCurrentSession, getAuth } from "@/lib/server/auth/session";
+import { createSession, destroyCurrentSession, deviceUsage, getAuth } from "@/lib/server/auth/session";
 import { approveRequest, consumeShare, describeDevice, findLiveCode } from "@/lib/server/auth/device-link";
 import { deviceCodeSchema } from "@/lib/validation/schemas";
 
@@ -28,7 +28,11 @@ export const POST = route(async (req) => {
 
   const auth = await getAuth();
   if (!auth) throw new ApiError(401, "UNAUTHENTICATED", "This code is for approving a device. Sign in on this device first, then enter the code again.");
-  if (!body.approve) return json({ status: "confirm", device: describeDevice(link.userAgent) });
+  if (!body.approve) {
+    // At the device limit, say which device the approval will sign out.
+    const usage = await deviceUsage(auth.user.id);
+    return json({ status: "confirm", device: describeDevice(link.userAgent).label, willSignOut: usage.willSignOut });
+  }
   await approveRequest(link, auth.user.id);
   return json({ status: "approved" });
 });

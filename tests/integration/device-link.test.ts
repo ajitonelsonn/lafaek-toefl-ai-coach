@@ -82,7 +82,7 @@ describe("request codes (headset shows a code, a signed-in phone approves)", () 
 
     const link = await findLiveCode(code);
     expect(link.kind).toBe("request");
-    expect(describeDevice(link.userAgent)).toBe("Meta Quest browser");
+    expect(describeDevice(link.userAgent).label).toBe("Meta Quest browser");
     await expect(consumeShare(link)).rejects.toMatchObject({ code: "INVALID_CODE" }); // cannot be used as a share code
 
     await approveRequest(link, user.id);

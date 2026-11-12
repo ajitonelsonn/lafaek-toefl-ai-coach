@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac, randomInt } from "node:crypto";
 import { Prisma, type DeviceLink } from "@prisma/client";
 import { CODE_ALPHABET, CODE_LENGTH, normalizeCode } from "@/lib/utils/device-code";
+export { describeDevice } from "@/lib/utils/user-agent";
 import { db } from "../db";
 import { requireEnv } from "../env";
 import { ApiError } from "../http";
@@ -117,18 +118,6 @@ async function activeUserId(userId: string): Promise<string> {
   if (user?.status !== "active") throw invalidCode();
   await db.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } });
   return userId;
-}
-
-/** A plain name for the waiting device, shown to the person approving it. */
-export function describeDevice(userAgent: string | null): string {
-  const ua = userAgent ?? "";
-  if (/OculusBrowser|Quest/i.test(ua)) return "Meta Quest browser";
-  if (/iPhone|iPad/i.test(ua)) return "iPhone or iPad";
-  if (/Android/i.test(ua)) return "Android device";
-  if (/Macintosh|Mac OS X/i.test(ua)) return "Mac";
-  if (/Windows/i.test(ua)) return "Windows computer";
-  if (/CrOS|Linux/i.test(ua)) return "Computer";
-  return "Unknown device";
 }
 
 /** Housekeeping: drop rows a day after they expire. */

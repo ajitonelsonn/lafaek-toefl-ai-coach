@@ -4,7 +4,7 @@ import Image from "next/image";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api, ApiClientError, errorMessage } from "@/lib/client/api";
-import { formatCode, normalizeCode } from "@/lib/utils/device-code";
+import { formatCode, MAX_DEVICES, normalizeCode } from "@/lib/utils/device-code";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { cn } from "@/lib/utils/cn";
@@ -27,6 +27,25 @@ const KEY_ICON = { src: "/assets/icons/key.png", width: 65, height: 65 };
 interface CodeInfo {
   code: string;
   expiresAt: string;
+}
+
+interface DeviceUsage {
+  count: number;
+  max: number;
+  willSignOut: string | null;
+}
+
+/** At the 3-device limit: says which device a new sign-in will sign out, with a link to manage them. */
+function DeviceLimitNote({ willSignOut, max }: { willSignOut: string | null; max: number }) {
+  if (!willSignOut) return null;
+  return (
+    <p className="mt-4 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-ink" role="note">
+      Your account is already on {max} devices, the limit. Signing in this device will sign out <b>{willSignOut}</b> (used longest ago).{" "}
+      <a href="/settings#devices" className="font-semibold text-primary underline">
+        Manage devices
+      </a>
+    </p>
+  );
 }
 
 /** Full page load after sign-in: the server pages (and the static VR room) read the new cookie. */
@@ -85,7 +104,7 @@ function CodeCard({ code, url, secondsLeft, caption, stacked }: { code: string; 
 
 /** Signed in: make a one-time code for another device. */
 export function ShareCodePanel({ returnTo, stacked }: { returnTo?: string; stacked?: boolean }) {
-  const [info, setInfo] = useState<CodeInfo | null>(null);
+  const [info, setInfo] = useState<(CodeInfo & { devices?: DeviceUsage }) | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const started = useRef(false);
@@ -95,7 +114,7 @@ export function ShareCodePanel({ returnTo, stacked }: { returnTo?: string; stack
     setLoading(true);
     setError("");
     try {
-      setInfo(await api<CodeInfo>("/api/auth/device/share", { body: {} }));
+      setInfo(await api<CodeInfo & { devices: DeviceUsage }>("/api/auth/device/share", { body: {} }));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -139,6 +158,7 @@ export function ShareCodePanel({ returnTo, stacked }: { returnTo?: string; stack
           <Step n={2} /> <span>Type the code. On a phone or tablet you can scan the QR code with the camera instead.</span>
         </li>
       </ol>
+      {info?.devices && <DeviceLimitNote willSignOut={info.devices.willSignOut} max={info.devices.max} />}
       <p className="mt-3 text-xs text-muted">The code works once and only for a few minutes. Don&apos;t share it: it opens your account.</p>
     </div>
   );
@@ -250,7 +270,7 @@ export function RequestCodePanel({ returnTo }: { returnTo?: string }) {
   );
 }
 
-type FormState = { step: "enter" } | { step: "confirm"; device: string; code: string } | { step: "approved" } | { step: "signing-in" };
+type FormState = { step: "enter" } | { step: "confirm"; device: string; code: string; willSignOut: string | null } | { step: "approved" } | { step: "signing-in" };
 
 /**
  * Type a code (or arrive with one from a scanned QR code via `initialCode`).
@@ -273,7 +293,7 @@ export function EnterCodeForm({ signedIn, returnTo, initialCode, compact }: { si
       if (!clean) return setError("Enter the 8-character code, for example K7QM-3XPA.");
       setLoading(true);
       try {
-        const r = await api<{ status: "signed_in" | "confirm" | "approved"; next?: string; device?: string }>("/api/auth/device/code", { body: { code: clean, approve } });
+        const r = await api<{ status: "signed_in" | "confirm" | "approved"; next?: string; device?: string; willSignOut?: string | null }>("/api/auth/device/code", { body: { code: clean, approve } });
         try {
           sessionStorage.removeItem(PENDING_KEY);
         } catch {}
@@ -281,7 +301,7 @@ export function EnterCodeForm({ signedIn, returnTo, initialCode, compact }: { si
           setState({ step: "signing-in" });
           return goAfterSignIn(r.next ?? "/dashboard", returnTo);
         }
-        if (r.status === "confirm") setState({ step: "confirm", device: r.device ?? "Unknown device", code: clean });
+        if (r.status === "confirm") setState({ step: "confirm", device: r.device ?? "Unknown device", code: clean, willSignOut: r.willSignOut ?? null });
         else {
           setState({ step: "approved" });
           setCode("");
@@ -344,6 +364,7 @@ export function EnterCodeForm({ signedIn, returnTo, initialCode, compact }: { si
           <b className="text-ink">{state.device}</b> is waiting with code <b className="font-mono text-ink">{formatCode(state.code)}</b>.
         </p>
         <p className="mt-2 text-sm text-muted">Only approve a code that is showing on your own device right now. Never approve a code someone sent you.</p>
+        <DeviceLimitNote willSignOut={state.willSignOut} max={MAX_DEVICES} />
         <div className="mt-4 flex flex-wrap gap-3">
           <Button size="lg" loading={loading} onClick={() => send(state.code, true)}>
             Approve

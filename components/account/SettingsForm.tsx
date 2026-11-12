@@ -13,6 +13,7 @@ import { Input, Select } from "@/components/ui/Field";
 import { Toggle } from "@/components/ui/Toggle";
 import { ConfirmDialog } from "@/components/ui/Dialog";
 import { useToast } from "@/components/ui/Toast";
+import { DevicesCard } from "./DevicesCard";
 
 function Row({ icon, title, description, control, id }: { icon: ReactNode; title: string; description: ReactNode; control: ReactNode; id: string }) {
   return (
@@ -140,6 +141,8 @@ function SettingsEditor({ saved }: { saved: UserSettings }) {
             </Button>
           </div>
         </Card>
+
+        <DevicesCard />
 
         <Card as="section" aria-labelledby="account-title">
           <h2 id="account-title" className="text-lg font-bold text-ink">
