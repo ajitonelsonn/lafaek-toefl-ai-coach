@@ -1,12 +1,14 @@
 /**
- * Listen to a Conversation: the scene picture hangs in front, the two speakers stand to the
- * left and right and each voice comes from where that person stands (spatial audio). After the
+ * Listen to a Conversation: the scene picture hangs in front, the two speakers (3D models of a
+ * woman and a man) stand to the left and right and each voice comes from where that person stands (spatial audio). After the
  * conversation the learner pinches an answer for each question.
  */
-import { CapsuleGeometry, Color, Entity, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, RayInteractable, SphereGeometry, TorusGeometry, Vector3 } from '@iwsdk/core';
+import { CapsuleGeometry, Color, Entity, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, Object3D, RayInteractable, SphereGeometry, TorusGeometry, Vector3 } from '@iwsdk/core';
 import type { App, ScreenFactory } from './app.js';
 import { animate, onPress } from './clicks.js';
 import { errorMessage, type ListeningItem, type ListeningSlug } from './data.js';
+import { buildFigure } from './figure.js';
+import type { Talker } from './talk.js';
 import { Placed, Spinner, yawToViewer } from './models.js';
 import { speak, stopSpeaking, type Voice } from './sound.js';
 import { Button, C, font, OptionCard, roundRect, wrap, type Scope } from './ui.js';
@@ -14,45 +16,70 @@ import { Button, C, font, OptionCard, roundRect, wrap, type Scope } from './ui.j
 type Gender = 'female' | 'male';
 
 /**
- * One of the two speakers, left and right of the desk: a simple figure seated on a school chair.
- * The voice comes from the figure's head (spatial audio). While it talks, a halo glows around its
- * head and its name tag fills with colour.
+ * One of the two speakers, standing left and right of the desk: a woman on the left and a man on
+ * the right, each a 3D model (public/models/speaker-*.glb). The voice comes from the
+ * figure's head (spatial audio). While it talks, a ring glows on the floor at its feet, the figure
+ * sways a little and its name tag fills with colour.
  */
 interface Speaker {
   group: Group;
   ring: Mesh;
+  /** The figure itself (once loaded), moved slightly while it talks. */
+  readonly body: Object3D | null;
+  /** Mouth and hand movement of the 3D model (talk.ts), once it has loaded. */
+  readonly talker: Talker | null;
   voice: Voice;
   label: (name: string) => void;
   talking: boolean;
-  /** Marks this speaker as talking (halo + filled name tag) or not. */
+  /** Marks this speaker as talking (glowing ring + filled name tag) or not. */
   setTalking: (on: boolean) => void;
   /** Shows or hides this speaker (one-voice tasks use a single speaker). */
   setVisible: (on: boolean) => void;
   dispose: () => void;
 }
 
+/** Standing heights in metres: slot 0 is the woman, slot 1 the man. */
+const HEIGHTS = [1.58, 1.68] as const;
+
 function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speaker {
   // Out to the sides (about 48°), clear of the answers and the Room / Replay / Next buttons.
   const x = slot === 0 ? -1.3 : 1.3;
   const z = -1.15;
+  const height = HEIGHTS[slot];
   const group = new Group();
   group.position.set(x, 0, z);
   group.rotation.y = yawToViewer(x, z);
-  // Seated figure: body resting on the chair seat (about 45 cm high).
-  const body = new Mesh(new CapsuleGeometry(0.13, 0.26, 6, 14), new MeshLambertMaterial({ color: new Color(color) }));
-  body.position.set(0, 0.73, -0.06);
-  const head = new Mesh(new SphereGeometry(0.1, 20, 14), new MeshLambertMaterial({ color: new Color('#f1c9a5') }));
-  head.position.set(0, 1.1, -0.06);
-  group.add(body, head);
-  // Glowing halo around the head while this speaker talks (visible above the desk).
-  const ring = new Mesh(new TorusGeometry(0.15, 0.014, 10, 48), new MeshBasicMaterial({ color: new Color(color), toneMapped: false }));
-  ring.position.set(0, 1.1, -0.06);
+  // The figure: the 3D model loads in the background; if it cannot load, the cutout photo is
+  // made into a relief figure instead (figure.ts). `body` is what sways while talking.
+  let body: Object3D | null = null;
+  let placed: Placed | null = null;
+  let talker: Talker | null = null;
+  let disposed = false;
+  void Placed.place(app.world, scope.add(group), slot === 0 ? 'speaker-female' : 'speaker-male', new Vector3(), 0).then((p) => {
+    if (disposed) return p?.remove();
+    placed = p;
+    if (p) {
+      body = p.root;
+      p.root.traverse((o) => (talker ??= (o.userData.talker as Talker | undefined) ?? null));
+    }
+    else {
+      const img = slot === 0 ? app.speakerFemale : app.speakerMale;
+      if (img) group.add((body = buildFigure(img, height).mesh));
+    }
+  });
+  // The voice comes from the mouth.
+  const mouth = new Object3D();
+  mouth.position.set(0, height - 0.15, 0.08);
+  group.add(mouth);
+  // Glowing ring on the floor around the feet while this speaker talks.
+  const ring = new Mesh(new TorusGeometry(0.3, 0.012, 8, 56), new MeshBasicMaterial({ color: new Color(color), toneMapped: false }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.015;
   ring.visible = false;
   group.add(ring);
-  const groupEntity = scope.add(group);
 
-  const tag = scope.panel(0.28, 0.07, x * 0.92, 1.36, z + 0.05).panel;
-  let chairRef: Placed | null = null;
+  // Name tag just above the head.
+  const tag = scope.panel(0.28, 0.07, x, height + 0.1, z + 0.05).panel;
   let name = slot === 0 ? 'Speaker A' : 'Speaker B';
   let talking = false;
   const voiceIcon = app.icon('voice');
@@ -74,34 +101,33 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
   };
   drawTag();
 
-  // The CC0 school chair loads in the background (chair front faces +Z, like the figure).
-  let chair: Placed | null = null;
-  let disposed = false;
-  void Placed.place(app.world, groupEntity, 'school-chair', new Vector3(0, 0, -0.05), 0).then((p) => {
-    chair = p;
-    chairRef = p;
-    if (p) p.root.visible = group.visible;
-    if (disposed) p?.remove();
-  });
-
   return {
     group,
     ring,
-    voice: app.sound.voice(head),
+    get body() {
+      return body;
+    },
+    get talker() {
+      return talker;
+    },
+    voice: app.sound.voice(mouth),
     label,
     talking: false,
     setVisible(on: boolean) {
       group.visible = on;
       tag.mesh.visible = on;
-      if (chairRef) chairRef.root.visible = on;
     },
     setTalking(on: boolean) {
       this.talking = talking = on;
+      if (!on) body?.rotation.set(0, 0, 0);
       drawTag();
     },
     dispose: () => {
       disposed = true;
-      chair?.remove();
+      // The model is shared between screens: put it back upright before detaching it.
+      body?.rotation.set(0, 0, 0);
+      if (talker) talker.talk.value = talker.mouth.value = 0;
+      placed?.remove();
     },
   };
 }
@@ -143,7 +169,26 @@ export const makeListeningScreen = (slug: ListeningSlug, label: string): ScreenF
   const stopPulse = animate((time) => {
     for (const s of speakers) {
       s.ring.visible = s.talking;
-      if (s.talking) s.ring.scale.setScalar(1 + Math.sin(time * 9) * 0.1);
+      if (s.talking) {
+        s.ring.scale.setScalar(1 + Math.sin(time * 9) * 0.08);
+        // A small, natural sway while talking.
+        if (s.body) {
+          s.body.rotation.z = Math.sin(time * 2.4) * 0.012;
+          s.body.rotation.y = Math.sin(time * 1.7) * 0.05;
+        }
+      }
+      // Hands gesture while talking, and the mouth follows how loud the voice is.
+      const t = s.talker;
+      if (!t) continue;
+      t.time.value = time;
+      t.talk.value += ((s.talking ? 1 : 0) - t.talk.value) * 0.06;
+      let mouth = 0;
+      if (s.talking) {
+        // The browser voice (used while a question's audio is not ready) cannot be measured:
+        // then the mouth moves in a speech-like rhythm instead.
+        mouth = s.voice.playing ? s.voice.level() : Math.max(0, Math.sin(time * 11) * 0.6 + Math.sin(time * 4.3) * 0.4);
+      }
+      t.mouth.value += (mouth - t.mouth.value) * 0.5;
     }
   });
 

@@ -1,17 +1,21 @@
 /**
- * The 3D chair and loading spinner. Each model is loaded once through the AssetManager,
+ * The 3D chair, loading spinner and the two Listening speakers. Each model is loaded once through the AssetManager,
  * normalised to a real-world size with its feet on the floor, and reused between screens (screens
  * detach it on close instead of disposing it, so the cached GPU data stays valid).
  */
-import { AnimationMixer, AssetManager, Box3, Entity, Group, LoopRepeat, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, Vector3, World } from '@iwsdk/core';
+import { AnimationMixer, AssetManager, Box3, Entity, Group, LoopRepeat, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshStandardMaterial, Object3D, Vector3, World } from '@iwsdk/core';
 import { animate } from './clicks.js';
+import { addTalking, TALK_RIGS } from './talk.js';
 
-export type ModelId = 'school-chair' | 'loading-spinner';
+export type ModelId = 'school-chair' | 'loading-spinner' | 'speaker-female' | 'speaker-male';
 
 /** Target size in metres, measured on the model's largest-relevant axis. */
 const SIZE: Record<ModelId, { axis: 'y' | 'max'; metres: number }> = {
   'school-chair': { axis: 'y', metres: 1.0 }, // real size (seat about 45 cm)
   'loading-spinner': { axis: 'max', metres: 0.12 },
+  // Standing heights of the Listening speakers.
+  'speaker-female': { axis: 'y', metres: 1.58 },
+  'speaker-male': { axis: 'y', metres: 1.68 },
 };
 
 interface Loaded {
@@ -69,6 +73,22 @@ export function loadModel(id: ModelId): Promise<Loaded | null> {
           const blue = new MeshBasicMaterial({ color: '#1769f5', toneMapped: false });
           gltf.scene.traverse((o) => {
             if ((o as Mesh).isMesh) (o as Mesh).material = blue;
+          });
+        }
+        if (id === 'speaker-female' || id === 'speaker-male') {
+          // Matte cloth and skin: Lambert with the colour and normal maps. The source PBR material
+          // has metal in it, which turns dark without an environment map, and costs more on Quest.
+          gltf.scene.traverse((o) => {
+            const mesh = o as Mesh;
+            if (!mesh.isMesh) return;
+            const src = mesh.material as MeshStandardMaterial;
+            const mat = new MeshLambertMaterial({ map: src.map, normalMap: src.normalMap, emissive: '#ffffff', emissiveMap: src.map, emissiveIntensity: 0.06 });
+            mesh.material = mat;
+            // Mouth and hand movement while speaking (talk.ts); read by the Listening screen.
+            mesh.userData.talker = addTalking(mesh, mat, TALK_RIGS[id]);
+            mesh.raycast = () => {};
+            src.metalnessMap?.dispose();
+            src.dispose();
           });
         }
         return { root: normalise(gltf.scene, id), mixer };

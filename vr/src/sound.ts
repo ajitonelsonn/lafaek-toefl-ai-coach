@@ -2,7 +2,7 @@
  * Sound: short UI effects (non-positional) and spatial voices (positional, from a speaker's
  * position in the room). All audio shares one AudioListener on the camera.
  */
-import { AudioListener, Object3D, PositionalAudio, World } from '@iwsdk/core';
+import { AudioAnalyser, AudioListener, Object3D, PositionalAudio, World } from '@iwsdk/core';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -102,6 +102,8 @@ export class Sound {
 
 export class Voice {
   private readonly audio: PositionalAudio;
+  private analyser: AudioAnalyser | null = null;
+  private smooth = 0;
 
   constructor(
     private readonly sound: Sound,
@@ -130,8 +132,26 @@ export class Voice {
     });
   }
 
+  /**
+   * How loud the voice is right now, 0–1, smoothed so a mouth driven by it opens and closes
+   * naturally. 0 when nothing is playing.
+   */
+  level(): number {
+    if (!this.audio.isPlaying) return (this.smooth = 0);
+    this.analyser ??= new AudioAnalyser(this.audio, 64);
+    // Speech energy sits in the lower bins; about 30 of 255 is quiet speech, 110 is loud.
+    const raw = Math.min(1, Math.max(0, (this.analyser.getAverageFrequency() - 18) / 80));
+    this.smooth += (raw - this.smooth) * (raw > this.smooth ? 0.6 : 0.25);
+    return this.smooth;
+  }
+
   stop(): void {
     if (this.audio.isPlaying) this.audio.stop();
+  }
+
+  /** Whether a clip is playing now. */
+  get playing(): boolean {
+    return this.audio.isPlaying;
   }
 
   dispose(): void {

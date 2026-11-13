@@ -38,6 +38,9 @@ export class App {
   /** Hand pictures for the hands tutorial. */
   handSelect: HTMLImageElement | null = null;
   handHold: HTMLImageElement | null = null;
+  /** The two Listening speakers (cutout photos made into 3D figures). */
+  speakerFemale: HTMLImageElement | null = null;
+  speakerMale: HTMLImageElement | null = null;
   private screen: { scope: Scope; screen: Screen } | null = null;
   private readonly plant = new Plant();
   private readonly screens = new Map<string, ScreenFactory>();
@@ -180,6 +183,8 @@ export class App {
       load(`${BASE}img/mascot.png`).then((img) => (this.mascot = img)),
       load(`${BASE}img/hand-pinch-select.png`).then((img) => (this.handSelect = img)),
       load(`${BASE}img/hand-pinch-hold.png`).then((img) => (this.handHold = img)),
+      load(`${BASE}img/speaker-female.webp`).then((img) => (this.speakerFemale = img)),
+      load(`${BASE}img/speaker-male.webp`).then((img) => (this.speakerMale = img)),
     ]);
   }
 
