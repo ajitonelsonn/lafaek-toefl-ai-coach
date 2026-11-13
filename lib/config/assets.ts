@@ -77,7 +77,8 @@ export type Icon3DName =
   | "email" | "password" | "show" | "hide" | "user" | "users" | "key" | "security" | "phone"
   | "message" | "help" | "support" | "contact-admin" | "continue"
   | "video" | "pdf" | "link" | "image" | "document" | "audio" | "voice" | "quiz"
-  | "practice-test" | "score-chart" | "report" | "website" | "external-link" | "search" | "filter";
+  | "practice-test" | "score-chart" | "report" | "website" | "external-link" | "search" | "filter"
+  | "vr";
 
 export function icon3dSrc(name: Icon3DName): string {
   return `/assets/icons/${name}.png`;

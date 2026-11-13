@@ -32,21 +32,11 @@ I also tried other websites such as TST Prep. Their courses start at $37 and go 
 
 None of these fit what I needed: something **up to date** with the 2026 test, **affordable**, and able to **give real feedback** on my writing and speaking.
 
-## Then I saw the Meta hackathon
+## So I built it myself
 
-I work as a data and AI engineer. One day I saw a post on social media about the **Meta Global AI Developer Hackathon**, and I knew straight away what I wanted to build.
+I work as a data and AI engineer, so I decided to build the coach I couldn't find: **my own AI TOEFL coach**, using Meta's newest Muse models to write the questions, score my answers and listen to my speaking.
 
-![Meta Global AI Developer Hackathon](meta-hack.jpg)
-
-I applied, and I was accepted.
-
-![My hackathon application was approved](status-approve.png)
-
-As a participant I also received **$150 in Meta Model API credits** to build with Meta's newest models.
-
-![$150 in Meta Model API credits](meta-credit.png)
-
-That gave me the chance to build the coach I couldn't find: **my own AI TOEFL coach**. I made it **open source**, so anyone can deploy their own copy. Anyone can also use it directly at **[lafaektoefl.tech](https://www.lafaektoefl.tech)**, and making a study plan there is free.
+I made it **open source**, so anyone can deploy their own copy. Anyone can also use it directly at **[lafaektoefl.tech](https://www.lafaektoefl.tech)**, and making a study plan there is free.
 
 ## How LafaekTOEFL solves my problems
 
@@ -58,6 +48,7 @@ That gave me the chance to build the coach I couldn't find: **my own AI TOEFL co
 | I only heard one accent | Listening audio in **American, British, Australian, Indian and African English** |
 | A practice test cost $49 | My **first full mock test is free** |
 | Books cost $50 and took two weeks | **Free to start, online, and open source** |
+| Studying alone at a desk got boring | A **VR Study Room** on Meta Quest, used with my hands |
 
 ### Always the new test format
 
@@ -85,6 +76,12 @@ The listening audio uses the accents I choose. Each speaker also gets a voice th
 
 I can take a full mock test that is timed like the real exam, with no pause, no replay and no retry. It gives me a band and a CEFR level for Reading, Listening, Writing and Speaking. With **4.0 or higher** I receive a certificate that anyone can verify online.
 
+### Practise in VR
+
+With a Meta Quest, I can step into a virtual study room inspired by Timor-Leste, with Dili outside the windows. It holds 9 of the TOEFL tasks in four zones (Reading, Listening, Speaking and Writing), all with my own study-plan questions. I use only my hands: I point and pinch to choose an answer, pick up word tiles to build a sentence, and speak to a crocodile interviewer across the desk. Everything I do there counts in the same progress as the website.
+
+Typing a password on a headset is slow, so I sign the Quest in with a short code from my phone and approve it there.
+
 ### Free and open
 
 Anyone can sign up at [lafaektoefl.tech](https://www.lafaektoefl.tech) and start for free, with no subscription:
@@ -98,6 +95,7 @@ Anyone can sign up at [lafaektoefl.tech](https://www.lafaektoefl.tech) and start
 | Part | Technology |
 | --- | --- |
 | Web app | Next.js 15 and React 19 on **Vercel** |
+| VR Study Room | Meta's **IWSDK** (WebXR) in the Meta Quest Browser, served by Vercel |
 | Background worker | Node.js on **Render**: writes questions, makes pictures and audio, rates mock tests |
 | Database | **PostgreSQL** on Render |
 | File storage | **AWS S3** (private) |

@@ -1,7 +1,7 @@
 /**
  * Frame-rate readout for testing on a headset: open the room with ?fps=1 and a small label stays
  * in the lower left of your view, showing frames per second, the headset's target rate and the
- * slowest frame in the last half second. Learners and judges never see it without the flag.
+ * slowest frame in the last half second. Learners never see it without the flag.
  */
 import { CanvasTexture, createSystem, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace } from '@iwsdk/core';
 import { C, font, roundRect } from './ui.js';

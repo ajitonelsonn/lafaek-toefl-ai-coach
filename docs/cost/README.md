@@ -92,7 +92,7 @@ The mock-test figure is an estimate. We measured our test run, but its answers w
 | Starter: 1 study plan + 1 mock test | Free | about $3.20 | −$3.20 |
 | Boost Pack: +1 study plan + 2 mock tests | $5 | about $3.24 | about +$1.76 |
 
-- The hackathon's **$150 in Meta Model API credits** covers the Meta part of about **80 study plans** ($1.88 each). With ElevenLabs included, $150 covers about 47 full plans.
+- **$150 of Meta Model API credit** covers the Meta part of about **80 study plans** ($1.88 each). With ElevenLabs included, $150 covers about 47 full plans.
 - Hosting is a fixed monthly cost and is not counted per plan. It covers the Vercel web app, the Render worker and database, and S3.
 - Compare this with prep materials: one official ETS practice test costs $49, and a writing or speaking evaluation from a prep site costs $27–$29 each.
 
@@ -106,7 +106,7 @@ The mock-test figure is an estimate. We measured our test run, but its answers w
 
 ## Meta's published prices
 
-Screenshots of the Meta Model API model list, taken during the hackathon:
+Screenshots of the Meta Model API model list, with the prices used above:
 
 ![Muse Spark 1.3, Muse Voice Transcribe and Muse Image prices](../model_price/meta2.png)
 

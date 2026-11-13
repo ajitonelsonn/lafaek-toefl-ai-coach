@@ -2,28 +2,35 @@
 
 **A free, open-source AI coach for the new 2026 TOEFL iBT, built with Meta's Muse models.**
 
-**[Try the live app](https://www.lafaektoefl.tech)** · **[Read the docs](https://www.lafaektoefl.tech/docs)** · [User guide](https://www.lafaektoefl.tech/docs/user-guide) · [How it works](https://www.lafaektoefl.tech/docs/how-it-works) · [Why I built it](https://www.lafaektoefl.tech/docs/story)
+**[Try the live app](https://www.lafaektoefl.tech)** · **[Read the docs](https://www.lafaektoefl.tech/docs)** · [User guide](https://www.lafaektoefl.tech/docs/user-guide) · [VR Study Room](https://www.lafaektoefl.tech/docs/vr) · [How it works](https://www.lafaektoefl.tech/docs/how-it-works) · [Why I built it](https://www.lafaektoefl.tech/docs/story)
 
 ![The LafaekTOEFL dashboard](docs/user-guide/images/dashboard.webp)
 
 A learner writes a study plan, and AI builds a personal set of practice questions for all 12 task types of the TOEFL iBT that started in January 2026. The set comes with pictures, listening audio in the accents the learner chose, a vocabulary list and a week-by-week schedule. The learner gets instant AI scores for writing and speaking, can take a full timed mock test, and earns a certificate that anyone can verify online with a band of 4.0 or higher.
 
+On a **Meta Quest**, the learner can also practise in the **VR Study Room**: a hands-first virtual classroom with 9 of the TOEFL tasks, the learner's own questions and the same scoring, signed in with a code instead of a password.
+
 ## Why it exists
 
-I live in Dili, Timor-Leste, and I'm preparing for my first TOEFL so I can study in the United States. The prep books I ordered from Indonesia cost $50, took two weeks to arrive, and covered the old test. Official practice tests cost $49 each, and the free materials give no feedback on writing or speaking. The Meta Global AI Developer Hackathon gave me the chance to build the coach I couldn't find, free to start and open to everyone.
+I live in Dili, Timor-Leste, and I'm preparing for my first TOEFL so I can study in the United States. The prep books I ordered from Indonesia cost $50, took two weeks to arrive, and covered the old test. Official practice tests cost $49 each, and the free materials give no feedback on writing or speaking. As a data and AI engineer, I built the coach I couldn't find, free to start and open to everyone.
 
 Read the full story: **[Why I built LafaekTOEFL](https://www.lafaektoefl.tech/docs/story)** ([on GitHub](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/blob/main/hystory/README.md)).
 
-### Built during the hackathon
+## Why VR
 
-All of the code was written during the hackathon. Times below are in GMT+9 (Timor-Leste time), the same time zone as the official hackathon dates: 27 October, 2:00 AM – 5 November, 11:00 AM.
+![The VR Study Room hub on Meta Quest](docs/vr/images/hub.webp)
 
-| When (GMT+9) | Commit | What it contains |
-| --- | --- | --- |
-| 26 Oct 2026, 11:43 PM | [`492a661`](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/commit/492a6610e23b02677396e6f1eb685e63283e3347) | I made this commit after I was notified that I was accepted. It only created the repository with the MIT `LICENSE` file, and contains no code. |
-| 27 Oct 2026, 1:39 PM | [`6e0720d`](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/commit/6e0720da0a987a3b883fa42b4b246d42b0285e03) | The first code commit. All of the app's code was committed from this point on. |
+Preparing for the TOEFL alone is hard to keep up. A book or a laptop looks the same every day, a phone is one notification away, and speaking practice means talking to an empty screen. Many learners drop the routine because it gets boring, not because the material is too hard. The **VR Study Room** on Meta Quest turns the same practice into a place you go to and something you do with your hands:
 
-The full history is in the [commit log](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/commits/main).
+- **A place to study, not another tab.** You sit at your own desk in a bright classroom inspired by Timor-Leste, with Dili outside the windows, and only the next question in front of you.
+- **Learn by doing.** In Build a Sentence you pick up word tiles and put them in order, so grammar becomes a puzzle for your hands. Answers are cards you point at and pinch.
+- **Speak to someone, not to a laptop.** The crocodile interviewer sits across the desk and asks each question out loud, which feels much closer to the real Take an Interview task.
+- **Hear who is talking.** In a conversation, each voice comes from where that speaker stands (spatial audio), so telling speakers apart works like a real room.
+- **Short, seated sessions.** Everything works from a chair, within arm's reach, with hands only. One activity takes a few minutes.
+- **A reason to come back.** The hub counts your study days. Turn around, and a live progress wall behind you shows your questions answered, accuracy, study days, progress in each skill, mock-test band and certificate, updated every time you return to the hub.
+- **The same coach.** The room uses your own study-plan questions and the same AI scoring, and everything counts in your progress on the website.
+
+Read more in the **[VR Study Room guide](https://www.lafaektoefl.tech/docs/vr)** ([on GitHub](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/blob/main/docs/vr/README.md)).
 
 ## What it does
 
@@ -36,6 +43,8 @@ The full history is in the [commit log](https://github.com/ajitonelsonn/lafaek-t
 | **Real accents** | American, British, Australian, Indian and African English voices, matched to each speaker's gender |
 | **Vocabulary** | Words chosen from the learner's own questions, with IPA, meaning, example and pronunciation |
 | **Full mock test** | All 12 task types, timed by section, with no pause or replay. Every section gets a band and a CEFR level. |
+| **VR Study Room (Meta Quest)** | 4 zones with 9 TOEFL tasks in a seated virtual classroom inspired by Timor-Leste. Hands only: point and pinch, grab word tiles, touch nearby buttons. Same questions, scoring and progress as the website. |
+| **Sign in on Quest with a code** | No password on the headset: a signed-in phone or laptop shows a code, the Quest enters it, and the phone approves. An account can be signed in on up to 3 devices, listed in Settings. |
 | **Verifiable certificates** | An overall band of 4.0 or higher (B2) earns a certificate with an ID and QR code, checked on a public page |
 | **Free to start** | Starter is free for life (1 plan, 1 mock test). A Boost Pack costs $5 (+1 plan, +2 mock tests). The project is MIT open source. |
 | **Cheap to run** | One complete study plan costs about **$3.16** in AI calls, measured on the live app. See [Cost per study plan](https://www.lafaektoefl.tech/docs/cost). |
@@ -60,8 +69,9 @@ See every screen in the **[user guide](https://www.lafaektoefl.tech/docs/user-gu
 - **Background worker on Render (Singapore, 0.5 CPU / 512 MB):** handles the long AI work. It writes questions, makes pictures and audio, chooses vocabulary, plans schedules and rates mock tests.
 - **PostgreSQL on Render:** all data, plus the **job queue** and rate limits. The web app and the worker never call each other; they share work through the queue.
 - **AWS S3:** a private bucket for media. The browser only gets 5-minute signed links.
+- **VR Study Room on Vercel:** a static IWSDK build at `/vr/room`, served next to the web app. It runs in the Meta Quest Browser (WebXR) and calls the same API routes with the same session cookie.
 
-Five diagrams explain each flow step by step: **[How it works](https://www.lafaektoefl.tech/docs/how-it-works)** ([on GitHub](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/blob/main/docs/diagram/README.md)).
+Seven diagrams explain each flow step by step, including the VR room and signing in on Quest: **[How it works](https://www.lafaektoefl.tech/docs/how-it-works)** ([on GitHub](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/blob/main/docs/diagram/README.md)).
 
 ## Documentation
 
@@ -70,8 +80,9 @@ All docs are published at **[lafaektoefl.tech/docs](https://www.lafaektoefl.tech
 | Guide | What's inside | Read |
 | --- | --- | --- |
 | Our story | Why the app exists | [Docs](https://www.lafaektoefl.tech/docs/story) · [GitHub](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/blob/main/hystory/README.md) |
+| VR Study Room | Why VR, and how to use the hands-first room on Meta Quest | [Docs](https://www.lafaektoefl.tech/docs/vr) · [GitHub](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/blob/main/docs/vr/README.md) |
 | User guide | Every screen, with screenshots | [Docs](https://www.lafaektoefl.tech/docs/user-guide) · [GitHub](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/blob/main/docs/user-guide/README.md) |
-| How it works | Architecture, generation, mock test, auth and database diagrams | [Docs](https://www.lafaektoefl.tech/docs/how-it-works) · [GitHub](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/blob/main/docs/diagram/README.md) |
+| How it works | Architecture, generation, mock test, auth, database, VR Study Room and Quest sign-in diagrams | [Docs](https://www.lafaektoefl.tech/docs/how-it-works) · [GitHub](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/blob/main/docs/diagram/README.md) |
 | Cost per study plan | What one plan really costs in AI calls (measured: about $3.16) | [Docs](https://www.lafaektoefl.tech/docs/cost) · [GitHub](https://github.com/ajitonelsonn/lafaek-toefl-ai-coach/blob/main/docs/cost/README.md) |
 | Developer guide | This README: setup, technical details, deployment | [Docs](https://www.lafaektoefl.tech/docs/developer-guide) |
 
@@ -86,6 +97,7 @@ npm run db:deploy           # apply migrations (uses DATABASE_URL from the envir
 npm run db:seed             # load the shared, hand-written starter set (idempotent)
 npm run dev                 # web app on http://localhost:3000
 npm run worker              # background generation worker (separate terminal)
+npm run vr:dev              # optional: the VR room with IWSDK's browser XR emulator
 ```
 
 `npm run verify:providers` checks Meta, ElevenLabs, SMTP and AWS access with minimal calls and prints no secrets.
@@ -121,6 +133,11 @@ Worker (npm run worker) ── claims jobs from the queue ──────┘
   - Every request that changes data checks `Origin`.
   - Login, email codes, generation, feedback and uploads are rate-limited in PostgreSQL.
   - Forgot-password points to the configured administrator (`ADMIN_CONTACT_EMAIL`).
+  - **Sign in another device** (`lib/server/auth/device-link.ts`, `/link`).
+    - A signed-in device shows an 8-character code and QR code (no look-alike characters). It is stored only as an HMAC and expires in 5 minutes.
+    - The new device enters it, which only claims the code and gives that device a secret to poll with. The signed-in device then shows "Meta Quest browser wants to sign in" with Approve and Deny.
+    - Only after Approve does the new device get a normal session. Deny, or closing the code window, cancels it.
+  - **Device limit.** An account keeps at most 3 sessions. A 4th sign-in revokes the one used longest ago, so nobody is locked out. Settings lists the devices, with Sign out for each.
 - **Authorization.**
   - The `(app)` layout requires a valid server session.
   - Every query is scoped to the signed-in user, and "not yours" returns the same 404 as "not found".
@@ -222,6 +239,13 @@ Worker (npm run worker) ── claims jobs from the queue ──────┘
     - An overall band of 4.0 or higher earns a certificate with an ID and QR code.
     - Anyone can check it at `/verify/<ID>` (`lib/server/certificates.ts`).
     - Learners without one can open a watermarked preview.
+- **VR Study Room** (source in `vr/`, built into `public/vr/room/`).
+  - Built with Meta's IWSDK (`@iwsdk/core`, on Three.js) as a Vite app. The room is made from simple shapes and small canvas textures to stay at 72 fps or more on Quest.
+  - `/vr` (Next.js) checks that the browser supports immersive VR and that the learner is signed in with a study plan, then links to `/vr/room`.
+  - Hands first: hand tracking is on, presses act on release, the dock above the desk can be touched, and Build a Sentence tiles can be grabbed. Controllers also work.
+  - Questions, answers and scores use the same routes as the website (`/api/practice/...`). Pictures and audio load through `/api/media/[id]/file`, because WebGL and Web Audio cannot read cross-origin S3 links. Spoken answers are converted to 16 kHz WAV in the headset.
+  - URL options: `?mode=preview` opens the room in a normal browser, `?open=<station>` starts at one activity, and `?fps=1` shows a frame-rate readout.
+  - Vercel does not build `vr/`. After changing it, run `npm run vr:build` and commit `public/vr/room/`.
 - **Docs site** (`app/docs`, `lib/server/docs.ts`).
   - `/docs` renders the Markdown guides listed in `lib/config/docs.ts` at build time, with search, a table of contents and GSAP motion.
   - Images are resized to WebP during the build.
@@ -240,6 +264,7 @@ Worker (npm run worker) ── claims jobs from the queue ──────┘
 | `node scripts/check-secrets.mjs` | Fails if any secret value appears in client bundles or git-tracked files |
 | `npm run db:status` / `npm run db:deploy` | Migration status / apply |
 | `npm run worker` / `npm run worker:prod` | Generation worker (`--once` drains the queue and exits) |
+| `npm run vr:dev` / `npm run vr:build` | VR room with the IWSDK emulator / build it into `public/vr/room/` (commit the result) |
 | `npm run upgrade:grant -- <email> [packs] [note]` | Upgrades an account with Boost Packs (uses the `.env.local` database) |
 | `npm run upgrade:grant:prod -- <email> [packs] [note]` | The same on the production worker (Render Shell) |
 
@@ -269,6 +294,7 @@ npm run upgrade:grant:prod -- learner@example.com 1 "paid by bank transfer"
   - Use Render's *external* database URL with `sslmode=require`.
   - Run `prisma migrate deploy` once per release.
   - Set `APP_URL` to the custom domain on both Vercel and the worker. It is used for links in emails.
+  - The VR room ships as the committed static build in `public/vr/room/`, so it needs no extra deployment step.
 - **Worker (Render Background Worker).** Vercel only runs short request handlers, so the worker needs its own host. Without it, generation jobs stay queued.
   - **Region: Singapore.** Meta's API lists no models to Render's Ohio network, but works from Singapore.
   - **Build command:** `npm ci --include=dev`. `tsx` and `prisma` are devDependencies.
@@ -292,7 +318,8 @@ npm run upgrade:grant:prod -- learner@example.com 1 "paid by bank transfer"
 | Data | Kept | Deletion |
 | --- | --- | --- |
 | Email codes | HMAC only, 10-minute validity | Superseded codes are invalidated; rows go when the account is deleted |
-| Sessions | 30 days (`SESSION_TTL_DAYS`) | Revoked on logout; all deleted with the account |
+| Sessions | 30 days (`SESSION_TTL_DAYS`), at most 3 per account | Revoked on logout, from Settings, or when a 4th device signs in; all deleted with the account |
+| Device sign-in codes | HMAC only, 5 minutes (at least 3 more once a device enters the code) | Used once; pruned by the worker a day after they expire |
 | Practice recordings | Only with opt-in consent | Learner can delete each one; deleted with the account |
 | Mock test recordings | Until the AI rating finishes (about a minute) | Deleted by the `mock_scoring` job; the result keeps bands and short comments |
 | Certificates | While the account exists | Deleted with the account; a revoked one shows "Revoked" on the check page |
@@ -311,13 +338,16 @@ npm run upgrade:grant:prod -- learner@example.com 1 "paid by bank transfer"
 ## Project structure
 
 ```text
-app/(public)/      landing, login, signup, verify-email, forgot-password, certificate check
+app/(public)/      landing, login, signup, verify-email, forgot-password, certificate check, /link (sign in with a code)
+app/vr/            the /vr landing page for the VR Study Room
 app/(app)/         signed-in pages (server components fetch data via lib/server)
 app/api/           route handlers (Zod-validated, request IDs, sanitized errors)
 app/docs/          the /docs site
 components/        UI, layout, practice engine, study-plan calendar, mock test, docs, motion, charts
 docs/              user guide (with screenshots) and architecture diagrams
 hystory/           the story behind the project
+public/vr/room/    the built VR Study Room (committed; served at /vr/room)
+vr/                VR Study Room source (IWSDK + Vite)
 lib/config/        practice types, navigation, assets, pricing, docs list
 lib/client/        browser helpers: API client, WAV encoder, GSAP motion setup
 lib/practice/      client-safe DTOs (never contain answer keys)
@@ -334,6 +364,7 @@ tests/             unit, integration (isolated schema), e2e (HTTP)
 - Practice AI scores and speaking transcription run in Vercel route handlers (usually 10–15 s, within the 60 s limit). If they ever time out, they can move to the worker queue, as the mock test rating already does.
 - There is no self-service password reset, and Google sign-in is not implemented.
 - AI bands for Writing and Speaking are model estimates. Results and certificates say so.
+- Write an Email and Write for an Academic Discussion are typing tasks, so they stay on the website and are not in the VR room.
 
 ## License
 

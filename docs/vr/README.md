@@ -1,0 +1,125 @@
+# VR Study Room
+
+> Practise the new TOEFL in a calm virtual classroom on Meta Quest, with your own study-plan questions and nothing but your hands.
+
+![The VR Study Room hub: four zones on the desk, Dili through the windows](images/hub.webp)
+
+*The hub, seen in Preview mode on a computer. On a Quest, the room surrounds you.*
+
+## Why VR?
+
+Preparing for the TOEFL alone is hard to keep up. A book or a laptop screen looks the same every day, a phone is always one notification away, and speaking practice means talking to an empty screen. Many learners give up on the routine long before the test, not because the material is too hard, but because it gets boring.
+
+The VR Study Room turns the same practice into a place you go to, and something you do with your hands:
+
+- **A place to study, not another tab.** Put on the headset and you sit at your own desk in a bright classroom inspired by Timor-Leste, with Dili and Cristo Rei outside the windows. There are no other tabs and no phone in front of you, just the next question.
+- **Learn by doing.** In Build a Sentence you pick up word tiles and put them in order, so grammar becomes a small puzzle you solve with your hands. Answers are cards you point at and pinch.
+- **Speak to someone, not to a laptop.** In Take an Interview, the crocodile interviewer sits across the desk and asks each question out loud. Answering a face in the room feels much closer to the real interview than reading a prompt off a screen.
+- **Hear who is talking.** In Listen to a Conversation, the two speakers stand to your left and right, and each voice comes from where that person stands. Telling speakers apart works the way it does in a real room.
+- **Short sessions that fit your day.** You stay seated, and one activity takes a few minutes. That is enough for a complete moment of practice on a short break.
+- **A reason to come back.** The hub counts your study days. Turn around, and a live progress wall behind you shows your questions answered, accuracy, study days, practice by skill, mock-test band and certificate. It updates every time you finish an activity.
+- **The same coach, not a separate game.** The room uses the questions made for your study plan and the same AI scoring as the website. Everything you do in VR counts in your progress on the website, and the other way round.
+
+## What you need
+
+- A **Meta Quest** headset with the **Quest Browser**. There is nothing to install.
+- A LafaekTOEFL account with a **study plan**. The room uses the questions made for your plan.
+- A chair. Everything works seated, within arm's reach, and **no controllers are needed**.
+
+No headset? On a computer, open the VR page and choose **Preview in Browser** to look around the room with your mouse.
+
+## Getting in
+
+1. In the Quest Browser, open **[lafaektoefl.tech/vr](https://www.lafaektoefl.tech/vr)**. The page checks that the browser can start VR.
+2. **Sign in without typing a password.** On your phone or laptop, where you are already signed in, open the VR page and tap **Sign in on Quest**. A code appears. On the Quest, open **lafaektoefl.tech/link** and type the code, then tap **Approve** on your phone or laptop. The Quest signs itself in.
+3. Choose **Enter VR Study Room**, and allow hand tracking if the Quest asks.
+4. A short tutorial shows how to use your hands. If the desk looks too high or too low, press **Recenter**.
+
+![The first-time tutorial: point and pinch, pinch and hold, touch nearby buttons](images/hand-tutorial.webp)
+
+## Using your hands
+
+| Gesture | How | Used for |
+| --- | --- | --- |
+| **Point and pinch** | Point your hand at a card, then touch your thumb to your index finger. It acts when your fingers part, so sliding off a button cancels it. | Zones, activities, answers, page buttons |
+| **Pinch and hold to grab** | Pinch a word tile, move your hand, and let go over a slot. Pinching a tile once also sends it to the next free slot. | Build a Sentence |
+| **Touch** | Press a button with your index finger. | The dock just above the desk: Back, How to use, Recenter (Exit to 2D in the hub) |
+
+Buttons that play a picture or audio stay off until it has loaded, so a pinch is never lost. Controllers also work, but you never need them.
+
+## The room
+
+The hub has four zones with 9 of the 12 TOEFL tasks:
+
+| Zone | Activities |
+| --- | --- |
+| Reading | Read in Daily Life, Read an Academic Passage |
+| Listening | Listen and Choose a Response, Listen to a Conversation, Listen to an Announcement, Listen to an Academic Talk |
+| Speaking | Listen and Repeat, Take an Interview |
+| Writing | Build a Sentence |
+
+Write an Email and Write for an Academic Discussion need a keyboard, so they stay on the website. Behind you is your [live progress wall](#turn-around-your-live-progress).
+
+### Reading
+
+The text hangs on the left as a floating page that you turn with the page buttons. The question and four answer cards sit on the right. Pinch an answer to check it.
+
+![Read in Daily Life: an email on the left, the question and answer cards on the right](images/reading.webp)
+
+### Build a Sentence
+
+The words lie on the desk as 3D tiles. Grab them and drop them into the slots, or pinch a tile to send it to the next free slot. When every slot is full, press **Check**.
+
+![Build a Sentence: word tiles on the desk below the slots](images/build-a-sentence.webp)
+
+### Listening
+
+A picture of the scene hangs in front of you, and the speakers stand to your left and right, each voice coming from where that person stands. After the audio, pinch an answer for each question.
+
+### Listen and Repeat
+
+Hear a sentence, then repeat it into the headset microphone. You see which words matched in green, which you missed in red, and what you said.
+
+![Listen and Repeat: the situation, the sentence count and the Hear sentence button](images/listen-and-repeat.webp)
+
+### Take an Interview
+
+The interviewer asks four questions out loud. Pinch **Answer**, speak, and get a transcript, a band from 1 to 6, and coaching on what to improve.
+
+![Take an Interview: the crocodile interviewer across the desk](images/interview.webp)
+
+## Turn around: your live progress
+
+The questions are in front of you. Your progress is **behind you**. Turn your head or your chair, and the back wall of the room shows a large **Progress Wall** with your own statistics:
+
+![The live Progress Wall on the back wall: questions answered, accuracy, study days, minutes practised, practice by skill and the latest mock-test band](images/progress-wall.webp)
+
+*A real learner's Progress Wall, seen when turning around in the room.*
+
+| On the wall | What it shows |
+| --- | --- |
+| **Your progress, (your name)** | A greeting with your first name |
+| **4 tiles** | Questions answered, accuracy, study days and minutes practised |
+| **Your practice by skill** | A bar for Reading, Listening, Writing and Speaking: how many questions you have done out of how many you have, with your percentage correct or your AI band out of 6 |
+| **Latest mock test** | Your overall band out of 6 and your certificate ID if you earned one. Before your first test it says "No mock test yet", and while a test is being scored it says "Being scored…" |
+
+The wall is **live**. It reads the same data as the website, and it updates every time you come back to the hub, so the activity you just finished shows up straight away. Practice on the website counts too: answer a few questions on your phone, put the headset on, and the wall already shows them.
+
+On either side of the wall hang a motto board, "Small steps every day lead to a big score!", and a painting from the app. Together they make the back of the room a place to see how far you have come.
+
+## Tips
+
+- **Recenter** whenever the desk feels too high, too low or too far away.
+- **How to use** shows the hand tutorial again.
+- The Quest asks for the microphone the first time you speak. Allow it for Listen and Repeat and the interview.
+- **Exit to 2D** in the hub takes you back to the website.
+
+## Your privacy
+
+Spoken answers are handled exactly as on the website. They are turned into text for scoring and then deleted, unless you turn on *Keep my speaking recordings* in Settings. An account can be signed in on up to 3 devices; Settings lists them, and you can sign any of them out.
+
+## How it is built
+
+The room is built with Meta's **Immersive Web SDK (IWSDK)** on Three.js and runs in the Quest Browser through WebXR. It is a static build served next to the website, and it uses the same API routes and the same sign-in, so it needs no separate account or server. It is made from simple shapes and small textures to stay at 72 frames per second or more on Quest.
+
+For the full picture, see [How it works](../diagram/README.md): diagram 6 shows the room and what each activity calls, and diagram 7 shows signing in on Quest with a code.
