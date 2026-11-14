@@ -13,6 +13,7 @@ import { pickSpeaker, speakerInfo, type Gender, type SpeakerId, type SpeakerScen
 import type { Talker } from './talk.js';
 import { Placed, Spinner, yawToViewer } from './models.js';
 import { resumeBar } from './resume.js';
+import { contactShadow } from './room.js';
 import { speak, stopSpeaking, type Voice } from './sound.js';
 import { Button, C, font, OptionCard, roundRect, wrap, type Scope } from './ui.js';
 
@@ -70,6 +71,8 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
   ring.position.y = 0.015;
   ring.visible = false;
   group.add(ring);
+  // A soft shadow on the floor, so the person stands in the room.
+  group.add(contactShadow(0.95, 0.8, 0.4));
   const tag = scope.panel(0.28, 0.07, x, 1.8, z + 0.05).panel;
 
   const release = () => {
@@ -104,7 +107,7 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
     });
   };
 
-  // The lecture podium stands in front of the speaker, a little towards the middle of the room.
+  // The lecture podium stands beside the speaker, on the outer side so it stays clear of the buttons.
   let podium: Placed | null = null;
   let podiumWanted = false;
   const setPodium = (on: boolean) => {
@@ -115,7 +118,7 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
       return;
     }
     if (podium) return;
-    void Placed.place(app.world, groupEntity, 'lecture-podium', new Vector3(slot === 0 ? 0.32 : -0.32, 0, 0.38), 0).then((p) => {
+    void Placed.place(app.world, groupEntity, 'lecture-podium', new Vector3(slot === 0 ? -0.42 : 0.42, 0, 0.3), 0).then((p) => {
       if (disposed || !podiumWanted || podium) return p?.remove();
       podium = p;
     });
@@ -162,7 +165,6 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
     },
     setTalking(on: boolean) {
       this.talking = talking = on;
-      if (!on) body?.rotation.set(0, 0, 0);
       drawTag();
     },
     dispose: () => {
@@ -211,15 +213,17 @@ export const makeListeningScreen = (slug: ListeningSlug, label: string): ScreenF
   const speakers = [makeSpeaker(app, scope, 0, C.listening), makeSpeaker(app, scope, 1, C.speaking)];
   const spinner = new Spinner(app, new Vector3(0.4, 1.115, -0.86));
   const stopPulse = animate((time) => {
-    for (const s of speakers) {
+    for (let k = 0; k < speakers.length; k++) {
+      const s = speakers[k];
+      const other = speakers[1 - k];
       s.ring.visible = s.talking;
-      if (s.talking) {
-        s.ring.scale.setScalar(1 + Math.sin(time * 9) * 0.08);
-        // A small, natural sway while talking.
-        if (s.body) {
-          s.body.rotation.z = Math.sin(time * 2.4) * 0.012;
-          s.body.rotation.y = Math.sin(time * 1.7) * 0.05;
-        }
+      if (s.talking) s.ring.scale.setScalar(1 + Math.sin(time * 9) * 0.08);
+      if (s.body) {
+        // Talking: a small, natural sway. Listening: turn towards the person who is talking.
+        const listening = !s.talking && other.talking && other.group.visible;
+        const yaw = s.talking ? Math.sin(time * 1.7) * 0.05 : listening ? (k === 0 ? 0.45 : -0.45) : 0;
+        s.body.rotation.y += (yaw - s.body.rotation.y) * 0.07;
+        s.body.rotation.z = s.talking ? Math.sin(time * 2.4) * 0.012 : 0;
       }
       // Hands gesture while talking, and the mouth follows how loud the voice is.
       const t = s.talker;

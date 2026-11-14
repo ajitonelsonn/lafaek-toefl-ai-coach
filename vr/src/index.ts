@@ -75,19 +75,53 @@ async function main() {
   app.register('repeat', repeatScreen);
   app.register('interview', interviewScreen);
   await app.loadImages();
+  void app.sound.loadMusic();
   app.open(startAt);
   allowed = true;
+  const first = user.name?.trim().split(/\s+/)[0];
+  if (first) $('hello').textContent = `Welcome back, ${first}`;
   showActions('ready');
   const xrOk = Boolean(navigator.xr && (await navigator.xr.isSessionSupported('immersive-vr').catch(() => false)));
   if (!xrOk) {
     enterBtn.disabled = true;
-    note.textContent = 'Start VR needs a Meta Quest headset. Use Preview to try it here.';
+    note.textContent = 'Enter VR needs a Meta Quest headset. On this device, use Preview.';
+  }
+  // Voice-over: a short recorded introduction to the room (public/audio/intro.mp3). Browsers only
+  // allow sound after a tap, so it starts by itself where that is allowed and otherwise waits
+  // for the button. It stops as soon as the learner enters the room.
+  const intro = new Audio(`${import.meta.env.BASE_URL}audio/intro.mp3`);
+  intro.preload = 'auto';
+  const introBtn = $<HTMLButtonElement>('intro');
+  const introLabel = $<HTMLSpanElement>('intro-label');
+  const showIntro = (playing: boolean) => {
+    introBtn.setAttribute('aria-pressed', String(playing));
+    introLabel.textContent = playing ? 'Stop the introduction' : 'Hear the introduction';
+  };
+  intro.addEventListener('play', () => showIntro(true));
+  intro.addEventListener('pause', () => showIntro(false));
+  intro.addEventListener('ended', () => showIntro(false));
+  const stopIntro = () => {
+    intro.pause();
+    intro.currentTime = 0;
+  };
+  introBtn.addEventListener('click', () => {
+    if (intro.paused) void intro.play().catch(() => showIntro(false));
+    else stopIntro();
+  });
+  // Once per browser session, and not when the room opens straight into Preview.
+  if (!previewNow && !sessionStorage.getItem('lafaek-vr:intro')) {
+    void intro
+      .play()
+      .then(() => sessionStorage.setItem('lafaek-vr:intro', '1'))
+      .catch(() => {});
   }
   enterBtn.addEventListener('click', () => {
+    stopIntro();
     app.sound.resume();
     world.launchXR();
   });
   previewBtn.addEventListener('click', () => {
+    stopIntro();
     app.sound.resume();
     overlay.hidden = true;
   });

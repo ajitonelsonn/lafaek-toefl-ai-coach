@@ -1,8 +1,9 @@
 /**
- * The study room around a seated learner: a futuristic white-and-blue classroom inspired by
- * Timor-Leste. Curved white walls with three panoramic windows (views of Dili: the flag and
- * mountains, Cristo Rei, and the coastline), blue LED strips, a glossy floor, a white desk with a
- * glowing edge, a white bookshelf, a bench, a bean bag and plants. Built from simple shapes and a
+ * The study room around a seated learner: a bright, modern classroom inspired by Timor-Leste.
+ * Curved warm-white walls with three panoramic windows (views of Dili: the flag and mountains,
+ * Cristo Rei, and the coastline), blue LED strips, a light-oak floor with sunlight from the
+ * windows, a walnut desk with a glowing edge, a bookshelf, a bench, a bean bag and plants, each
+ * grounded by a soft shadow. Built from simple shapes and a
  * few small textures so it stays above 72 fps on Quest; the LEDs pulse and light motes drift.
  */
 import {
@@ -24,6 +25,7 @@ import {
   MeshStandardMaterial,
   Path,
   PlaneGeometry,
+  RepeatWrapping,
   Points,
   PointsMaterial,
   Shape,
@@ -92,31 +94,149 @@ function extrude(shape: Shape, depth: number, bevel = 0.01): ExtrudeGeometry {
   return new ExtrudeGeometry(shape, { depth, bevelEnabled: bevel > 0, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 2, curveSegments: 10 });
 }
 
-/** Soft radial gradient for the glossy floor (bright centre, gentle falloff). */
+/** A small repeatable random number generator, so the wood looks the same every time. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+type Rgb = [number, number, number];
+const OAK: Rgb = [203, 168, 124];
+const WALNUT: Rgb = [112, 74, 48];
+
+/** Paints wood planks with fine grain over a canvas (planks run left to right). */
+function paintWood(g: CanvasRenderingContext2D, size: number, plank: number, rand: () => number, [r, gr, b]: Rgb = OAK, seam = 0.4): void {
+  for (let y = 0, row = 0; y < size; y += plank, row++) {
+    // Each row is cut into boards of different lengths, each a slightly different tone.
+    let x = -rand() * size * 0.3;
+    while (x < size) {
+      const len = size * (0.28 + rand() * 0.3);
+      const tone = 0.93 + rand() * 0.12;
+      g.fillStyle = `rgb(${Math.round(r * tone)}, ${Math.round(gr * tone)}, ${Math.round(b * tone)})`;
+      g.fillRect(x, y, len, plank);
+      // Fine grain lines along the board.
+      for (let k = 0; k < 7; k++) {
+        const gy = y + rand() * plank;
+        g.strokeStyle = `rgba(${Math.round(r * 0.55)}, ${Math.round(gr * 0.5)}, ${Math.round(b * 0.4)}, ${0.07 + rand() * 0.12})`;
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(x, gy);
+        g.bezierCurveTo(x + len * 0.3, gy + (rand() - 0.5) * 3, x + len * 0.7, gy + (rand() - 0.5) * 3, x + len, gy);
+        g.stroke();
+      }
+      // The joint at the end of the board.
+      g.fillStyle = `rgba(40, 24, 12, ${seam * 0.85})`;
+      g.fillRect(x + len - 1, y, 1.5, plank);
+      x += len;
+    }
+    g.fillStyle = `rgba(40, 24, 12, ${seam})`;
+    g.fillRect(0, y, size, 1.5);
+  }
+}
+
+/** Light-oak plank floor, a little darker towards the walls (where less light reaches). */
 function floorTexture(): CanvasTexture {
   const c = document.createElement('canvas');
-  c.width = c.height = 512;
+  c.width = c.height = 1024;
   const g = c.getContext('2d')!;
-  const grad = g.createRadialGradient(256, 256, 20, 256, 256, 256);
-  grad.addColorStop(0, '#f4f7fd');
-  grad.addColorStop(0.55, '#dde5f4');
-  grad.addColorStop(1, '#c9d5ec');
+  paintWood(g, 1024, 26, seeded(7));
+  const shade = g.createRadialGradient(512, 512, 250, 512, 512, 520);
+  shade.addColorStop(0, 'rgba(60, 40, 20, 0)');
+  shade.addColorStop(0.8, 'rgba(60, 40, 20, 0.1)');
+  shade.addColorStop(1, 'rgba(50, 32, 16, 0.42)');
+  g.fillStyle = shade;
+  g.fillRect(0, 0, 1024, 1024);
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+/**
+ * Dark walnut for furniture tops (desk, shelves), in wide boards with faint joints, so the
+ * furniture stands apart from the light-oak floor. The texture repeats once per metre.
+ */
+let walnut: CanvasTexture | null = null;
+function walnutTexture(): CanvasTexture {
+  if (walnut) return walnut;
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  paintWood(c.getContext('2d')!, 512, 128, seeded(21), WALNUT, 0.16);
+  walnut = new CanvasTexture(c);
+  walnut.colorSpace = SRGBColorSpace;
+  walnut.wrapS = walnut.wrapT = RepeatWrapping;
+  walnut.anisotropy = 4;
+  return walnut;
+}
+const walnutMaterial = () => new MeshStandardMaterial({ map: walnutTexture(), roughness: 0.38 });
+
+/** Warm white wall, shaded softly where it meets the floor and the ceiling. */
+function wallTexture(): CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 4;
+  c.height = 256;
+  const g = c.getContext('2d')!;
+  // Canvas top = ceiling.
+  const grad = g.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, '#dcd9d2');
+  grad.addColorStop(0.07, '#f1eee8');
+  grad.addColorStop(0.5, '#f6f3ed');
+  grad.addColorStop(0.86, '#ece8e0');
+  grad.addColorStop(0.97, '#cfc9be');
+  grad.addColorStop(1, '#b9b2a6');
   g.fillStyle = grad;
-  g.fillRect(0, 0, 512, 512);
-  // Faint tile lines for a polished-floor feel.
-  g.strokeStyle = 'rgba(160, 180, 220, 0.18)';
-  g.lineWidth = 2;
-  for (let i = 0; i <= 512; i += 64) {
-    g.beginPath();
-    g.moveTo(i, 0);
-    g.lineTo(i, 512);
-    g.moveTo(0, i);
-    g.lineTo(512, i);
-    g.stroke();
-  }
+  g.fillRect(0, 0, 4, 256);
   const t = new CanvasTexture(c);
   t.colorSpace = SRGBColorSpace;
   return t;
+}
+
+/** Soft dark blob (and a warm one for sunlight), drawn once and shared. */
+let blob: CanvasTexture | null = null;
+function blobTexture(): CanvasTexture {
+  if (blob) return blob;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.45, 'rgba(255,255,255,0.72)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  blob = new CanvasTexture(c);
+  return blob;
+}
+
+/**
+ * A soft shadow on the floor under an object (w × d metres), so it looks like it stands in the
+ * room instead of floating. A flat textured plane: no real-time shadows, so no cost on Quest.
+ */
+export function contactShadow(w: number, d: number, opacity = 0.34, y = 0.006): Mesh {
+  const m = new Mesh(new PlaneGeometry(w, d), new MeshBasicMaterial({ map: blobTexture(), color: new Color('#2a1c10'), transparent: true, opacity, depthWrite: false, toneMapped: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = y;
+  m.renderOrder = 1;
+  m.raycast = () => {};
+  return m;
+}
+
+/** A warm patch of sunlight on the floor below a window. */
+function sunPatch(angleDeg: number, w: number): Mesh {
+  const a = (angleDeg * Math.PI) / 180;
+  const m = new Mesh(new PlaneGeometry(w, 1.25), new MeshBasicMaterial({ map: blobTexture(), color: new Color('#ffe2a8'), transparent: true, opacity: 0.38, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.rotation.z = -a;
+  m.position.set(Math.sin(a) * 1.85, 0.008, -Math.cos(a) * 1.85);
+  m.renderOrder = 2;
+  m.raycast = () => {};
+  return m;
 }
 
 /** A soft light beam (vertical gradient), used under holographic panels. */
@@ -314,20 +434,33 @@ export function buildRoom(): Room {
   const room = new Group();
   room.name = 'StudyRoom';
 
-  // Glossy floor with a soft rug under the desk.
-  const floor = new Mesh(new CircleGeometry(WALL_R + 0.1, 64), new MeshStandardMaterial({ map: floorTexture(), roughness: 0.18, metalness: 0.05 }));
+  // Light-oak floor with a soft rug under the desk.
+  const floor = new Mesh(new CircleGeometry(WALL_R + 0.1, 64), new MeshStandardMaterial({ map: floorTexture(), roughness: 0.55 }));
   floor.rotation.x = -Math.PI / 2;
   room.add(floor);
-  const rug = new Mesh(new CircleGeometry(1.15, 48), standard('#d9def0', 0.95));
+  const rug = new Mesh(new CircleGeometry(1.15, 48), standard('#c9d3ea', 1));
   rug.rotation.x = -Math.PI / 2;
   rug.position.set(0, 0.003, -0.45);
   room.add(rug);
+  // Sunlight from the three windows, and soft shadows that ground the furniture.
+  room.add(sunPatch(-52, 1.5), sunPatch(0, 2.0), sunPatch(52, 1.7));
+  const shadowAt = (x: number, z: number, w: number, d: number, yaw = 0, opacity = 0.34) => {
+    const sh = contactShadow(w, d, opacity);
+    sh.position.x = x;
+    sh.position.z = z;
+    sh.rotation.z = yaw;
+    room.add(sh);
+  };
+  shadowAt(0, DESK_Z - 0.02, 1.95, 1.05, 0, 0.4); // desk
+  shadowAt(-2.05, -1.65, 1.3, 0.7, Math.PI / 4.2); // bookshelf
+  shadowAt(-1.95, 0.35, 2.2, 0.85, Math.PI / 2.4, 0.3); // bench
+  shadowAt(2.05, -0.75, 1.35, 1.25, 0, 0.38); // bean bag
 
   // Curved white wall around the learner, and a ceiling.
-  const wall = new Mesh(new CylinderGeometry(WALL_R, WALL_R, CEIL_Y, 64, 1, true), new MeshLambertMaterial({ color: new Color(PALETTE.wall), side: BackSide }));
+  const wall = new Mesh(new CylinderGeometry(WALL_R, WALL_R, CEIL_Y, 64, 1, true), new MeshLambertMaterial({ map: wallTexture(), side: BackSide }));
   wall.position.y = CEIL_Y / 2;
   room.add(wall);
-  const ceiling = new Mesh(new CircleGeometry(WALL_R, 64), standard('#fbfcff', 0.9));
+  const ceiling = new Mesh(new CircleGeometry(WALL_R, 64), standard('#f8f6f1', 0.9));
   ceiling.rotation.x = Math.PI / 2;
   ceiling.position.y = CEIL_Y;
   room.add(ceiling);
@@ -361,8 +494,8 @@ export function buildRoom(): Room {
   room.add(onWall(mottoBoard(1.15, 0.5), 228, 1.62, 0.14));
   room.add(onWall(framedArt('art-progress.webp', 0.84, 0.6), 132, 1.6));
 
-  // White desk: rounded top with a glowing front edge, on a pedestal.
-  const top = new Mesh(extrude(roundedShape(1.5, 0.62, 0.12), 0.035, 0.008), standard('#ffffff', 0.22));
+  // Desk: a rounded walnut top with a glowing front edge, on a white pedestal.
+  const top = new Mesh(extrude(roundedShape(1.5, 0.62, 0.12), 0.035, 0.008), walnutMaterial());
   top.rotation.x = -Math.PI / 2;
   top.position.set(0, DESK_Y - 0.04, DESK_Z);
   room.add(top);
@@ -390,7 +523,7 @@ export function buildRoom(): Room {
   shelf.add(shelfBack);
   const bookColors = ['#1769f5', '#2149b8', '#7444d6', '#0f8a6b', '#d4561f', '#f2b705', '#101b4d'];
   for (let s = 0; s < 3; s++) {
-    const board = new Mesh(extrude(roundedShape(0.82, 0.26, 0.04), 0.025, 0), standard(PALETTE.white, 0.4));
+    const board = new Mesh(extrude(roundedShape(0.82, 0.26, 0.04), 0.025, 0), walnutMaterial());
     board.rotation.x = -Math.PI / 2;
     board.position.set(0, 0.42 + s * 0.45, -0.02);
     shelf.add(board);
@@ -434,6 +567,7 @@ export function buildRoom(): Room {
     const pot = new Mesh(new CylinderGeometry(0.17, 0.13, 0.34, 24), standard(PALETTE.white, 0.35));
     pot.position.y = 0.17;
     g.add(pot);
+    g.add(contactShadow(0.75, 0.75, 0.36));
     const leafMat = standard('#3f9b4f', 0.7);
     const leafGeo = new SphereGeometry(0.12, 10, 8);
     for (let i = 0; i < 9; i++) {

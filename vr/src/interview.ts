@@ -12,7 +12,7 @@ import { speak, stopSpeaking } from './sound.js';
 import { Button, C, font, roundRect, wrap } from './ui.js';
 import { toWav16k } from './wav.js';
 import { Placed, Spinner } from './models.js';
-import { PALETTE } from './room.js';
+import { contactShadow, PALETTE } from './room.js';
 import { LAFAEK } from './speakers.js';
 import type { Talker } from './talk.js';
 import { Vector3 } from '@iwsdk/core';
@@ -39,7 +39,7 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
   const padRing = new Mesh(new TorusGeometry(0.36, 0.008, 8, 64), new MeshBasicMaterial({ color: PALETTE.led, toneMapped: false }));
   padRing.rotation.x = -Math.PI / 2;
   padRing.position.y = 0.008;
-  mascot.add(pad, padRing);
+  mascot.add(pad, padRing, contactShadow(0.62, 0.55, 0.38, 0.012));
   // The voice comes from its mouth.
   const mouth = new Object3D();
   mouth.position.set(0, LAFAEK.metres * 0.75, 0.25);

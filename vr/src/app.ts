@@ -2,12 +2,14 @@
  * The study room app: owns the room, the desk plant, the hub with three stations, and switching
  * between screens. Each screen builds its entities in a Scope and frees them when it closes.
  */
-import { AdditiveBlending, CapsuleGeometry, Entity, Group, Mesh, MeshBasicMaterial, PlaneGeometry, RayInteractable, SRGBColorSpace, Texture, Vector3, VisibilityState, World } from '@iwsdk/core';
+import { AdditiveBlending, CapsuleGeometry, Entity, Group, Mesh, Object3D, MeshBasicMaterial, PlaneGeometry, RayInteractable, SRGBColorSpace, Texture, Vector3, VisibilityState, World } from '@iwsdk/core';
 import { animate, onPress } from './clicks.js';
 import { DataSource } from './data.js';
 import { Clickable } from './interaction.js';
 import { beamTexture, buildRoom, DESK_Y, DESK_Z, framed, onWall, PALETTE, Plant } from './room.js';
+import { loadModel } from './models.js';
 import { ProgressBoard } from './progress.js';
+import { LAFAEK } from './speakers.js';
 import { Sound } from './sound.js';
 import { addGlow, Button, C, font, roundRect, Scope, setPointerTarget, wrap } from './ui.js';
 
@@ -143,7 +145,25 @@ export class App {
     beam.position.set(0, -0.08, -0.01);
     g.add(beam);
     this.world.createTransformEntity(g);
+    // The 3D Lafaek (the same model as the interviewer) replaces the flat picture once it has
+    // loaded: a small figure sitting on the pad.
+    let figure: Object3D | null = null;
+    void loadModel('interviewer-lafaek').then((m) => {
+      if (!m) return;
+      const size = 0.42;
+      figure = m.root.clone();
+      figure.scale.setScalar(size / LAFAEK.metres);
+      figure.position.set((-LAFAEK.rig.cx / LAFAEK.rig.h) * size, -0.2, 0);
+      figure.traverse((o) => (o.raycast = () => {}));
+      g.add(figure);
+      cut.visible = false;
+      beam.visible = false;
+    });
     animate((time) => {
+      if (figure) {
+        figure.position.y = -0.2 + Math.sin(time * 1.3) * 0.008;
+        figure.rotation.y = Math.sin(time * 0.6) * 0.18;
+      }
       cut.position.y = Math.sin(time * 1.3) * 0.012;
       cut.rotation.z = Math.sin(time * 0.7) * 0.025;
     });
@@ -196,6 +216,8 @@ export class App {
 
   open(name: string): void {
     this.current = name;
+    // Music only where nobody speaks: not in Listening, Listen and Repeat or the interview.
+    this.sound.setMusic(!(name.startsWith('listen-') || name === 'repeat' || name === 'interview'));
     if (name === 'hub') void this.refreshProgress();
     this.screen?.screen.dispose();
     this.screen?.scope.dispose();
@@ -508,15 +530,23 @@ function dock(app: App, scope: Scope, left: { label: string; icon: IconName; act
   const y = DESK_Y + 0.11;
   const z = DESK_Z + 0.22;
   const items: [number, { label: string; icon: IconName | null; act: () => void }][] = [
-    [-0.24, left],
-    [0, { label: 'How to use', icon: null, act: help }],
-    [0.24, right],
+    [-0.33, left],
+    [-0.11, { label: 'How to use', icon: null, act: help }],
+    [0.11, right],
   ];
   for (const [x, it] of items) {
     const btn = new Button(scope, { w: 0.19, h: 0.07, label: it.label, icon: it.icon ? app.icon(it.icon) : app.handSelect, tone: 'ghost', poke: true }, x, y, z, it.act);
     btn.entity.object3D!.rotation.set(-0.6, 0, 0);
     addGlow(btn.panel).setStrength(0.2);
   }
+  // The learner's music switch (remembered between visits).
+  const musicLabel = () => (app.sound.musicOff ? 'Music off' : 'Music on');
+  const music: Button = new Button(scope, { w: 0.19, h: 0.07, label: musicLabel(), icon: app.icon('listening'), tone: 'ghost', poke: true }, 0.33, y, z, () => {
+    app.sound.toggleMusic();
+    music.update({ label: musicLabel() });
+  });
+  music.entity.object3D!.rotation.set(-0.6, 0, 0);
+  addGlow(music.panel).setStrength(0.2);
 }
 
 /**

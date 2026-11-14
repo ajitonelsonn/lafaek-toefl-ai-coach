@@ -28,10 +28,18 @@ export const SFX = {
 
 export type SfxName = keyof typeof SFX;
 
+/** Quiet enough to read and think over. */
+const MUSIC_VOLUME = 0.14;
+
 export class Sound {
   readonly listener = new AudioListener();
   private readonly buffers = new Map<string, AudioBuffer>();
   private loop: { stop: () => void } | null = null;
+  /** Background music: one looping track through its own gain, faded in and out. */
+  private musicGain: GainNode | null = null;
+  private musicBuffer: AudioBuffer | null = null;
+  private musicWanted = false;
+  private musicMuted = false;
 
   constructor(world: World) {
     world.camera.add(this.listener);
@@ -88,6 +96,70 @@ export class Sound {
   stopLoop(): void {
     this.loop?.stop();
     this.loop = null;
+  }
+
+  /** Whether the learner turned the music off (remembered between visits). */
+  get musicOff(): boolean {
+    return this.musicMuted;
+  }
+
+  /** Loads the background track (public/audio/ambient.mp3); silent if it is missing. */
+  async loadMusic(): Promise<void> {
+    try {
+      this.musicMuted = localStorage.getItem('lafaek-vr:music') === 'off';
+    } catch {
+      // No storage: music stays on.
+    }
+    try {
+      const res = await fetch(`${BASE}audio/ambient.mp3`);
+      if (!res.ok) return;
+      this.musicBuffer = await this.ctx.decodeAudioData(await res.arrayBuffer());
+      this.applyMusic();
+    } catch {
+      // Missing or unsupported: no music.
+    }
+  }
+
+  /**
+   * Soft background music for the quiet screens (hub, menus, reading, sentences). Screens with
+   * question audio or the microphone ask for silence, so the music never covers a voice or leaks
+   * into a recording.
+   */
+  setMusic(on: boolean): void {
+    this.musicWanted = on;
+    this.applyMusic();
+  }
+
+  /** The learner's own music switch on the desk dock. Returns true when music is now off. */
+  toggleMusic(): boolean {
+    this.musicMuted = !this.musicMuted;
+    try {
+      localStorage.setItem('lafaek-vr:music', this.musicMuted ? 'off' : 'on');
+    } catch {
+      // Not remembered, but still applied.
+    }
+    this.applyMusic();
+    return this.musicMuted;
+  }
+
+  private applyMusic(): void {
+    if (!this.musicBuffer) return;
+    if (!this.musicGain) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.musicBuffer;
+      src.loop = true;
+      this.musicGain = this.ctx.createGain();
+      this.musicGain.gain.value = 0;
+      src.connect(this.musicGain).connect(this.listener.getInput());
+      src.start();
+    }
+    const target = this.musicWanted && !this.musicMuted ? MUSIC_VOLUME : 0;
+    const now = this.ctx.currentTime;
+    const g = this.musicGain.gain;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    // Fade out quickly (a voice is about to speak), fade in gently.
+    g.linearRampToValueAtTime(target, now + (target ? 2.5 : 0.6));
   }
 
   async decode(data: ArrayBuffer): Promise<AudioBuffer> {
