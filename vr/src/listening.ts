@@ -12,6 +12,7 @@ import { buildFigure } from './figure.js';
 import { pickSpeaker, speakerInfo, type Gender, type SpeakerId, type SpeakerScene } from './speakers.js';
 import type { Talker } from './talk.js';
 import { Placed, Spinner, yawToViewer } from './models.js';
+import { resumeBar } from './resume.js';
 import { speak, stopSpeaking, type Voice } from './sound.js';
 import { Button, C, font, OptionCard, roundRect, wrap, type Scope } from './ui.js';
 
@@ -205,6 +206,8 @@ export const makeListeningScreen = (slug: ListeningSlug, label: string): ScreenF
 
   const picture = scope.panel(0.66, 0.38, 0, 1.43, -1.15).panel;
   const info = scope.panel(0.94, 0.21, 0, 1.115, -0.95).panel;
+  // "Welcome back": progress since the last Start over, like the website.
+  const bar = resumeBar(app, scope, slug);
   const speakers = [makeSpeaker(app, scope, 0, C.listening), makeSpeaker(app, scope, 1, C.speaking)];
   const spinner = new Spinner(app, new Vector3(0.4, 1.115, -0.86));
   const stopPulse = animate((time) => {
@@ -342,7 +345,8 @@ export const makeListeningScreen = (slug: ListeningSlug, label: string): ScreenF
 
   const loadItem = async () => {
     const item = items[index];
-    q = 0;
+    // Continue at the first question not answered yet (e.g. after leaving halfway).
+    q = app.data.firstOpen(slug, item.itemId, item.questions.map((x) => x.unitId));
     correctCount = 0;
     buffers = null;
     options.forEach((o) => (o.visible = false));
@@ -545,6 +549,7 @@ export const makeListeningScreen = (slug: ListeningSlug, label: string): ScreenF
       message('Loading your conversation…', C.primary);
       try {
         items = await app.data.listening(slug);
+        bar.update();
         if (!items.length) {
           play.visible = false;
           message('These questions are not ready yet. They appear here as soon as your study plan finishes making them. Try another station or come back in a few minutes.', C.muted);

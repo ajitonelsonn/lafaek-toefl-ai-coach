@@ -4,6 +4,7 @@
  * and four answer cards sit on the right. Answers are checked and saved by the LafaekTOEFL API.
  */
 import type { ScreenFactory } from './app.js';
+import { resumeBar } from './resume.js';
 import { errorMessage, type ReadingItem, type ReadingSlug } from './data.js';
 import { Button, C, font, OptionCard, roundRect, wrap, type Ctx } from './ui.js';
 
@@ -93,6 +94,8 @@ export const makeReadingScreen =
 
     const passage = scope.panel(PASSAGE.w, PASSAGE.h, PASSAGE.x, PASSAGE.y, PASSAGE.z).panel;
     const info = scope.panel(0.5, 0.21, QUESTION.x, 1.4, QUESTION.z).panel;
+    // "Welcome back": progress since the last Start over, like the website.
+    const bar = resumeBar(app, scope, slug);
     const options = [0, 1, 2, 3].map(
       (i) => new OptionCard(app.sound, scope, i, QUESTION.x, 1.235 - i * 0.095, QUESTION.z, () => void answer(i), { w: 0.5, h: 0.082 }),
     );
@@ -218,7 +221,8 @@ export const makeReadingScreen =
     };
 
     const loadItem = () => {
-      q = 0;
+      // Continue at the first question not answered yet.
+      q = app.data.firstOpen(slug, items[index].itemId, items[index].questions.map((x) => x.unitId));
       correctCount = 0;
       page = 0;
       const ctx = document.createElement('canvas').getContext('2d')!;
@@ -284,6 +288,7 @@ export const makeReadingScreen =
         message('Loading your reading questions…', C.primary);
         try {
           items = await app.data.reading(slug);
+          bar.update();
           if (!items.length) {
             message('These questions are not ready yet. They appear here as soon as your study plan finishes making them. Try another activity or come back in a few minutes.', C.muted);
             return;

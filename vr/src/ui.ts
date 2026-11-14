@@ -151,6 +151,7 @@ export function setPointerTarget(entity: Entity, on: boolean, poke = false): voi
 /** Tracks the entities one screen creates, so leaving the screen frees all of them. */
 export class Scope {
   private readonly entities: Entity[] = [];
+  private readonly cleanups: (() => void)[] = [];
   constructor(
     readonly world: World,
     readonly parent: Entity,
@@ -169,7 +170,13 @@ export class Scope {
     return { panel, entity: this.add(panel.mesh, parent) };
   }
 
+  /** Runs when the screen closes (e.g. to stop listening for updates). */
+  onDispose(fn: () => void): void {
+    this.cleanups.push(fn);
+  }
+
   dispose(): void {
+    for (const fn of this.cleanups.splice(0)) fn();
     for (let i = this.entities.length - 1; i >= 0; i--) {
       forget(this.entities[i]);
       this.entities[i].dispose();

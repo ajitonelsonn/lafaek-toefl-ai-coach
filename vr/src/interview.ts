@@ -3,6 +3,7 @@
  * question out loud, its jaw moving with the voice. The learner pinches "Answer", speaks, and gets a transcript (Muse Voice Transcribe) and an
  * AI band score with coaching (Muse Spark) through the LafaekTOEFL API.
  */
+import { resumeBar } from './resume.js';
 import { CylinderGeometry, Group, Mesh, MeshBasicMaterial, Object3D, PlaneGeometry, SRGBColorSpace, Texture, TorusGeometry } from '@iwsdk/core';
 import type { ScreenFactory } from './app.js';
 import { animate } from './clicks.js';
@@ -83,6 +84,8 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
   });
 
   const panel = scope.panel(0.94, 0.27, 0, 1.0, -0.92).panel;
+  // "Welcome back": progress since the last Start over, like the website.
+  const bar = resumeBar(app, scope, 'take-interview', 0, 1.84, -1.2);
   const spinner = new Spinner(app, new Vector3(0.36, 1.18, -0.9));
   new Button(scope, { w: 0.2, h: 0.075, label: 'Back', icon: app.icon('ctl-back'), tone: 'ghost' }, -0.6, 0.82, -0.84, () => app.goHub());
   // Starts disabled: enabled only after the first question's audio has loaded (start()).
@@ -319,13 +322,16 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
       show('Loading your interview…', '', { color: C.primary });
       try {
         item = (await app.data.interview())[0] ?? null;
+        bar.update();
+        // Continue at the first question not answered yet.
+        if (item) q = app.data.firstOpen('take-interview', item.itemId, item.questions.map((x) => x.unitId));
         if (!item) {
           show('No interview yet', 'These questions are not ready yet. They appear here as soon as your study plan finishes making them. Try another station or come back in a few minutes.');
           ask.update({ enabled: false });
           return;
         }
         // "Hear question" stays off until the first question's audio has loaded.
-        const first = item.questions[0];
+        const first = item.questions[q];
         ask.update({ enabled: false, label: 'Loading…' });
         show('Loading the interview…', item.scenario, { color: C.muted });
         void spinner.show(true);

@@ -17,6 +17,7 @@ import {
   Vector3,
 } from '@iwsdk/core';
 import type { ScreenFactory } from './app.js';
+import { resumeBar } from './resume.js';
 import { cancelTween, forget, onPress, tweenTo } from './clicks.js';
 import { errorMessage, type CheckResult, type PartRole, type SentenceItem } from './data.js';
 import { Clickable, WordTile } from './interaction.js';
@@ -217,6 +218,8 @@ export const sentenceScreen: ScreenFactory = (app, scope) => {
   const result = scope.panel(1.08, 0.38, 0, 1.53, -1.14).panel;
   result.mesh.visible = false;
   const status = scope.panel(0.6, 0.05, 0, 1.03, -0.88).panel;
+  // "Welcome back": progress since the last Start over, like the website.
+  const bar = resumeBar(app, scope, 'build-sentence', 0, 1.82, -1.2);
   new Button(scope, { w: 0.22, h: 0.075, label: 'Back', icon: app.icon('ctl-back'), tone: 'ghost' }, -0.55, 0.96, -0.84, () => app.goHub());
   const clear = new Button(scope, { w: 0.2, h: 0.075, label: 'Clear', icon: app.icon('retry'), tone: 'secondary' }, -0.23, 0.96, -0.86, () => clearAll());
   const retry = new Button(scope, { w: 0.24, h: 0.075, label: 'Try again', icon: app.icon('retry'), tone: 'secondary' }, -0.13, 0.96, -0.86, () => tryAgain());
@@ -677,6 +680,7 @@ export const sentenceScreen: ScreenFactory = (app, scope) => {
       drawStatus('Loading your sentences…', C.primary);
       try {
         items = await app.data.sentences();
+        bar.update();
         if (!items.length) {
           drawPrompt('These questions are not ready yet. They appear here as soon as your study plan finishes making them. Try another station or come back in a few minutes.');
           drawStatus('No sentences yet', C.muted);

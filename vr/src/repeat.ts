@@ -5,6 +5,7 @@
  * "Hear sentence" button turns on.
  */
 import type { ScreenFactory } from './app.js';
+import { resumeBar } from './resume.js';
 import { errorMessage, type RepeatItem, type SpeechResult } from './data.js';
 import { Spinner } from './models.js';
 import { Vector3 } from '@iwsdk/core';
@@ -30,6 +31,8 @@ export const repeatScreen: ScreenFactory = (app, scope) => {
 
   const situation = scope.panel(0.9, 0.13, 0, 1.46, -1.1).panel;
   const panel = scope.panel(0.9, 0.27, 0, 1.17, -0.95).panel;
+  // "Welcome back": progress since the last Start over, like the website.
+  const bar = resumeBar(app, scope, 'listen-repeat');
   const spinner = new Spinner(app, new Vector3(0.4, 1.2, -0.88));
   const voice = app.sound.voice(panel.mesh);
   new Button(scope, { w: 0.17, h: 0.075, label: 'Back', icon: app.icon('ctl-back'), tone: 'ghost' }, -0.6, 0.95, -0.85, () => app.goHub());
@@ -268,6 +271,9 @@ export const repeatScreen: ScreenFactory = (app, scope) => {
       show('Loading your sentences…', '', { color: C.primary });
       try {
         item = (await app.data.repeat())[0] ?? null;
+        bar.update();
+        // Continue at the first sentence not repeated yet.
+        if (item) s = app.data.firstOpen('listen-repeat', item.itemId, item.sentences.map((x) => x.unitId));
         if (!item) {
           show('No sentences yet', 'These questions are not ready yet. They appear here as soon as your study plan finishes making them. Try another activity or come back in a few minutes.');
           return;

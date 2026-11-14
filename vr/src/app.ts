@@ -209,6 +209,11 @@ export class App {
     void Promise.resolve(screen.start()).catch((e) => console.error(e));
   }
 
+  /** Opens the current screen again from the start (e.g. after "Start over"). */
+  reopen(): void {
+    this.open(this.current);
+  }
+
   /** Back one level: an activity returns to its zone, a zone to the hub. */
   goHub(): void {
     this.sound.play('close', 0.4);

@@ -175,18 +175,68 @@ interface PracticeSet<T> {
   progress: { results: Record<string, unknown> };
 }
 
-/** The learner's items for a task, unanswered ones first; empty when they have none. */
-async function practiceItems<T extends { itemId: string }>(slug: string, unitOf: (item: T) => string): Promise<T[]> {
-  const set = await api<PracticeSet<T>>(`/api/practice/${slug}/items`);
-  const done = (i: T) => `${i.itemId}:${unitOf(i)}` in set.progress.results;
-  return [...set.view.items.filter((i) => !done(i)), ...set.view.items.filter(done)];
+/** How far the learner is in one activity, counted since their last "Start over" (like the website). */
+export interface Resume {
+  answered: number;
+  total: number;
 }
 
 export class DataSource {
   /** Called after the server saves an answer (checked, spoken or AI-scored), e.g. to refresh the progress wall. */
   onSaved?: () => void;
 
+  /** Per activity: which questions are answered (since the last "Start over") and how many there are. */
+  private readonly progressBySlug = new Map<string, Resume & { done: Set<string>; keys: Set<string> }>();
+  /** Called when an answer is saved and an activity's progress changes (the "Welcome back" bar). */
+  readonly progressListeners = new Set<() => void>();
+
   constructor(readonly user: User | null) {}
+
+  /**
+   * The learner's items for an activity: items with an unanswered question first, finished ones
+   * last. Records the progress so the screen can say "Welcome back" and resume mid-item.
+   */
+  private async practiceItems<T extends { itemId: string }>(slug: string, unitsOf: (item: T) => string[]): Promise<T[]> {
+    const set = await api<PracticeSet<T>>(`/api/practice/${slug}/items`);
+    const done = new Set(Object.keys(set.progress.results));
+    const keys = set.view.items.flatMap((i) => unitsOf(i).map((u) => `${i.itemId}:${u}`));
+    this.progressBySlug.set(slug, { answered: keys.filter((k) => done.has(k)).length, total: keys.length, done, keys: new Set(keys) });
+    const open = (i: T) => unitsOf(i).some((u) => !done.has(`${i.itemId}:${u}`));
+    return [...set.view.items.filter(open), ...set.view.items.filter((i) => !open(i))];
+  }
+
+  /** Answered and total questions for an activity (after its items were loaded), or null. */
+  resume(slug: string): Resume | null {
+    const p = this.progressBySlug.get(slug);
+    return p ? { answered: p.answered, total: p.total } : null;
+  }
+
+  /** Where to continue inside an item: the first unanswered question (0 when all are done). */
+  firstOpen(slug: string, itemId: string, unitIds: string[]): number {
+    const done = this.progressBySlug.get(slug)?.done;
+    if (!done) return 0;
+    const i = unitIds.findIndex((u) => !done.has(`${itemId}:${u}`));
+    return i < 0 ? 0 : i;
+  }
+
+  /** Counts a question as answered as soon as the server saved it, and tells the listeners. */
+  private markDone(itemId: string, unitId: string): void {
+    const key = `${itemId}:${unitId}`;
+    let changed = false;
+    for (const p of this.progressBySlug.values()) {
+      if (!p.keys.has(key) || p.done.has(key)) continue;
+      p.done.add(key);
+      p.answered++;
+      changed = true;
+    }
+    if (changed) for (const fn of this.progressListeners) fn();
+  }
+
+  /** "Start over" (same as the website): earlier answers stay in the history but no longer count. */
+  async startOver(slug: string): Promise<void> {
+    await api(`/api/practice/${slug}/reset`, json({}));
+    this.progressBySlug.delete(slug);
+  }
 
   get live(): boolean {
     return this.user !== null;
@@ -194,28 +244,28 @@ export class DataSource {
 
   /** The learner's Build a Sentence items, unanswered first ([] until their plan has some). */
   sentences(): Promise<SentenceItem[]> {
-    return practiceItems<SentenceItem>('build-sentence', (i) => i.unitId);
+    return this.practiceItems<SentenceItem>('build-sentence', (i) => [i.unitId]);
   }
 
   /** Any of the four listening tasks. Listen and Choose a Response is shaped like the others. */
   async listening(slug: ListeningSlug = 'listen-conversation'): Promise<ListeningItem[]> {
     if (slug === 'listen-choose-response') {
-      const items = await practiceItems<{ itemId: string; audio: Audio; question: ChoiceQuestion }>(slug, (i) => i.question.unitId);
+      const items = await this.practiceItems<{ itemId: string; audio: Audio; question: ChoiceQuestion }>(slug, (i) => [i.question.unitId]);
       return items.map((i) => ({ itemId: i.itemId, title: 'Choose the best response', scene: 'response', imageAssetId: null, audio: i.audio, questions: [i.question] }));
     }
-    return practiceItems<ListeningItem>(slug, (i) => i.questions[0]?.unitId ?? '');
+    return this.practiceItems<ListeningItem>(slug, (i) => i.questions.map((x) => x.unitId));
   }
 
   reading(slug: ReadingSlug): Promise<ReadingItem[]> {
-    return practiceItems<ReadingItem>(slug, (i) => i.questions[0]?.unitId ?? '');
+    return this.practiceItems<ReadingItem>(slug, (i) => i.questions.map((x) => x.unitId));
   }
 
   repeat(): Promise<RepeatItem[]> {
-    return practiceItems<RepeatItem>('listen-repeat', (i) => i.sentences[0]?.unitId ?? '');
+    return this.practiceItems<RepeatItem>('listen-repeat', (i) => i.sentences.map((x) => x.unitId));
   }
 
   interview(): Promise<InterviewItem[]> {
-    return practiceItems<InterviewItem>('take-interview', (i) => i.questions[0]?.unitId ?? '');
+    return this.practiceItems<InterviewItem>('take-interview', (i) => i.questions.map((x) => x.unitId));
   }
 
   /** The learner's progress and latest mock test, for the progress wall. */
@@ -270,6 +320,7 @@ export class DataSource {
       json({ responses: [{ unitId, response }] }),
     );
     const u = r.results[unitId];
+    this.markDone(itemId, unitId);
     this.onSaved?.();
     return {
       correct: u?.correct ?? null,
@@ -302,6 +353,7 @@ export class DataSource {
       { method: 'POST', body: form },
     );
     const u = r.results[unitId];
+    this.markDone(itemId, unitId);
     this.onSaved?.();
     return { transcript: u?.transcript ?? '', similarity: u?.similarity, expected: typeof u?.answer === 'string' ? u.answer : undefined, correct: u?.correct };
   }
