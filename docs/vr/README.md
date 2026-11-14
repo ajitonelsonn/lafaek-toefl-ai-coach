@@ -74,7 +74,7 @@ The words lie on the desk as 3D tiles. Grab them and drop them into the slots, o
 
 ### Listening
 
-A picture of the scene hangs in front of you, and the speakers stand to your left and right, each voice coming from where that person stands. After the audio, pinch an answer for each question.
+A picture of the scene hangs in front of you, and the speakers stand or sit to your left and right, each voice coming from where that person is. They are 3D people, and each question brings different ones: students, a librarian, campus staff, an older man wearing a *tais*, professors at a podium for academic talks, and an announcer with a microphone. While someone talks, their mouth moves with the voice and their hands gesture. After the audio, pinch an answer for each question.
 
 ### Listen and Repeat
 
@@ -84,7 +84,7 @@ Hear a sentence, then repeat it into the headset microphone. You see which words
 
 ### Take an Interview
 
-The interviewer asks four questions out loud. Pinch **Answer**, speak, and get a transcript, a band from 1 to 6, and coaching on what to improve.
+Lafaek, the LafaekTOEFL crocodile, sits across the desk in 3D and asks four questions out loud; its jaw moves with its voice and its hands gesture while it speaks. Pinch **Answer**, speak, and get a transcript, a band from 1 to 6, and coaching on what to improve.
 
 ![Take an Interview: the crocodile interviewer across the desk](images/interview.webp)
 

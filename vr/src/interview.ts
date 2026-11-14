@@ -1,16 +1,19 @@
 /**
- * Take an Interview: the crocodile interviewer sits across the desk and asks each question out
- * loud. The learner pinches "Answer", speaks, and gets a transcript (Muse Voice Transcribe) and an
+ * Take an Interview: Lafaek, the 3D crocodile interviewer, sits across the desk and asks each
+ * question out loud, its jaw moving with the voice. The learner pinches "Answer", speaks, and gets a transcript (Muse Voice Transcribe) and an
  * AI band score with coaching (Muse Spark) through the LafaekTOEFL API.
  */
-import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Texture } from '@iwsdk/core';
+import { CylinderGeometry, Group, Mesh, MeshBasicMaterial, Object3D, PlaneGeometry, SRGBColorSpace, Texture, TorusGeometry } from '@iwsdk/core';
 import type { ScreenFactory } from './app.js';
 import { animate } from './clicks.js';
 import { errorMessage, type AiScore, type InterviewItem } from './data.js';
 import { speak, stopSpeaking } from './sound.js';
 import { Button, C, font, roundRect, wrap } from './ui.js';
 import { toWav16k } from './wav.js';
-import { Spinner } from './models.js';
+import { Placed, Spinner } from './models.js';
+import { PALETTE } from './room.js';
+import { LAFAEK } from './speakers.js';
+import type { Talker } from './talk.js';
 import { Vector3 } from '@iwsdk/core';
 
 type Phase = 'idle' | 'asking' | 'ready' | 'recording' | 'scoring' | 'result';
@@ -26,23 +29,57 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
   let timer: ReturnType<typeof setInterval> | null = null;
   let disposed = false;
 
-  // The interviewer: the LafaekTOEFL mascot as a cutout on the far side of the desk.
+  // The interviewer: Lafaek, the LafaekTOEFL crocodile, in 3D on a blue chair. It sits on a
+  // softly glowing hologram pad behind the desk, raised so its face and hands stay above the
+  // question panel. While it asks, its jaw moves with the voice and its hands gesture (talk.ts).
   const mascot = new Group();
-  mascot.position.set(0, 1.12, -1.25);
-  if (app.mascot) {
-    const tex = new Texture(app.mascot);
-    tex.colorSpace = SRGBColorSpace;
-    tex.needsUpdate = true;
-    const ratio = app.mascot.height / app.mascot.width;
-    const cut = new Mesh(new PlaneGeometry(0.62, 0.62 * ratio), new MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, alphaTest: 0.05 }));
-    cut.position.y = 0.3;
-    mascot.add(cut);
-  }
-  scope.add(mascot);
+  mascot.position.set(0, 0.74, -1.32);
+  const pad = new Mesh(new CylinderGeometry(0.36, 0.36, 0.014, 40), new MeshBasicMaterial({ color: '#cfe0ff', transparent: true, opacity: 0.55, toneMapped: false }));
+  const padRing = new Mesh(new TorusGeometry(0.36, 0.008, 8, 64), new MeshBasicMaterial({ color: PALETTE.led, toneMapped: false }));
+  padRing.rotation.x = -Math.PI / 2;
+  padRing.position.y = 0.008;
+  mascot.add(pad, padRing);
+  // The voice comes from its mouth.
+  const mouth = new Object3D();
+  mouth.position.set(0, LAFAEK.metres * 0.75, 0.25);
+  mascot.add(mouth);
+  const mascotEntity = scope.add(mascot);
+  let lafaek: Placed | null = null;
+  let talker: Talker | null = null;
+  let cutout: Mesh | null = null;
+  // The model is turned slightly; move it so its head is centred over the pad.
+  const headX = (LAFAEK.rig.cx / LAFAEK.rig.h) * LAFAEK.metres;
+  void Placed.place(app.world, mascotEntity, 'interviewer-lafaek', new Vector3(-headX, 0.007, 0), 0).then((p) => {
+    if (disposed) return p?.remove();
+    lafaek = p;
+    if (p) p.root.traverse((o) => (talker ??= (o.userData.talker as Talker | undefined) ?? null));
+    else if (app.mascot) {
+      // Without the model: the mascot picture as a flat cutout, as before.
+      const tex = new Texture(app.mascot);
+      tex.colorSpace = SRGBColorSpace;
+      tex.needsUpdate = true;
+      const ratio = app.mascot.height / app.mascot.width;
+      cutout = new Mesh(new PlaneGeometry(0.62, 0.62 * ratio), new MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, alphaTest: 0.05 }));
+      cutout.position.y = 0.68;
+      mascot.add(cutout);
+    }
+  });
+  const voice = app.sound.voice(mouth);
   const stopBob = animate((time) => {
     const talking = phase === 'asking';
-    mascot.position.y = 1.12 + Math.sin(time * (talking ? 8 : 1.6)) * (talking ? 0.012 : 0.006);
-    mascot.rotation.z = phase === 'recording' ? Math.sin(time * 1.2) * 0.03 : 0;
+    mascot.position.y = 0.74 + Math.sin(time * 1.6) * 0.006;
+    mascot.rotation.z = phase === 'recording' ? Math.sin(time * 1.2) * 0.02 : 0;
+    // A small lean towards the learner while listening to the answer.
+    mascot.rotation.x = phase === 'recording' ? 0.04 : 0;
+    padRing.scale.setScalar(talking ? 1 + Math.sin(time * 9) * 0.04 : 1);
+    if (!talker) return;
+    talker.time.value = time;
+    talker.talk.value += ((talking ? 1 : 0) - talker.talk.value) * 0.06;
+    // The jaw follows the voice; the browser voice (no audio file yet) cannot be measured, so
+    // then it moves in a speech-like rhythm.
+    let open = 0;
+    if (talking) open = voice.playing ? voice.level() : Math.max(0, Math.sin(time * 11) * 0.6 + Math.sin(time * 4.3) * 0.4);
+    talker.mouth.value += (open - talker.mouth.value) * 0.5;
   });
 
   const panel = scope.panel(0.94, 0.27, 0, 1.0, -0.92).panel;
@@ -277,9 +314,6 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
     void askQuestion();
   };
 
-  // The voice comes from the interviewer's position.
-  const voice = app.sound.voice(mascot);
-
   return {
     async start() {
       show('Loading your interview…', '', { color: C.primary });
@@ -316,6 +350,9 @@ export const interviewScreen: ScreenFactory = (app, scope) => {
       app.sound.stopLoop();
       voice.dispose();
       stopBob();
+      // The model is shared between visits: reset its movement before detaching it.
+      if (talker) talker.talk.value = talker.mouth.value = 0;
+      lafaek?.remove();
       spinner.dispose();
     },
   };

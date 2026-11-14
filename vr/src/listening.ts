@@ -1,25 +1,26 @@
 /**
- * Listen to a Conversation: the scene picture hangs in front, the two speakers (3D models of a
- * woman and a man) stand to the left and right and each voice comes from where that person stands (spatial audio). After the
- * conversation the learner pinches an answer for each question.
+ * Listen to a Conversation: the scene picture hangs in front, and the speakers (3D people from the
+ * cast in speakers.ts, different for each question) stand or sit to the left and right. Each voice
+ * comes from where that person is (spatial audio). After the conversation the learner pinches an
+ * answer for each question.
  */
 import { CapsuleGeometry, Color, Entity, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, Object3D, RayInteractable, SphereGeometry, TorusGeometry, Vector3 } from '@iwsdk/core';
 import type { App, ScreenFactory } from './app.js';
 import { animate, onPress } from './clicks.js';
 import { errorMessage, type ListeningItem, type ListeningSlug } from './data.js';
 import { buildFigure } from './figure.js';
+import { pickSpeaker, speakerInfo, type Gender, type SpeakerId, type SpeakerScene } from './speakers.js';
 import type { Talker } from './talk.js';
 import { Placed, Spinner, yawToViewer } from './models.js';
 import { speak, stopSpeaking, type Voice } from './sound.js';
 import { Button, C, font, OptionCard, roundRect, wrap, type Scope } from './ui.js';
 
-type Gender = 'female' | 'male';
-
 /**
- * One of the two speakers, standing left and right of the desk: a woman on the left and a man on
- * the right, each a 3D model (public/models/speaker-*.glb). The voice comes from the
- * figure's head (spatial audio). While it talks, a ring glows on the floor at its feet, the figure
- * sways a little and its name tag fills with colour.
+ * One of the two speaker places, left and right of the desk. Who stands (or sits) there changes
+ * with each question: setModel() swaps in a person from the cast (speakers.ts). The voice comes
+ * from the person's mouth (spatial audio). While they talk, a ring glows on the floor, the body
+ * sways a little, the hands gesture and the mouth moves (talk.ts), and the name tag fills with
+ * colour.
  */
 interface Speaker {
   group: Group;
@@ -31,6 +32,10 @@ interface Speaker {
   voice: Voice;
   label: (name: string) => void;
   talking: boolean;
+  /** Puts this person in the place (keeps the current one if it is the same). */
+  setModel: (id: SpeakerId) => void;
+  /** Adds or removes the lecture podium beside the speaker. */
+  setPodium: (on: boolean) => void;
   /** Marks this speaker as talking (glowing ring + filled name tag) or not. */
   setTalking: (on: boolean) => void;
   /** Shows or hides this speaker (one-voice tasks use a single speaker). */
@@ -38,38 +43,25 @@ interface Speaker {
   dispose: () => void;
 }
 
-/** Standing heights in metres: slot 0 is the woman, slot 1 the man. */
-const HEIGHTS = [1.58, 1.68] as const;
-
 function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speaker {
   // Out to the sides (about 48°), clear of the answers and the Room / Replay / Next buttons.
   const x = slot === 0 ? -1.3 : 1.3;
   const z = -1.15;
-  const height = HEIGHTS[slot];
   const group = new Group();
   group.position.set(x, 0, z);
   group.rotation.y = yawToViewer(x, z);
-  // The figure: the 3D model loads in the background; if it cannot load, the cutout photo is
-  // made into a relief figure instead (figure.ts). `body` is what sways while talking.
+  const groupEntity = scope.add(group);
+  // The figure: a cast model loads in the background (cached after the first time); if it cannot
+  // load, a cutout photo is made into a relief figure instead (figure.ts).
   let body: Object3D | null = null;
   let placed: Placed | null = null;
+  let fallback: Object3D | null = null;
   let talker: Talker | null = null;
+  let current: SpeakerId | null = null;
   let disposed = false;
-  void Placed.place(app.world, scope.add(group), slot === 0 ? 'speaker-female' : 'speaker-male', new Vector3(), 0).then((p) => {
-    if (disposed) return p?.remove();
-    placed = p;
-    if (p) {
-      body = p.root;
-      p.root.traverse((o) => (talker ??= (o.userData.talker as Talker | undefined) ?? null));
-    }
-    else {
-      const img = slot === 0 ? app.speakerFemale : app.speakerMale;
-      if (img) group.add((body = buildFigure(img, height).mesh));
-    }
-  });
-  // The voice comes from the mouth.
+
+  // The voice comes from the mouth; the name tag floats just above the head.
   const mouth = new Object3D();
-  mouth.position.set(0, height - 0.15, 0.08);
   group.add(mouth);
   // Glowing ring on the floor around the feet while this speaker talks.
   const ring = new Mesh(new TorusGeometry(0.3, 0.012, 8, 56), new MeshBasicMaterial({ color: new Color(color), toneMapped: false }));
@@ -77,9 +69,57 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
   ring.position.y = 0.015;
   ring.visible = false;
   group.add(ring);
+  const tag = scope.panel(0.28, 0.07, x, 1.8, z + 0.05).panel;
 
-  // Name tag just above the head.
-  const tag = scope.panel(0.28, 0.07, x, height + 0.1, z + 0.05).panel;
+  const release = () => {
+    body?.rotation.set(0, 0, 0);
+    if (talker) talker.talk.value = talker.mouth.value = 0;
+    placed?.remove();
+    fallback?.removeFromParent();
+    placed = null;
+    fallback = null;
+    body = null;
+    talker = null;
+  };
+
+  const setModel = (id: SpeakerId) => {
+    if (id === current) return;
+    current = id;
+    release();
+    const info = speakerInfo(id);
+    mouth.position.set(0, info.metres - 0.14, 0.08);
+    tag.mesh.position.y = info.metres + 0.1;
+    void Placed.place(app.world, groupEntity, id, new Vector3(), 0).then((p) => {
+      // Too late: the screen closed or another person was chosen meanwhile.
+      if (disposed || current !== id) return p?.remove();
+      placed = p;
+      if (p) {
+        body = p.root;
+        p.root.traverse((o) => (talker ??= (o.userData.talker as Talker | undefined) ?? null));
+      } else {
+        const img = info.gender === 'female' ? app.speakerFemale : app.speakerMale;
+        if (img) group.add((body = fallback = buildFigure(img, info.metres).mesh));
+      }
+    });
+  };
+
+  // The lecture podium stands in front of the speaker, a little towards the middle of the room.
+  let podium: Placed | null = null;
+  let podiumWanted = false;
+  const setPodium = (on: boolean) => {
+    podiumWanted = on;
+    if (!on) {
+      podium?.remove();
+      podium = null;
+      return;
+    }
+    if (podium) return;
+    void Placed.place(app.world, groupEntity, 'lecture-podium', new Vector3(slot === 0 ? 0.32 : -0.32, 0, 0.38), 0).then((p) => {
+      if (disposed || !podiumWanted || podium) return p?.remove();
+      podium = p;
+    });
+  };
+
   let name = slot === 0 ? 'Speaker A' : 'Speaker B';
   let talking = false;
   const voiceIcon = app.icon('voice');
@@ -113,6 +153,8 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
     voice: app.sound.voice(mouth),
     label,
     talking: false,
+    setModel,
+    setPodium,
     setVisible(on: boolean) {
       group.visible = on;
       tag.mesh.visible = on;
@@ -124,10 +166,9 @@ function makeSpeaker(app: App, scope: Scope, slot: 0 | 1, color: string): Speake
     },
     dispose: () => {
       disposed = true;
-      // The model is shared between screens: put it back upright before detaching it.
-      body?.rotation.set(0, 0, 0);
-      if (talker) talker.talk.value = talker.mouth.value = 0;
-      placed?.remove();
+      // Models are shared between screens: put them back upright before detaching them.
+      release();
+      podium?.remove();
     },
   };
 }
@@ -320,6 +361,28 @@ export const makeListeningScreen = (slug: ListeningSlug, label: string): ScreenF
       const role = item.scene === 'lecture' ? 'Professor' : item.scene === 'announcement' ? 'Announcer' : 'Speaker';
       speakers[slot].label(line?.speaker ?? (plan.single !== null ? role : slot === 0 ? 'Speaker A' : 'Speaker B'));
     });
+    // Who speaks: a person from the cast for each place, matched to the voice's gender and the
+    // scene (the same question always shows the same people). Two women or two men in one
+    // conversation get two different people.
+    const scene: SpeakerScene = (['announcement', 'lecture', 'response'] as const).find((sc) => sc === item.scene) ?? 'conversation';
+    const genders = item.audio.speakers ?? [];
+    const segments = Math.max(genders.length, script.length, item.audio.assetIds.length);
+    const genderOf = (slot: 0 | 1): Gender => {
+      for (let i = 0; i < segments; i++) {
+        const g = genders[i];
+        if (plan.who(i) === slot && g) return g;
+      }
+      return slot === 0 ? 'female' : 'male';
+    };
+    if (plan.single !== null) {
+      speakers[plan.single].setModel(pickSpeaker(genderOf(plan.single), scene, item.title, `${item.itemId}:${plan.single}`));
+    } else {
+      const first = pickSpeaker(genderOf(0), scene, item.title, `${item.itemId}:0`);
+      speakers[0].setModel(first);
+      speakers[1].setModel(pickSpeaker(genderOf(1), scene, item.title, `${item.itemId}:1`, first));
+    }
+    // An academic talk gets a lecture podium beside the professor.
+    speakers.forEach((sp, k) => sp.setPodium(scene === 'lecture' && plan.single === k));
     // Nothing can be pressed until the picture and every audio clip have loaded.
     play.update({ enabled: false, label: 'Loading conversation…', icon: null });
     message('Loading the picture and the conversation…', C.muted);

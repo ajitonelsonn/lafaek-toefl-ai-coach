@@ -1,21 +1,25 @@
 /**
- * The 3D chair, loading spinner and the two Listening speakers. Each model is loaded once through the AssetManager,
+ * The 3D chair, loading spinner, lecture podium and the Listening speakers (speakers.ts). Each model is loaded once through the AssetManager,
  * normalised to a real-world size with its feet on the floor, and reused between screens (screens
  * detach it on close instead of disposing it, so the cached GPU data stays valid).
  */
 import { AnimationMixer, AssetManager, Box3, Entity, Group, LoopRepeat, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshStandardMaterial, Object3D, Vector3, World } from '@iwsdk/core';
 import { animate } from './clicks.js';
-import { addTalking, TALK_RIGS } from './talk.js';
+import { LAFAEK, SPEAKERS, SPEAKER_IDS, type SpeakerId } from './speakers.js';
+import { addTalking } from './talk.js';
 
-export type ModelId = 'school-chair' | 'loading-spinner' | 'speaker-female' | 'speaker-male';
+export type ModelId = 'school-chair' | 'loading-spinner' | 'lecture-podium' | 'interviewer-lafaek' | SpeakerId;
+
+const isSpeaker = (id: ModelId): id is SpeakerId => (SPEAKER_IDS as string[]).includes(id);
 
 /** Target size in metres, measured on the model's largest-relevant axis. */
 const SIZE: Record<ModelId, { axis: 'y' | 'max'; metres: number }> = {
   'school-chair': { axis: 'y', metres: 1.0 }, // real size (seat about 45 cm)
   'loading-spinner': { axis: 'max', metres: 0.12 },
-  // Standing heights of the Listening speakers.
-  'speaker-female': { axis: 'y', metres: 1.58 },
-  'speaker-male': { axis: 'y', metres: 1.68 },
+  'lecture-podium': { axis: 'y', metres: 1.12 },
+  'interviewer-lafaek': { axis: 'y', metres: LAFAEK.metres },
+  // The Listening speakers at their real height (standing, or the top of the head when seated).
+  ...(Object.fromEntries(SPEAKER_IDS.map((id) => [id, { axis: 'y', metres: SPEAKERS[id].metres }])) as Record<SpeakerId, { axis: 'y'; metres: number }>),
 };
 
 interface Loaded {
@@ -75,7 +79,8 @@ export function loadModel(id: ModelId): Promise<Loaded | null> {
             if ((o as Mesh).isMesh) (o as Mesh).material = blue;
           });
         }
-        if (id === 'speaker-female' || id === 'speaker-male') {
+        const rig = isSpeaker(id) ? SPEAKERS[id].rig : id === 'interviewer-lafaek' ? LAFAEK.rig : null;
+        if (rig) {
           // Matte cloth and skin: Lambert with the colour and normal maps. The source PBR material
           // has metal in it, which turns dark without an environment map, and costs more on Quest.
           gltf.scene.traverse((o) => {
@@ -85,7 +90,7 @@ export function loadModel(id: ModelId): Promise<Loaded | null> {
             const mat = new MeshLambertMaterial({ map: src.map, normalMap: src.normalMap, emissive: '#ffffff', emissiveMap: src.map, emissiveIntensity: 0.06 });
             mesh.material = mat;
             // Mouth and hand movement while speaking (talk.ts); read by the Listening screen.
-            mesh.userData.talker = addTalking(mesh, mat, TALK_RIGS[id]);
+            mesh.userData.talker = addTalking(mesh, mat, rig, id);
             mesh.raycast = () => {};
             src.metalnessMap?.dispose();
             src.dispose();
