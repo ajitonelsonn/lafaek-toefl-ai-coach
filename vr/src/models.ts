@@ -88,6 +88,10 @@ export function loadModel(id: ModelId): Promise<Loaded | null> {
             if (!mesh.isMesh) return;
             const src = mesh.material as MeshStandardMaterial;
             const mat = new MeshLambertMaterial({ map: src.map, normalMap: src.normalMap, emissive: '#ffffff', emissiveMap: src.map, emissiveIntensity: 0.06 });
+            // The first two models were made from bright studio photos: a warm tint brings their
+            // skin in line with the rest of the cast.
+            if (id === 'speaker-male') mat.color.set('#dcc3ad');
+            if (id === 'speaker-female') mat.color.set('#eedccb');
             mesh.material = mat;
             // Mouth and hand movement while speaking (talk.ts); read by the Listening screen.
             mesh.userData.talker = addTalking(mesh, mat, rig, id);

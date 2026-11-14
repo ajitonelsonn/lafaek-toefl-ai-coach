@@ -21,7 +21,12 @@ export default defineConfig(({ command }) => ({
           '/api': {
             target: process.env.VR_API_TARGET,
             changeOrigin: true,
-            configure: (proxy) => proxy.on('proxyReq', (req) => req.setHeader('origin', process.env.VR_API_TARGET!)),
+            configure: (proxy) =>
+              proxy.on('proxyReq', (req) => {
+                req.setHeader('origin', process.env.VR_API_TARGET!);
+                // Dev only: VR_DEV_COOKIE signs the emulator in (for automated hand tests).
+                if (process.env.VR_DEV_COOKIE) req.setHeader('cookie', process.env.VR_DEV_COOKIE);
+              }),
           },
         }
       : undefined,

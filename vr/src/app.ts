@@ -123,8 +123,9 @@ export class App {
   private buildCompanion(): Group {
     const g = new Group();
     g.name = 'Companion';
-    g.position.set(-0.98, 0.98, -1.05);
-    g.rotation.y = Math.atan2(0.98, 1.05);
+    // A little left of the panels and the Back button, so it never sits in front of them.
+    g.position.set(-1.1, 0.98, -1.1);
+    g.rotation.y = Math.atan2(1.1, 1.1);
     const tex = new Texture();
     tex.colorSpace = SRGBColorSpace;
     const img = new Image();
@@ -213,6 +214,7 @@ export class App {
   }
 
   private current = 'hub';
+  private stopEase: (() => void) | null = null;
 
   open(name: string): void {
     this.current = name;
@@ -228,6 +230,21 @@ export class App {
     const scope = new Scope(this.world, this.workspace);
     const screen = factory(this, scope);
     this.screen = { scope, screen };
+    // The new screen eases in (a small rise and zoom) instead of popping into place.
+    const ws = this.workspace.object3D!;
+    this.stopEase?.();
+    let t0 = -1;
+    this.stopEase = animate((time) => {
+      if (t0 < 0) t0 = time;
+      const k = Math.min(1, (time - t0) / 0.28);
+      const e = 1 - (1 - k) ** 3;
+      ws.scale.setScalar(0.955 + 0.045 * e);
+      ws.position.y = -0.035 * (1 - e);
+      if (k >= 1) {
+        this.stopEase?.();
+        this.stopEase = null;
+      }
+    });
     void Promise.resolve(screen.start()).catch((e) => console.error(e));
   }
 

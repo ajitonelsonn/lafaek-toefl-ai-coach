@@ -38,6 +38,8 @@ function showActions(id: 'ready' | 'need-login' | 'need-plan'): void {
 async function main() {
   const [world, user] = await Promise.all([World.create($<HTMLDivElement>('scene-container'), projectOptions), currentUser()]);
   world.registerSystem(ClickSystem);
+  // Development only: lets test scripts find buttons by name. Not in the production build.
+  if (import.meta.env.DEV) (window as unknown as { __vrWorld?: World }).__vrWorld = world;
   world.registerSystem(PinchGrabSystem);
   if (params.get('fps') === '1') world.registerSystem(FpsSystem);
 

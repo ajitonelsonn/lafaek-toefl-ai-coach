@@ -262,27 +262,51 @@ export const makeListeningScreen = (slug: ListeningSlug, label: string): ScreenF
   const drawPicture = (img: CanvasImageSource | null, title: string) =>
     picture.draw((ctx, W, H) => {
       picture.card(C.surface, C.line, 30);
+      // The caption bar's height is known first, so the scene fills only the space above it.
+      ctx.font = font(30, 800);
+      const two = ctx.measureText(title).width > W - 80;
+      const barH = two ? 104 : 66;
+      const sceneH = H - 28 - barH;
       ctx.save();
       roundRect(ctx, 14, 14, W - 28, H - 28, 22);
       ctx.clip();
       if (img) {
         const iw = (img as HTMLImageElement).width;
         const ih = (img as HTMLImageElement).height;
-        const s = Math.max((W - 28) / iw, (H - 28) / ih);
-        ctx.drawImage(img, (W - iw * s) / 2, (H - ih * s) / 2, iw * s, ih * s);
+        const s = Math.max((W - 28) / iw, sceneH / ih);
+        ctx.drawImage(img, (W - iw * s) / 2, 14 + (sceneH - ih * s) / 2, iw * s, ih * s);
       } else {
-        ctx.fillStyle = C.soft;
+        // No picture for this question: a calm sky-blue card with the listening icon.
+        const sky = ctx.createLinearGradient(0, 0, 0, H);
+        sky.addColorStop(0, '#cfe4ff');
+        sky.addColorStop(1, '#eef5ff');
+        ctx.fillStyle = sky;
         ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        for (const [cx, cy, r] of [[W * 0.2, H * 0.3, 70], [W * 0.82, H * 0.24, 90], [W * 0.68, H * 0.62, 55]]) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        const icon = app.icon('zone-listening');
+        if (icon) {
+          const ih = H * 0.46;
+          const iw = (icon.width / icon.height) * ih;
+          ctx.drawImage(icon, (W - iw) / 2, 14 + (sceneH - ih) / 2, iw, ih);
+        }
       }
       ctx.restore();
-      const g = ctx.createLinearGradient(0, H - 110, 0, H);
-      g.addColorStop(0, 'rgba(16,27,77,0)');
-      g.addColorStop(1, 'rgba(16,27,77,0.75)');
-      ctx.fillStyle = g;
-      ctx.fillRect(14, H - 110, W - 28, 96);
+      // Caption bar under the scene: the title in full, on two lines when it is long.
+      ctx.font = font(30, 800);
+      ctx.save();
+      roundRect(ctx, 14, 14, W - 28, H - 28, 22);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(16, 27, 77, 0.88)';
+      ctx.fillRect(14, H - 14 - barH, W - 28, barH);
+      ctx.restore();
       ctx.fillStyle = '#ffffff';
-      ctx.font = font(34, 800);
-      ctx.fillText(title, 40, H - 70);
+      ctx.textBaseline = 'top';
+      wrap(ctx, title, 40, H - 14 - barH + 16, W - 80, 38, 2);
     });
 
   const drawInfo = (draw: (ctx: CanvasRenderingContext2D, W: number, H: number) => void, counter?: string) =>
