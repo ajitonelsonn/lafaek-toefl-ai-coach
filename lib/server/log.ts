@@ -2,6 +2,8 @@ import "server-only";
 
 // Structured JSON logs. Never pass secrets, OTPs, passwords, tokens, recordings
 // or full learner content here; known-sensitive keys are redacted defensively.
+// Exception by design: the Meta call log (providers/meta.ts) keeps a short preview of each
+// AI response (cut to 400 characters; LOG_AI_RESPONSES=off removes it).
 
 const SENSITIVE = /pass|secret|token|otp|authorization|cookie|api[_-]?key|session|hash|email/i;
 

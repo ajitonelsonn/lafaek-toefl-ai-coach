@@ -8,10 +8,19 @@ import { callContext } from "../call-context";
 /**
  * One log line per Meta API call, so the server logs (Vercel for the website and the VR room,
  * Render for the worker) show every real call: which Meta endpoint and model, Meta's own request
- * id, how long it took and the tokens used, and whether it came from the VR room, the website or
- * a worker job. Prompts, transcripts, audio and keys are never logged.
+ * id, how long it took and the tokens used, whether it came from the VR room, the website or a
+ * worker job, and a short preview of what Meta answered (the model's JSON, or the transcript),
+ * cut to a few hundred characters. Set LOG_AI_RESPONSES=off to leave the preview out. Prompts,
+ * audio and keys are never logged.
  */
-function logMetaCall(fields: { api: string; model: string; ms: number; status: number; requestId?: string | null; usage?: { input: number | null; output: number | null }; audioMs?: number | null; task?: string }) {
+const PREVIEW_CHARS = 400;
+function preview(text: string | null | undefined): string | undefined {
+  if (text == null || env().LOG_AI_RESPONSES?.toLowerCase() === "off") return undefined;
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > PREVIEW_CHARS ? `${flat.slice(0, PREVIEW_CHARS)}… (${flat.length} chars)` : flat;
+}
+
+function logMetaCall(fields: { api: string; model: string; ms: number; status: number; requestId?: string | null; usage?: { input: number | null; output: number | null }; audioMs?: number | null; task?: string; response?: string; image?: { bytes: number; format: string } }) {
   const ctx = callContext();
   let host = "api.meta.ai";
   try {
@@ -144,7 +153,16 @@ async function generateTextWith<T>(
   const requestId = res.headers.get("x-request-id");
   const body = chatResponse.safeParse(await res.json());
   if (body.success) {
-    logMetaCall({ api: "/chat/completions", model: body.data.model ?? model, task: args.task, ms: Date.now() - started, status: res.status, requestId: requestId ?? body.data.id ?? null, usage: { input: body.data.usage?.prompt_tokens ?? null, output: body.data.usage?.completion_tokens ?? null } });
+    logMetaCall({
+      api: "/chat/completions",
+      model: body.data.model ?? model,
+      task: args.task,
+      ms: Date.now() - started,
+      status: res.status,
+      requestId: requestId ?? body.data.id ?? null,
+      usage: { input: body.data.usage?.prompt_tokens ?? null, output: body.data.usage?.completion_tokens ?? null },
+      response: preview(body.data.choices[0]?.message.content),
+    });
   }
   if (!body.success) throw new ProviderError(PROVIDER, "invalid_output", "Unexpected response shape from Meta.", res.status, requestId ?? undefined);
   const content = body.data.choices[0].message.content ?? "";
@@ -191,11 +209,11 @@ export async function generateImage(prompt: string, opts: { size?: string } = {}
     logMetaFailure("/images/generations", model, started, e);
     throw e;
   });
-  logMetaCall({ api: "/images/generations", model, ms: Date.now() - started, status: res.status, requestId: res.headers.get("x-request-id") });
   const body = imageResponse.safeParse(await res.json());
   const b64 = body.success ? body.data.data[0].b64_json : undefined;
   if (!b64) throw new ProviderError(PROVIDER, "invalid_output", "Image response had no image data.", res.status);
   const fmt = (body.success && body.data.output_format) || "png";
+  logMetaCall({ api: "/images/generations", model, ms: Date.now() - started, status: res.status, requestId: res.headers.get("x-request-id"), image: { bytes: Math.floor((b64.length * 3) / 4), format: fmt } });
   return { bytes: Buffer.from(b64, "base64"), mimeType: `image/${fmt === "jpg" ? "jpeg" : fmt}`, model, requestId: res.headers.get("x-request-id") };
 }
 
@@ -217,7 +235,7 @@ export async function transcribeAudio(wav: Buffer): Promise<{ transcript: string
   const body = asrResponse.safeParse(await res.json());
   if (!body.success) throw new ProviderError(PROVIDER, "invalid_output", "Unexpected transcription response.", res.status);
   logMetaCall({ api: "/asr/transcribe", model, ms: Date.now() - started, status: res.status, // Meta returns no request-id header here; its own session id identifies the call instead.
-    requestId: res.headers.get("x-request-id") ?? body.data.sessionId ?? null, audioMs: body.data.audioDurationMs ?? null });
+    requestId: res.headers.get("x-request-id") ?? body.data.sessionId ?? null, audioMs: body.data.audioDurationMs ?? null, response: preview(body.data.transcript) });
   return { transcript: body.data.transcript, audioDurationMs: body.data.audioDurationMs ?? null, model };
 }
 

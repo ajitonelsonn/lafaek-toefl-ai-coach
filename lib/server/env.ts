@@ -43,6 +43,8 @@ const schema = z.object({
   ADMIN_CONTACT_EMAIL: optional,
   /** Email of the account whose questions the guest demo shows. Unset = no guest demo. */
   DEMO_CONTENT_EMAIL: optional,
+  /** "off" stops the server logs from including a short preview of each Meta AI response. */
+  LOG_AI_RESPONSES: optional,
   GENERATION_MAX_CONCURRENCY_PER_USER: int(1),
   /** Per-learner limit in the quick lane (audio, pictures, vocabulary, schedule, mock rating). */
   GENERATION_MAX_QUICK_CONCURRENCY_PER_USER: int(4),
