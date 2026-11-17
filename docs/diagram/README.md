@@ -2,13 +2,17 @@
 
 LafaekTOEFL AI Coach is a TOEFL iBT (2026 format) practice app. A learner writes a study plan, and AI builds a personal set of practice questions for all 12 TOEFL task types, with pictures, listening audio, vocabulary and a study schedule. The learner practises, gets instant AI scores for writing and speaking, and can take a full timed mock test. A score of 4.0 or higher earns a certificate that anyone can check online.
 
-The five diagrams below explain how it works, from the big picture down to the database.
+On a **Meta Quest**, the same learner can step into the **VR Study Room**: a hands-first virtual classroom with 9 of the TOEFL tasks, using their own study-plan questions and the same scoring.
+
+The seven diagrams below explain how it works, from the big picture down to the database, then the VR room and signing in on the headset.
 
 1. [System architecture](#1-system-architecture)
 2. [Content generation](#2-content-generation--from-study-plan-to-practice)
 3. [Mock test](#3-mock-test--taking-scoring-and-certificates)
 4. [Sign-up, login and sessions](#4-sign-up-login-and-sessions)
 5. [Database](#5-database)
+6. [VR Study Room on Meta Quest](#6-vr-study-room-on-meta-quest)
+7. [Sign in on Quest with a code](#7-sign-in-on-quest-with-a-code)
 
 ---
 
@@ -21,6 +25,7 @@ The app runs on four services, each doing what it is best at.
 | Service                                        | Where                               | What it does                                                                                                              |
 | ---------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | **Web app** (Next.js 15, React 19, TypeScript) | Vercel                              | All pages and API routes: sign-up and login, study plans, practice, instant scoring, mock tests, certificate checks       |
+| **VR Study Room** (IWSDK on Three.js, WebXR)   | Vercel, at `/vr/room`               | A static build served next to the web app. It runs in the Meta Quest Browser and calls the same API routes                |
 | **Background worker** (Node.js)                | Render, Singapore, 0.5 CPU / 512 MB | Long AI work: writing questions, making pictures and audio, choosing vocabulary, planning the schedule, rating mock tests |
 | **Database** (PostgreSQL, through Prisma)      | Render                              | All app data, plus the job queue and the rate limits                                                                      |
 | **File storage** (Amazon S3)                   | AWS                                 | Pictures, listening audio, word pronunciation and mock-test recordings in a private bucket                                |
@@ -48,7 +53,7 @@ There are two exceptions where the web app calls the AI directly, because the le
 - Practice answers are scored instantly. Speech-to-text and the AI score take about 10–14 seconds, well within Vercel's limit.
 - Verification emails are sent straight away.
 
-**Media is never public.** Files sit in a private S3 bucket. The browser gets a signed link that works for 5 minutes, and only after the server has checked that the file belongs to that learner.
+**Media is never public.** Files sit in a private S3 bucket. The browser gets a signed link that works for 5 minutes, and only after the server has checked that the file belongs to that learner. The VR room loads its pictures and audio through the web app instead (`/api/media/[id]/file`, same ownership check), because WebGL textures and Web Audio cannot read cross-origin S3 links.
 
 ---
 
@@ -145,6 +150,12 @@ A mock test is a full, timed test made from the learner's own practice items and
 - Requests that change data must also come from our own site (same-origin check).
 - Forgot password uses the same email-code flow, and logging out revokes the session.
 
+**Signed-in devices:**
+
+- An account can be signed in on **3 devices** at once. A 4th sign-in signs out the device used longest ago, so a new sign-in always works and nobody gets locked out.
+- Settings lists each device (for example "Meta Quest browser" or "Chrome on Mac") with when it was last active, a Sign out button for each, and Sign out all other devices.
+- Signing in on a headset with a code instead of a password is shown in [diagram 7](#7-sign-in-on-quest-with-a-code).
+
 Rate limits live in PostgreSQL, so they apply across every Vercel instance. Secrets (API keys, database URL, SMTP password, AWS keys) stay on the server and are never sent to the browser.
 
 ---
@@ -153,11 +164,11 @@ Rate limits live in PostgreSQL, so they apply across every Vercel instance. Secr
 
 ![Database](05-database.png)
 
-PostgreSQL on Render holds 20 tables, managed with Prisma. They fall into six groups:
+PostgreSQL on Render holds 21 tables, managed with Prisma. They fall into six groups:
 
 | Group                   | Tables                                                                           | Purpose                                                                                                   |
 | ----------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Account & access        | `users`, `sessions`, `auth_otps`, `user_preferences`, `credit_grants`            | Accounts, hashed passwords, hashed sessions and email codes, settings, credits (Starter plus Boost Packs) |
+| Account & access        | `users`, `sessions`, `auth_otps`, `user_preferences`, `credit_grants`, `device_links` | Accounts, hashed passwords, hashed sessions and email codes, settings, credits (Starter plus Boost Packs), one-time codes for signing in another device |
 | Study plan & generation | `study_plans`, `generation_batches`, `generation_jobs`                           | The learner's plan and the **job queue** the worker reads                                                 |
 | Practice content        | `practice_items`, `media_assets`, `vocabulary_words`                             | Each learner's own questions, their pictures and audio (stored as S3 keys), and vocabulary                |
 | Learning progress       | `practice_attempts`, `practice_drafts`, `practice_resets`, `vocabulary_progress` | Answers, scores and AI feedback, unsent drafts, per-task resets, known and review words                   |
@@ -170,5 +181,72 @@ The tables connect like this:
 - Deleting an account deletes the learner's rows. A `delete_user_assets` job removes their files from S3. `usage_events` keep the cost history without the user.
 - `generation_jobs` is both a record and the queue. The worker claims rows under a lock and holds a lease (`lease_owner`, `lease_expires_at`) while it works.
 - Media files are never stored in the database, only their S3 object key.
+- `device_links` rows live for minutes and hold only hashes; the worker deletes them a day after they expire.
 
 ---
+
+## 6. VR Study Room on Meta Quest
+
+![VR Study Room on Meta Quest](06-vr-room.png)
+
+The VR Study Room is a seated virtual classroom inspired by Timor-Leste, with views of Dili through its windows. It is built with **IWSDK** (Meta's Immersive Web SDK, on Three.js) and runs in the **Meta Quest Browser** with WebXR, so there is nothing to install.
+
+**Getting in (panel 1):**
+
+1. The learner opens `lafaektoefl.tech/vr` in the Quest Browser. The page checks that the browser can start immersive VR.
+2. If they are signed out, they sign in with a code instead of typing an email and password on the headset (see [diagram 7](#7-sign-in-on-quest-with-a-code)).
+   Or they choose **Try the demo, no account**: `POST /api/auth/guest` creates a temporary guest user and signs it in. A guest sees a read-only view of one demo account's questions (`DEMO_CONTENT_EMAIL`), keeps its own answers, has daily limits on spoken answers and AI scores, is signed out when it leaves the VR area, and is deleted by the worker after 48 hours.
+3. The room needs a study plan, because it uses the learner's own practice questions (a guest uses the demo questions instead).
+4. `/vr/room` is a static build served by Vercel next to the web app. A welcome card offers a short spoken introduction, then **Enter VR** starts a WebXR session with hand tracking. A short tutorial shows how to use your hands, and Recenter fits the desk to a seated learner.
+
+**Inside the room (panel 2):** 4 zones hold 9 of the 12 TOEFL tasks:
+
+| Zone      | Activities                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------- |
+| Reading   | Read in Daily Life, Read an Academic Passage                                                      |
+| Listening | Listen and Choose a Response, Listen to a Conversation, Listen to an Announcement, Listen to an Academic Talk |
+| Speaking  | Listen and Repeat, Take an Interview                                                              |
+| Writing   | Build a Sentence, with 3D word tiles                                                              |
+
+Write an Email and Write for an Academic Discussion are typing tasks, so they stay on the website. A dock just above the desk has Back (Exit to 2D in the hub), How to use, Recenter and Music on / off. Behind the learner, a progress wall shows their bands, accuracy, study days, mock-test band and certificate.
+
+- **Characters.** Listening uses a cast of ten 3D people (students, a librarian, campus staff, an older man with a *tais*, professors, an announcer), picked for each question by the voice's gender, the scene and the title. The interviewer is Lafaek, a 3D crocodile. They are static glTF models: a vertex shader opens the jaw by the loudness of the voice and turns the forearms while a character speaks, so no skeleton or animation data is needed.
+- **Continue where you stopped.** Each activity opens at the first unanswered question and shows a live progress bar, from the same saved answers as the website. Start over calls the website's reset route.
+
+**Hands only, no controllers (panel 3):**
+
+- **Point and pinch:** a ray from the hand picks far cards and answers. Like Quest's own menus, it acts when the fingers part, so sliding off a button cancels it.
+- **Pinch and hold to grab:** pick up a word tile in Build a Sentence, move your hand and let go over a slot. Pinching a tile once also sends it to the next free slot.
+- **Touch:** the dock floats within arm's reach, so its buttons can be pressed with a finger. They also accept a pinch from a distance and a pinch with the hand right next to the button.
+- Buttons that play media stay off until their picture or audio has loaded. Controllers also work, but nothing needs them.
+
+**What each activity calls (bottom):** the room uses the **same API routes and session cookie as the website**, so practice in VR counts in the learner's progress.
+
+- Reading, Build a Sentence and Listening load questions from `/api/practice/{task}/items` and send answers to `/api/practice/items/{id}/submit`, where they are checked and saved.
+- Pictures and audio come from S3 through `/api/media/{id}/file`. In Listening, each voice comes from where that speaker stands in the room (spatial audio).
+- Listen and Repeat and Take an Interview record the headset microphone and turn the recording into 16 kHz WAV in the headset. `/api/practice/items/{id}/speaking` transcribes it with `muse-voice-transcribe-1.0`. For the interview, `/api/practice/items/{id}/feedback` has `muse-spark-1.3` give a band from 1 to 6 with coaching.
+- The progress wall reads `/api/progress` and `/api/mock-test/latest` each time the learner returns to the hub.
+- Start over in an activity calls `POST /api/practice/{task}/reset`, the same route as the website.
+
+The room is drawn from simple shapes and small painted textures (wood, walls, soft shadows and sunlight are textures, not real-time lighting), and each character is about 15,000 to 20,000 triangles with only two on screen at once. The target is 72 fps or more on Quest; adding `?fps=1` to the room's URL shows a frame-rate readout for testing.
+
+---
+
+## 7. Sign in on Quest with a code
+
+![Sign in on Quest with a code](07-device-sign-in.png)
+
+Typing an email and password with a laser pointer is slow, so a learner can sign the headset in from a device where they are already signed in:
+
+1. **Show a code (steps 1–3).** On their phone or laptop, the learner opens the VR page and taps **Sign in on Quest**. The server makes an 8-character code such as `K7QM-3XPA`, with a QR code, and stores only an **HMAC** of it. It expires in 5 minutes, and making a new code cancels the old one.
+2. **Enter it on the Quest (steps 4–6).** On the Quest, the learner opens `lafaektoefl.tech/link` and types the code; a phone or tablet can scan the QR code instead. This only **claims** the code: the first device to enter it gets a secret that only it holds, and nothing is signed in yet.
+3. **Approve (steps 7–10).** The phone or laptop checks every 2 seconds and then shows **"Meta Quest browser wants to sign in"** with **Approve** and **Deny**. The learner taps Approve. Deny, or closing the window, cancels it.
+4. **The Quest signs itself in (steps 11–13).** The Quest has been checking every 2 seconds with its secret. Once the code is approved, the server uses it up, creates a normal session (the same cookie as a password sign-in) and opens `/vr`. If this is the account's 4th device, the one used longest ago is signed out.
+
+**Why it is safe:**
+
+- Nothing signs in without the learner's tap on Approve, so a code that someone sees or guesses is useless.
+- A code works once, for one device, for a few minutes, and the database stores only its hash.
+- Guesses are rate limited per IP address.
+- Codes leave out look-alike characters (I, L, O, 0 and 1), so they are easy to read on one screen and type on another.
+

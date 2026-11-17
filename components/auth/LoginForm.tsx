@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -13,7 +14,8 @@ import { AuthHeading, OrDivider } from "./AuthLayout";
 import { GoogleButton } from "./GoogleButton";
 import { fieldErrors } from "./field-errors";
 
-export function LoginForm() {
+/** `returnTo`: an allow-listed page (e.g. the VR room at /vr) to open after login instead of the dashboard. */
+export function LoginForm({ returnTo }: { returnTo?: string } = {}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,6 +34,8 @@ export function LoginForm() {
       const r = await api<{ next: string; needsVerification?: boolean }>("/api/auth/login", { body: parsed.data });
       setPassword("");
       if (r.needsVerification) setPendingEmail(parsed.data.email);
+      // /vr is a static page outside the Next.js routes, so it needs a full page load.
+      if (returnTo && r.next === "/dashboard") return window.location.assign(returnTo);
       router.replace(r.next);
       router.refresh();
     } catch (err) {
@@ -65,6 +69,13 @@ export function LoginForm() {
       </form>
       <OrDivider />
       <GoogleButton />
+      <Link
+        href={returnTo === "/vr" ? "/link?next=/vr" : "/link"}
+        className="mt-3 flex h-12 items-center justify-center gap-2 rounded-[var(--radius-control)] border border-line-strong bg-surface font-semibold text-ink transition-colors hover:border-primary hover:text-primary"
+      >
+        <Image src="/assets/icons/key.png" alt="" width={65} height={65} className="size-6" />
+        Sign in with a code (Meta Quest)
+      </Link>
       <p className="mt-6 text-center text-sm text-body">
         Don&apos;t have an account?{" "}
         <Link href="/signup" className="font-semibold text-primary hover:underline">

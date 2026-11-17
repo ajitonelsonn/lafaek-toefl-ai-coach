@@ -1,0 +1,106 @@
+{
+  "version": "iwsdk.scene.v1",
+  "units": "meters",
+  "components": {
+    "com.iwsdk.components.DomeGradient": {
+      "sky": [
+        0.86,
+        0.92,
+        1,
+        1
+      ],
+      "equator": [
+        0.95,
+        0.97,
+        1,
+        1
+      ],
+      "ground": [
+        0.9,
+        0.92,
+        0.97,
+        1
+      ],
+      "elevationDeg": 20,
+      "azimuthDeg": 0,
+      "dither": true
+    },
+    "com.iwsdk.components.IBLGradient": {
+      "sky": [
+        0.9,
+        0.94,
+        1,
+        1
+      ],
+      "equator": [
+        0.95,
+        0.96,
+        1,
+        1
+      ],
+      "ground": [
+        0.75,
+        0.8,
+        0.9,
+        1
+      ],
+      "intensity": 0.6
+    }
+  },
+  "environment": {
+    "toneMapping": "aces",
+    "exposure": 1.05,
+    "shadows": false
+  },
+  "resources": {},
+  "nodes": [
+    {
+      "id": "key-light",
+      "name": "Key Light",
+      "transform": {
+        "position": [
+          1.5,
+          4,
+          2
+        ],
+        "rotationDeg": [
+          -60,
+          30,
+          0
+        ]
+      },
+      "components": {
+        "DirectionalLight": {
+          "color": [
+            0.96,
+            0.98,
+            1,
+            1
+          ],
+          "intensity": 1.4
+        }
+      }
+    },
+    {
+      "id": "fill-light",
+      "name": "Fill Light",
+      "components": {
+        "HemisphereLight": {
+          "skyColor": [
+            0.92,
+            0.95,
+            1,
+            1
+          ],
+          "groundColor": [
+            0.7,
+            0.75,
+            0.88,
+            1
+          ],
+          "intensity": 1.5
+        }
+      }
+    }
+  ]
+}

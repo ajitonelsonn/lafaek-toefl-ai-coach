@@ -331,6 +331,14 @@ Every page works on a phone, including practice with audio and recording.
   <img src="images/phone-practice.webp" alt="A listening task on a phone" width="300">
 </p>
 
+## 13. Practise in VR on Meta Quest
+
+With a Meta Quest headset you can practise 9 of the 12 task types in the **VR Study Room**: a seated virtual classroom where you use only your hands. It uses the same questions, scoring and progress as the rest of the app, and it continues where you stopped.
+
+![The VR Study Room hub](../vr/images/hub.webp)
+
+Open **lafaektoefl.tech/vr** in the Quest Browser and sign in with a code from your phone, so you never type a password on the headset. No account yet? Choose **Try the demo, no account** to try the room with sample questions; leaving the VR area ends the demo. The full guide is in [VR Study Room](../vr/README.md).
+
 ---
 
 All scores in LafaekTOEFL are **practice estimates**, not official ETS/TOEFL scores. TOEFL is a registered trademark of ETS; this project is not affiliated with ETS.

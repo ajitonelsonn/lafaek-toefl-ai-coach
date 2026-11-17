@@ -17,6 +17,26 @@ export const BRAND = {
   motto: img("/assets/crops/sidebar-motto.png", 216, 152),
 } as const;
 
+/** VR landing page (/vr): crops of Hack/3d/vr_page_ilu/all_icon.png, the VR mascot and the study-room scene. */
+export const VR_ASSETS = {
+  mascot: img("/assets/vr/mascot-vr.webp", 1100, 870),
+  background: img("/assets/vr/bg-study-room.webp", 1672, 941),
+  buildSentence: img("/assets/vr/icon-build-sentence.png", 139, 108),
+  listen: img("/assets/vr/icon-listen.png", 146, 115),
+  interview: img("/assets/vr/icon-interview.png", 152, 121),
+  vr: img("/assets/vr/icon-vr.png", 108, 60),
+  desktop: img("/assets/vr/icon-desktop.png", 91, 80),
+  back: img("/assets/vr/icon-back.png", 60, 61),
+  arrowRight: img("/assets/vr/icon-arrow-right.png", 61, 60),
+  check: img("/assets/vr/icon-check.png", 48, 49),
+  pinchSelect: img("/assets/vr/hand-pinch-select.png", 252, 189),
+  pinchHold: img("/assets/vr/hand-pinch-hold.png", 301, 171),
+  zoneReading: img("/assets/vr/zone-reading.png", 236, 200),
+  zoneListening: img("/assets/vr/zone-listening.png", 232, 200),
+  zoneSpeaking: img("/assets/vr/zone-speaking.png", 218, 200),
+  zoneWriting: img("/assets/vr/zone-writing.png", 227, 200),
+} as const;
+
 export const BACKGROUNDS = {
   loginScene: img("/assets/backgrounds/login-scene.webp", 1040, 693),
   signupScene: img("/assets/backgrounds/signup-scene.webp", 1040, 693),
@@ -57,7 +77,8 @@ export type Icon3DName =
   | "email" | "password" | "show" | "hide" | "user" | "users" | "key" | "security" | "phone"
   | "message" | "help" | "support" | "contact-admin" | "continue"
   | "video" | "pdf" | "link" | "image" | "document" | "audio" | "voice" | "quiz"
-  | "practice-test" | "score-chart" | "report" | "website" | "external-link" | "search" | "filter";
+  | "practice-test" | "score-chart" | "report" | "website" | "external-link" | "search" | "filter"
+  | "vr";
 
 export function icon3dSrc(name: Icon3DName): string {
   return `/assets/icons/${name}.png`;

@@ -14,6 +14,9 @@ const LINKS = [
   { href: "/docs", label: "Docs" },
 ];
 
+/** The VR Study Room page. */
+const VR_LINK = { href: "/vr", label: "VR" };
+
 /** `user` is set when a session exists: show the way back into the app instead of sign-in links. */
 export function LandingHeader({ user }: { user?: { name: string } | null }) {
   const [open, setOpen] = useState(false);
@@ -21,12 +24,15 @@ export function LandingHeader({ user }: { user?: { name: string } | null }) {
     <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur">
       <div className="mx-auto flex h-[76px] max-w-7xl items-center gap-4 px-4 sm:px-6">
         <Logo size={46} priority />
-        <nav aria-label="Main" className="ml-8 hidden items-center gap-1 md:flex">
+        <nav aria-label="Main" className="ml-6 hidden items-center gap-1 lg:flex">
           {LINKS.map((l) => (
-            <a key={l.href} href={l.href} className="rounded-lg px-4 py-2 text-[15px] font-semibold text-ink hover:bg-primary-soft hover:text-primary">
+            <a key={l.href} href={l.href} className="whitespace-nowrap rounded-lg px-3 py-2 text-[15px] font-semibold text-ink hover:bg-primary-soft hover:text-primary xl:px-4">
               {l.label}
             </a>
           ))}
+          <Link href={VR_LINK.href} className="whitespace-nowrap rounded-lg px-3 py-2 xl:px-4 text-[15px] font-semibold text-ink hover:bg-primary-soft hover:text-primary">
+            {VR_LINK.label}
+          </Link>
         </nav>
         <div className="ml-auto flex items-center gap-2">
           {user ? (
@@ -40,7 +46,7 @@ export function LandingHeader({ user }: { user?: { name: string } | null }) {
             </>
           ) : (
             <>
-              <Link href="/login" className="hidden rounded-lg px-3 py-2 text-[15px] font-semibold text-ink hover:text-primary sm:inline-block">
+              <Link href="/login" className="hidden whitespace-nowrap rounded-lg px-3 py-2 text-[15px] font-semibold text-ink hover:text-primary sm:inline-block">
                 Sign in
               </Link>
               <span className="hidden sm:block">
@@ -56,14 +62,14 @@ export function LandingHeader({ user }: { user?: { name: string } | null }) {
             aria-expanded={open}
             aria-controls="landing-menu"
             aria-label={open ? "Close menu" : "Open menu"}
-            className="inline-flex size-11 items-center justify-center rounded-full text-ink hover:bg-surface-muted md:hidden"
+            className="inline-flex size-11 items-center justify-center rounded-full text-ink hover:bg-surface-muted lg:hidden"
           >
             {open ? <X className="size-6" /> : <Menu className="size-6" />}
           </button>
         </div>
       </div>
       {open && (
-        <nav id="landing-menu" aria-label="Mobile" className="border-t border-line bg-surface px-4 py-3 md:hidden">
+        <nav id="landing-menu" aria-label="Mobile" className="border-t border-line bg-surface px-4 py-3 lg:hidden">
           <ul className="flex flex-col gap-1">
             {LINKS.map((l) => (
               <li key={l.href}>
@@ -72,6 +78,11 @@ export function LandingHeader({ user }: { user?: { name: string } | null }) {
                 </a>
               </li>
             ))}
+            <li>
+              <Link href={VR_LINK.href} onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-2.5 font-semibold text-ink hover:bg-surface-muted">
+                VR Study Room
+              </Link>
+            </li>
             {user ? (
               <li className="pt-2">
                 <LinkButton href="/dashboard" fullWidth leftIcon={<LayoutDashboard className="size-4" />}>

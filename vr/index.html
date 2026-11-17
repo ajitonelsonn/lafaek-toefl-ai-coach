@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="theme-color" content="#1769f5" />
+    <link rel="icon" href="%BASE_URL%img/mascot.png" />
+    <title>Study Room · LafaekTOEFL</title>
+    <style>
+      :root {
+        --primary: #1769f5;
+        --primary-hover: #2149b8;
+        --ink: #101b4d;
+        --body: #3c4a73;
+        --line: #d7e2f7;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #eaf2ff; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: var(--ink); }
+      #scene-container { position: fixed; inset: 0; }
+      /* Start screen: a glass welcome card over the softly blurred room. */
+      #overlay {
+        position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; overflow: auto;
+        background: linear-gradient(180deg, rgba(16, 27, 77, 0.18), rgba(16, 27, 77, 0.34));
+        backdrop-filter: blur(5px) saturate(1.1); -webkit-backdrop-filter: blur(5px) saturate(1.1);
+        opacity: 0; transition: opacity 0.3s;
+      }
+      #overlay.ready { opacity: 1; }
+      #overlay[hidden], .group[hidden] { display: none; }
+      .card {
+        width: min(480px, 100%); padding: 0 30px 24px; border-radius: 28px; text-align: center;
+        background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(255, 255, 255, 0.9);
+        box-shadow: 0 30px 70px rgba(16, 27, 77, 0.28), 0 2px 0 rgba(255, 255, 255, 0.7) inset;
+        animation: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      @keyframes rise { from { transform: translateY(14px) scale(0.98); opacity: 0; } }
+      .mascot { width: 132px; height: auto; margin: -58px auto 4px; display: block; filter: drop-shadow(0 12px 16px rgba(16, 27, 77, 0.22)); }
+      .eyebrow { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; color: var(--primary); }
+      h1 { margin: 6px 0 6px; font-size: 26px; line-height: 1.15; font-weight: 800; color: var(--ink); }
+      .lead { margin: 0 auto; max-width: 340px; font-size: 15px; line-height: 1.45; color: var(--body); }
+      .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 16px 0 20px; padding: 0; list-style: none; }
+      .chips li {
+        display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px 0 8px; border-radius: 999px;
+        background: #eef4ff; border: 1px solid var(--line); font-size: 13px; font-weight: 700; color: var(--ink);
+      }
+      .chips img { width: 22px; height: 22px; object-fit: contain; }
+      .group { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+      .start {
+        position: relative; height: 62px; border: 0; border-radius: 18px; cursor: pointer; overflow: hidden;
+        background: linear-gradient(135deg, #3f86ff, var(--primary) 55%, var(--primary-hover));
+        color: #fff; font: inherit; font-size: 19px; font-weight: 800; letter-spacing: 0.01em;
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        box-shadow: 0 14px 28px rgba(23, 105, 245, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        transition: transform 0.15s, box-shadow 0.15s;
+      }
+      .start img { width: 40px; height: auto; filter: brightness(0) invert(1); }
+      /* A soft light sweeps across the button to draw the eye. */
+      .start::after {
+        content: ""; position: absolute; top: 0; bottom: 0; width: 40%; left: -50%;
+        background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+        animation: sweep 3.2s ease-in-out infinite;
+      }
+      @keyframes sweep { 0%, 55% { left: -50%; } 100% { left: 120%; } }
+      .start:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 18px 34px rgba(23, 105, 245, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3); }
+      .start:disabled { cursor: not-allowed; filter: grayscale(0.7); opacity: 0.55; box-shadow: none; }
+      .start:disabled::after { display: none; }
+      @media (prefers-reduced-motion: reduce) { .start::after, .card { animation: none; } }
+      .pill {
+        height: 50px; padding: 0 20px; border-radius: 16px; border: 1px solid var(--line); background: #fff;
+        color: var(--ink); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none;
+        display: flex; align-items: center; justify-content: center; gap: 8px; transition: border-color 0.15s, color 0.15s;
+      }
+      .pill:hover { border-color: var(--primary); color: var(--primary); }
+      .pill:disabled { cursor: not-allowed; opacity: 0.55; border-color: var(--line); color: var(--body); }
+      .pill.primary { border: 0; background: var(--primary); color: #fff; height: 56px; font-size: 16px; }
+      .pill.primary:hover { background: var(--primary-hover); color: #fff; }
+      /* Voice-over: a short spoken introduction to the room. */
+      .listen {
+        align-self: center; margin: -8px 0 8px; height: 40px; padding: 0 16px 0 10px; border-radius: 999px; cursor: pointer;
+        border: 1px solid #b9cdf5; background: #fff; color: var(--primary); font: inherit; font-size: 14px; font-weight: 800;
+        display: inline-flex; align-items: center; gap: 8px; transition: background 0.15s;
+      }
+      .listen:hover { background: #eef4ff; }
+      .listen img { width: 24px; height: 24px; object-fit: contain; }
+      .bars { display: none; align-items: flex-end; gap: 2px; height: 14px; }
+      .bars i { width: 3px; height: 100%; border-radius: 2px; background: var(--primary); transform-origin: bottom; animation: bar 0.9s ease-in-out infinite; }
+      .bars i:nth-child(2) { animation-delay: 0.15s; } .bars i:nth-child(3) { animation-delay: 0.3s; } .bars i:nth-child(4) { animation-delay: 0.45s; }
+      @keyframes bar { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+      .listen[aria-pressed="true"] { background: #eef4ff; }
+      .listen[aria-pressed="true"] .bars { display: inline-flex; }
+      @media (prefers-reduced-motion: reduce) { .bars i { animation: none; } }
+      .back { margin-top: 6px; font-size: 14px; font-weight: 700; color: var(--body); text-decoration: none; }
+      .back:hover { color: var(--primary); }
+      #note { margin: 12px 0 0; font-size: 13px; line-height: 1.4; color: var(--body); }
+      #note:empty { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="scene-container"></div>
+    <div id="overlay">
+      <div class="card">
+        <img class="mascot" src="%BASE_URL%img/mascot-vr.png" alt="" />
+        <p class="eyebrow">LAFAEKTOEFL · VR STUDY ROOM</p>
+        <!-- Signed in with a study plan. -->
+        <div id="ready" class="group" hidden>
+          <h1 id="hello">Your study room is ready</h1>
+          <p class="lead" id="lead">Sit down, relax, and practise with your own questions, using only your hands.</p>
+          <ul class="chips">
+            <li><img src="%BASE_URL%img/hand-pinch-select.png" alt="" />Hands only</li>
+            <li><img src="%BASE_URL%icons/zone/zone-listening.png" alt="" />9 TOEFL tasks</li>
+            <li><img src="%BASE_URL%icons/streak.png" alt="" />A few minutes</li>
+          </ul>
+          <button id="intro" class="listen" type="button" aria-pressed="false"><img src="%BASE_URL%icons/voice.png" alt="" /><span id="intro-label">Hear the introduction</span><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span></button>
+          <button id="enter-vr" class="start" type="button"><img src="%BASE_URL%img/icon-vr.png" alt="" />Enter VR</button>
+          <button id="preview" class="pill" type="button">Preview in this browser</button>
+          <a class="back" href="/vr">← Back to the VR page</a>
+        </div>
+        <!-- Not signed in (the room was opened directly). -->
+        <div id="need-login" class="group" hidden>
+          <h1>Step into the study room</h1>
+          <p class="lead" style="margin-bottom: 18px">Try the demo with sample questions, or sign in to practise with your own study plan.</p>
+          <button id="demo" class="start" type="button" hidden>Try the demo, no account</button>
+          <a class="pill" href="/link?next=/vr">Sign in with a code</a>
+          <a class="pill" href="/login?next=/vr">Email and password</a>
+          <a class="back" href="/vr">← Back to the VR page</a>
+        </div>
+        <!-- Signed in without a study plan. -->
+        <div id="need-plan" class="group" hidden>
+          <h1>Create your study plan first</h1>
+          <p class="lead" style="margin-bottom: 18px">Your plan makes the questions you will practise in the room.</p>
+          <a class="pill primary" href="/study-plan">Create my study plan</a>
+          <a class="back" href="/vr">← Back to the VR page</a>
+        </div>
+        <p id="note"></p>
+      </div>
+    </div>
+    <script type="module" src="/src/index.ts"></script>
+  </body>
+</html>

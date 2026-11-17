@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/server/db";
 import { ApiError, json, parseBody, route, uuidParam, validate } from "@/lib/server/http";
 import { requireAuth } from "@/lib/server/auth/session";
+import { limitGuestAi } from "@/lib/server/auth/guest";
 import { rateLimit } from "@/lib/server/rate-limit";
 import { getOwnedItem } from "@/lib/server/practice";
 import { FEEDBACK_LABEL, FEEDBACK_VERSION, coachResponse } from "@/lib/server/feedback";
@@ -24,6 +25,7 @@ export const POST = route<{ itemId: string }>(async (req, { params }) => {
   const input = await parseBody(req, body, 24 * 1024);
   await rateLimit("ai-feedback", user.id, 40, 3600);
   await rateLimit("ai-feedback-day", user.id, 150, 86400);
+  await limitGuestAi(user, "feedback");
 
   const c = item.contentJson as Record<string, unknown>;
   const prompt =
