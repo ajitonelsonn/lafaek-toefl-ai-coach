@@ -1,7 +1,9 @@
+import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/server/db";
 import { ApiError, json, parseBody, route, uuidParam, validate } from "@/lib/server/http";
 import { requireAuth } from "@/lib/server/auth/session";
+import { clientFromRequest, withCallContext } from "@/lib/server/call-context";
 import { limitGuestAi } from "@/lib/server/auth/guest";
 import { rateLimit } from "@/lib/server/rate-limit";
 import { getOwnedItem } from "@/lib/server/practice";
@@ -17,7 +19,12 @@ export const maxDuration = 60;
 
 // AI score (band 1–6) and coaching for an email, discussion post or interview answer. Requested by the
 // practice page after each checked or transcribed answer; rate-limited per user.
-export const POST = route<{ itemId: string }>(async (req, { params }) => {
+export const POST = route<{ itemId: string }>((req, ctx) =>
+  // Tag Meta calls in the logs with where they came from (the VR room or the website).
+  withCallContext({ client: clientFromRequest(req), feature: "feedback" }, () => handle(req, ctx)),
+);
+
+async function handle(req: NextRequest, { params }: { params: { itemId: string } }) {
   const { user } = await requireAuth();
   const item = await getOwnedItem(user.id, validate(uuidParam, params.itemId));
   const slug = item.taskSlug as PracticeSlug;
@@ -47,4 +54,4 @@ export const POST = route<{ itemId: string }>(async (req, { params }) => {
     data: { userId: user.id, practiceItemId: item.id, taskSlug: slug, unitId: input.unitId, responseJson: { kind: "ai_feedback_request", words: input.text.split(/\s+/).length }, scoreJson: { correct: null, band: feedback.band }, feedbackJson: { ai: feedback, label: FEEDBACK_LABEL }, scoringVersion: FEEDBACK_VERSION },
   });
   return json({ feedback, label: FEEDBACK_LABEL });
-});
+}

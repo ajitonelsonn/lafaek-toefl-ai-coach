@@ -1,9 +1,11 @@
+import type { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/server/db";
 import { features } from "@/lib/server/env";
 import { ApiError, json, route, uuidParam, validate } from "@/lib/server/http";
 import { requireAuth } from "@/lib/server/auth/session";
+import { clientFromRequest, withCallContext } from "@/lib/server/call-context";
 import { limitGuestAi } from "@/lib/server/auth/guest";
 import { rateLimit } from "@/lib/server/rate-limit";
 import { getOwnedItem } from "@/lib/server/practice";
@@ -21,7 +23,12 @@ export const maxDuration = 60;
 
 // Transcribes a learner's spoken answer. The recording is kept in S3 only when the
 // learner opted in and storage is configured; otherwise it is discarded after transcription.
-export const POST = route<{ itemId: string }>(async (req, { params }) => {
+export const POST = route<{ itemId: string }>((req, ctx) =>
+  // Tag Meta calls in the logs with where they came from (the VR room or the website).
+  withCallContext({ client: clientFromRequest(req), feature: "speaking" }, () => handle(req, ctx)),
+);
+
+async function handle(req: NextRequest, { params }: { params: { itemId: string } }) {
   const { user } = await requireAuth();
   const item = await getOwnedItem(user.id, validate(uuidParam, params.itemId));
   const slug = item.taskSlug as PracticeSlug;
@@ -99,4 +106,4 @@ export const POST = route<{ itemId: string }>(async (req, { params }) => {
   }
 
   return json({ results: { [unitId]: result }, attemptId: attempt.id });
-});
+}
