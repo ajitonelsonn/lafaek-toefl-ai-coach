@@ -4,6 +4,7 @@ import { db } from "@/lib/server/db";
 import { features } from "@/lib/server/env";
 import { ApiError, json, route, uuidParam, validate } from "@/lib/server/http";
 import { requireAuth } from "@/lib/server/auth/session";
+import { limitGuestAi } from "@/lib/server/auth/guest";
 import { rateLimit } from "@/lib/server/rate-limit";
 import { getOwnedItem } from "@/lib/server/practice";
 import { unitIdsOf } from "@/lib/server/content/view";
@@ -27,6 +28,7 @@ export const POST = route<{ itemId: string }>(async (req, { params }) => {
   if (slug !== "listen-repeat" && slug !== "take-interview") throw new ApiError(400, "VALIDATION_ERROR", "This task does not take spoken answers.");
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BYTES + 4096) throw new ApiError(413, "PAYLOAD_TOO_LARGE", "The recording is too large.");
   await rateLimit("speaking", user.id, 60, 3600);
+  await limitGuestAi(user, "speaking");
 
   const form = await req.formData().catch(() => null);
   const unitId = String(form?.get("unitId") ?? "");

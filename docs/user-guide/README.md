@@ -337,7 +337,7 @@ With a Meta Quest headset you can practise 9 of the 12 task types in the **VR St
 
 ![The VR Study Room hub](../vr/images/hub.webp)
 
-Open **lafaektoefl.tech/vr** in the Quest Browser and sign in with a code from your phone, so you never type a password on the headset. The full guide is in [VR Study Room](../vr/README.md).
+Open **lafaektoefl.tech/vr** in the Quest Browser and sign in with a code from your phone, so you never type a password on the headset. No account yet? Choose **Try the demo, no account** to try the room with sample questions; leaving the VR area ends the demo. The full guide is in [VR Study Room](../vr/README.md).
 
 ---
 

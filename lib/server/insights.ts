@@ -6,6 +6,8 @@ import { env } from "./env";
 import { FEEDBACK_VERSION } from "./feedback";
 import { unitIdsOf } from "./content/view";
 import { repeatCorrect } from "./content/speech";
+import { visibleTo } from "./practice";
+import { sharedContentOwner } from "./auth/guest";
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -40,7 +42,8 @@ export async function getProgress(userId: string): Promise<ProgressDTO> {
   }
   const [items, resets] = await Promise.all([
     db.practiceItem.findMany({
-      where: { archivedAt: null, validationStatus: "valid", OR: [{ source: "starter", userId: null }, { userId }] },
+      // Same questions the practice pages show (a guest also sees the demo account's).
+      where: visibleTo(userId, await sharedContentOwner(userId)),
       select: { taskSlug: true, contentJson: true },
     }),
     db.practiceReset.findMany({ where: { userId }, select: { taskSlug: true, resetAt: true } }),

@@ -195,7 +195,8 @@ The VR Study Room is a seated virtual classroom inspired by Timor-Leste, with vi
 
 1. The learner opens `lafaektoefl.tech/vr` in the Quest Browser. The page checks that the browser can start immersive VR.
 2. If they are signed out, they sign in with a code instead of typing an email and password on the headset (see [diagram 7](#7-sign-in-on-quest-with-a-code)).
-3. The room needs a study plan, because it uses the learner's own practice questions.
+   Or they choose **Try the demo, no account**: `POST /api/auth/guest` creates a temporary guest user and signs it in. A guest sees a read-only view of one demo account's questions (`DEMO_CONTENT_EMAIL`), keeps its own answers, has daily limits on spoken answers and AI scores, is signed out when it leaves the VR area, and is deleted by the worker after 48 hours.
+3. The room needs a study plan, because it uses the learner's own practice questions (a guest uses the demo questions instead).
 4. `/vr/room` is a static build served by Vercel next to the web app. A welcome card offers a short spoken introduction, then **Enter VR** starts a WebXR session with hand tracking. A short tutorial shows how to use your hands, and Recenter fits the desk to a seated learner.
 
 **Inside the room (panel 2):** 4 zones hold 9 of the 12 TOEFL tasks:

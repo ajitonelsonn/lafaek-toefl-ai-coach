@@ -7,7 +7,7 @@ import { World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 import { App, hubScreen, ZONES, zoneScreen } from './app.js';
 import { ClickSystem } from './clicks.js';
-import { currentUser, DataSource, hasStudyPlan } from './data.js';
+import { DataSource, hasStudyPlan, sessionState, startGuestDemo } from './data.js';
 import { FpsSystem } from './fps.js';
 import { interviewScreen } from './interview.js';
 import { makeListeningScreen } from './listening.js';
@@ -36,7 +36,8 @@ function showActions(id: 'ready' | 'need-login' | 'need-plan'): void {
 }
 
 async function main() {
-  const [world, user] = await Promise.all([World.create($<HTMLDivElement>('scene-container'), projectOptions), currentUser()]);
+  const [world, session] = await Promise.all([World.create($<HTMLDivElement>('scene-container'), projectOptions), sessionState()]);
+  const user = session.user;
   world.registerSystem(ClickSystem);
   // Development only: lets test scripts find buttons by name. Not in the production build.
   if (import.meta.env.DEV) (window as unknown as { __vrWorld?: World }).__vrWorld = world;
@@ -54,10 +55,25 @@ async function main() {
   overlay.classList.add('ready');
 
   if (!user) {
+    // No account needed: "Try the demo" signs this browser in as a guest and reloads the room.
+    const demoBtn = $<HTMLButtonElement>('demo');
+    demoBtn.hidden = !session.guestDemo;
+    demoBtn.addEventListener('click', () => {
+      demoBtn.disabled = true;
+      demoBtn.textContent = 'Opening the demo…';
+      startGuestDemo()
+        .then(() => location.reload())
+        .catch((e) => {
+          demoBtn.disabled = false;
+          demoBtn.textContent = 'Try the demo, no account';
+          note.textContent = e instanceof Error ? e.message : 'The demo could not start. Please try again.';
+        });
+    });
     showActions('need-login');
     return;
   }
-  if (!(await hasStudyPlan())) {
+  // A guest practises with the demo questions, so needs no study plan.
+  if (!user.guest && !(await hasStudyPlan())) {
     showActions('need-plan');
     return;
   }
@@ -81,12 +97,23 @@ async function main() {
   app.open(startAt);
   allowed = true;
   const first = user.name?.trim().split(/\s+/)[0];
-  if (first) $('hello').textContent = `Welcome back, ${first}`;
+  if (user.guest) {
+    $('hello').textContent = 'Welcome to the demo';
+    $('lead').textContent = 'Sit down, relax, and try the room with sample questions, using only your hands.';
+  }
+  else if (first) $('hello').textContent = `Welcome back, ${first}`;
   showActions('ready');
   const xrOk = Boolean(navigator.xr && (await navigator.xr.isSessionSupported('immersive-vr').catch(() => false)));
   if (!xrOk) {
+    // No headset on this device (e.g. a laptop): Preview becomes the main button, and Enter VR
+    // steps back as a small disabled one, so the screen never looks broken.
     enterBtn.disabled = true;
-    note.textContent = 'Enter VR needs a Meta Quest headset. On this device, use Preview.';
+    enterBtn.className = 'pill';
+    enterBtn.textContent = 'Enter VR (needs a Meta Quest)';
+    previewBtn.className = 'start';
+    previewBtn.innerHTML = `<img src="${import.meta.env.BASE_URL}img/icon-vr.png" alt="" />Preview the room`;
+    enterBtn.before(previewBtn);
+    note.textContent = 'This device cannot start VR, so the room opens in the browser: look around and press with the mouse.';
   }
   // Voice-over: a short recorded introduction to the room (public/audio/intro.mp3). Browsers only
   // allow sound after a tap, so it starts by itself where that is allowed and otherwise waits

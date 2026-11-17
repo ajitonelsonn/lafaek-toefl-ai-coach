@@ -41,6 +41,8 @@ const schema = z.object({
   ELEVENLABS_API_KEY: optional,
   ELEVENLABS_MODEL_ID: modelId("eleven_multilingual_v2"),
   ADMIN_CONTACT_EMAIL: optional,
+  /** Email of the account whose questions the guest demo shows. Unset = no guest demo. */
+  DEMO_CONTENT_EMAIL: optional,
   GENERATION_MAX_CONCURRENCY_PER_USER: int(1),
   /** Per-learner limit in the quick lane (audio, pictures, vocabulary, schedule, mock rating). */
   GENERATION_MAX_QUICK_CONCURRENCY_PER_USER: int(4),

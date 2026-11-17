@@ -20,6 +20,7 @@ This folder is the room's source. It builds into `../public/vr/room/`, which the
 | **Spatial audio** | Each voice comes from where its speaker is |
 | **Same account and data** | Same sign-in, questions, scoring and progress as the website, through the same API routes |
 | **Continue where you stopped** | Each activity resumes at the first unanswered question, with a live progress bar and Start over |
+| **Guest demo** | "Try the demo, no account" signs a visitor in as a temporary guest with sample questions (server side: `lib/server/auth/guest.ts`, enabled by `DEMO_CONTENT_EMAIL`) |
 
 ## Run it
 
@@ -72,7 +73,7 @@ From the repository root, `npm run vr:dev` and `npm run vr:build` do the same as
 | File | What it holds |
 | --- | --- |
 | `index.html` | The welcome card (greeting, spoken introduction, Enter VR, Preview) |
-| `src/index.ts` | Start-up: sign-in and study-plan checks, screen registration, the welcome card's buttons |
+| `src/index.ts` | Start-up: sign-in and study-plan checks, the guest demo button, screen registration, the welcome card's buttons (Preview becomes the main one on a device without WebXR) |
 | `src/app.ts` | The app shell: hub and zone menus, the dock, the hand tutorial, the 3D companion, switching screens |
 | `src/room.ts` | The classroom, drawn in code: walls, oak floor, walnut desk, windows, shelves, plants, soft shadows, sunlight |
 | `src/ui.ts` | Canvas-texture panels, buttons and answer cards |

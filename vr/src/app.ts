@@ -661,7 +661,7 @@ export const hubScreen: ScreenFactory = (app, scope) => {
     start() {
       const name = app.data.user?.name?.split(' ')[0];
       const days = app.studyDays();
-      headerPanel(scope, 'LAFAEKTOEFL  ·  VR STUDY ROOM', name ? `Welcome back, ${name}` : 'Welcome back', 'Pick a zone to practise with your own questions.', {
+      headerPanel(scope, 'LAFAEKTOEFL  ·  VR STUDY ROOM', app.data.user?.guest ? 'Welcome to the demo' : name ? `Welcome back, ${name}` : 'Welcome back', app.data.user?.guest ? 'Pick a zone to practise with sample questions.' : 'Pick a zone to practise with your own questions.', {
         text: days ? `${days} day${days > 1 ? 's' : ''}` : 'Day 1',
         icon: app.icon('streak'),
       });

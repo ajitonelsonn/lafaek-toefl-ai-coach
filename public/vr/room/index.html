@@ -70,6 +70,7 @@
         display: flex; align-items: center; justify-content: center; gap: 8px; transition: border-color 0.15s, color 0.15s;
       }
       .pill:hover { border-color: var(--primary); color: var(--primary); }
+      .pill:disabled { cursor: not-allowed; opacity: 0.55; border-color: var(--line); color: var(--body); }
       .pill.primary { border: 0; background: var(--primary); color: #fff; height: 56px; font-size: 16px; }
       .pill.primary:hover { background: var(--primary-hover); color: #fff; }
       /* Voice-over: a short spoken introduction to the room. */
@@ -92,7 +93,7 @@
       #note { margin: 12px 0 0; font-size: 13px; line-height: 1.4; color: var(--body); }
       #note:empty { display: none; }
     </style>
-    <script type="module" crossorigin src="/vr/room/assets/index-C0GoEDri.js"></script>
+    <script type="module" crossorigin src="/vr/room/assets/index-DXl92V-5.js"></script>
   </head>
   <body>
     <div id="scene-container"></div>
@@ -103,7 +104,7 @@
         <!-- Signed in with a study plan. -->
         <div id="ready" class="group" hidden>
           <h1 id="hello">Your study room is ready</h1>
-          <p class="lead">Sit down, relax, and practise with your own questions, using only your hands.</p>
+          <p class="lead" id="lead">Sit down, relax, and practise with your own questions, using only your hands.</p>
           <ul class="chips">
             <li><img src="/vr/room/img/hand-pinch-select.png" alt="" />Hands only</li>
             <li><img src="/vr/room/icons/zone/zone-listening.png" alt="" />9 TOEFL tasks</li>
@@ -116,9 +117,10 @@
         </div>
         <!-- Not signed in (the room was opened directly). -->
         <div id="need-login" class="group" hidden>
-          <h1>Sign in to enter</h1>
-          <p class="lead" style="margin-bottom: 18px">The room uses your own study-plan questions, so it needs your account.</p>
-          <a class="pill primary" href="/link?next=/vr">Sign in with a code</a>
+          <h1>Step into the study room</h1>
+          <p class="lead" style="margin-bottom: 18px">Try the demo with sample questions, or sign in to practise with your own study plan.</p>
+          <button id="demo" class="start" type="button" hidden>Try the demo, no account</button>
+          <a class="pill" href="/link?next=/vr">Sign in with a code</a>
           <a class="pill" href="/login?next=/vr">Email and password</a>
           <a class="back" href="/vr">← Back to the VR page</a>
         </div>

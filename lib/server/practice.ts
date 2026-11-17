@@ -1,3 +1,4 @@
+import { sharedContentOwner } from "./auth/guest";
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { PRACTICE_TYPES, getPracticeType, type PracticeSlug } from "@/lib/config/practice-types";
@@ -10,18 +11,21 @@ import { repeatCorrect } from "./content/speech";
 
 const MAX_ITEMS_PER_PAGE = 30;
 
-/** Items a user may see: the shared starter set plus their own validated generated items. */
-export function visibleTo(userId: string): Prisma.PracticeItemWhereInput {
+/**
+ * Items a user may see: the shared starter set plus their own validated generated items. A guest
+ * (see auth/guest.ts) also sees the demo account's items, passed as `sharedOwner`.
+ */
+export function visibleTo(userId: string, sharedOwner?: string | null): Prisma.PracticeItemWhereInput {
   return {
     archivedAt: null,
     validationStatus: "valid",
-    OR: [{ source: "starter", userId: null }, { userId }],
+    OR: [{ source: "starter", userId: null }, { userId }, ...(sharedOwner ? [{ userId: sharedOwner }] : [])],
   };
 }
 
 export async function getPracticeSet(userId: string, slug: PracticeSlug, cursor?: string): Promise<PracticeSetDTO & { nextCursor: string | null }> {
   const rows = await db.practiceItem.findMany({
-    where: { ...visibleTo(userId), taskSlug: slug },
+    where: { ...visibleTo(userId, await sharedContentOwner(userId)), taskSlug: slug },
     include: { media: { where: { deletedAt: null } } },
     // Personalised items first, then the starter set.
     orderBy: [{ source: "asc" }, { createdAt: "asc" }, { itemIndex: "asc" }],
@@ -43,7 +47,7 @@ export async function getPracticeSet(userId: string, slug: PracticeSlug, cursor?
 }
 
 export async function getOwnedItem(userId: string, itemId: string) {
-  const item = await db.practiceItem.findFirst({ where: { id: itemId, ...visibleTo(userId) }, include: { media: { where: { deletedAt: null } } } });
+  const item = await db.practiceItem.findFirst({ where: { id: itemId, ...visibleTo(userId, await sharedContentOwner(userId)) }, include: { media: { where: { deletedAt: null } } } });
   // Same response for "missing" and "not yours", so ids cannot be probed.
   if (!item) throw new ApiError(404, "NOT_FOUND", "This practice item was not found.");
   return item;

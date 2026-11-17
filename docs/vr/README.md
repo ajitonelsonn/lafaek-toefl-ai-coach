@@ -29,15 +29,33 @@ The room was designed around four simple tests:
 | **Hands only.** Can you finish everything without a controller? | Yes. Every screen works with three hand gestures: point and pinch, pinch and hold, and touch. Signing in needs no typing on the headset either. Controllers work too, but nothing needs them. |
 | **An airplane seat.** Does every interaction fit within arm's reach of a chair? | Yes. You never stand or walk. Answers and buttons float in front of you, the dock is 45 cm away on the desk, and **Recenter** fits the desk to your chair. |
 | **One bus stop.** Can you have a complete moment in a short ride? | Yes. One activity is a few minutes: read and answer, build a sentence, hear a conversation, or answer one interview question and get your score. The room remembers where you stopped. |
+| **No sign-up wall.** Can someone try it straight away? | Yes. **Try the demo, no account** opens the room in one tap, with sample questions and real scoring. |
 | **Take it away.** Is there still an app without a third-party service? | Yes. The room, its interactions, the questions, the scoring flow and the progress tracking are all our own. AI models write and score the content, but the experience is not a wrapper around a chat window. |
 
 ## What you need
 
 - A **Meta Quest** headset with the **Quest Browser**. There is nothing to install.
 - A LafaekTOEFL account with a **study plan**. The room uses the questions made for your plan.
+- Or no account at all: see [Try it without an account](#try-it-without-an-account).
 - A chair. Everything works seated, within arm's reach, and **no controllers are needed**.
 
-No headset? On a computer, open the VR page and choose **Preview in this browser** to look around the room with your mouse.
+No headset? On a computer, the welcome card shows **Preview the room** as its main button: the room opens in the browser, and you look around and press with the mouse. **Enter VR** stays greyed out there, because a computer's browser cannot start VR.
+
+## Try it without an account
+
+Anyone can step into the room in one tap, with no sign-up, email or study plan:
+
+1. Open **[lafaektoefl.tech/vr](https://www.lafaektoefl.tech/vr)**, or the room itself, and choose **Try the demo, no account**.
+2. The room opens with **"Welcome to the demo"**. Choose **Enter VR** on a Quest, or **Preview the room** on a computer.
+3. Practise any of the 9 tasks with **sample questions**: real study-plan questions with their pictures and voices. Your answers and progress are your own; nobody else sees them, and you do not change anyone else's.
+
+Good to know:
+
+- **Speaking is real but limited.** Listen and Repeat and the interview give a real transcript and AI score, up to 12 spoken answers and 8 AI scores a day for each guest.
+- **The demo stays in the VR area.** Going back to the app (**Leave the demo**, the logo, or any app page) signs the guest out and opens the home page. Create a free account to get your own study plan and keep your progress.
+- **Guest data is temporary.** A guest's answers and progress are deleted after 48 hours.
+
+![The demo welcome card: Welcome to the demo, Hear the introduction, Preview the room, and Enter VR (needs a Meta Quest)](images/demo.webp)
 
 ## Getting in
 

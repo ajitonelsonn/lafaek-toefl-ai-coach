@@ -8,7 +8,7 @@
 
 A learner writes a study plan, and AI builds a personal set of practice questions for all 12 task types of the TOEFL iBT that started in January 2026. The set comes with pictures, listening audio in the accents the learner chose, a vocabulary list and a week-by-week schedule. The learner gets instant AI scores for writing and speaking, can take a full timed mock test, and earns a certificate that anyone can verify online with a band of 4.0 or higher.
 
-On a **Meta Quest**, the learner can also practise in the **VR Study Room**: a hands-first virtual classroom with 9 of the TOEFL tasks, the learner's own questions and the same scoring, signed in with a code instead of a password.
+On a **Meta Quest**, the learner can also practise in the **VR Study Room**: a hands-first virtual classroom with 9 of the TOEFL tasks, the learner's own questions and the same scoring, signed in with a code instead of a password. Anyone can try it first with **Try the demo, no account**.
 
 ## Why it exists
 
@@ -44,6 +44,7 @@ Read more in the **[VR Study Room guide](https://www.lafaektoefl.tech/docs/vr)**
 | **Vocabulary** | Words chosen from the learner's own questions, with IPA, meaning, example and pronunciation |
 | **Full mock test** | All 12 task types, timed by section, with no pause or replay. Every section gets a band and a CEFR level. |
 | **VR Study Room (Meta Quest)** | 4 zones with 9 TOEFL tasks in a seated virtual classroom inspired by Timor-Leste. Hands only: point and pinch, grab word tiles, touch nearby buttons. A cast of ten 3D speakers and a 3D crocodile interviewer that move their mouths and hands as they talk. Continues where you stopped. Same questions, scoring and progress as the website. |
+| **Try the VR demo without an account** | One tap signs a visitor in as a temporary guest with sample questions, real scoring and their own progress. Limited spoken answers and AI scores; leaving the VR area signs the guest out; guests are deleted after 48 hours. |
 | **Sign in on Quest with a code** | No password on the headset: a signed-in phone or laptop shows a code, the Quest enters it, and the phone approves. An account can be signed in on up to 3 devices, listed in Settings. |
 | **Verifiable certificates** | An overall band of 4.0 or higher (B2) earns a certificate with an ID and QR code, checked on a public page |
 | **Free to start** | Starter is free for life (1 plan, 1 mock test). A Boost Pack costs $5 (+1 plan, +2 mock tests). The project is MIT open source. |
@@ -133,6 +134,7 @@ Worker (npm run worker) ── claims jobs from the queue ──────┘
   - Every request that changes data checks `Origin`.
   - Login, email codes, generation, feedback and uploads are rate-limited in PostgreSQL.
   - Forgot-password points to the configured administrator (`ADMIN_CONTACT_EMAIL`).
+  - **Guest demo** (`lib/server/auth/guest.ts`): "Try the demo, no account" on `/vr` and in the room creates a guest user (no password, no credits) and signs it in. Guests see a read-only view of one account's questions (`DEMO_CONTENT_EMAIL`), keep their own answers and progress, and have tight per-guest and all-guest daily limits on spoken answers and AI scores. Guests stay inside the VR area: the app layout and the "Leave the demo" link send them through `GET /api/auth/guest/exit`, which signs a guest out (never a real account, and never on a link prefetch) and opens the home page. On a computer without WebXR the room makes **Preview the room** its main button. The worker deletes guests after 48 hours. Leave `DEMO_CONTENT_EMAIL` empty to turn the demo off.
   - **Sign in another device** (`lib/server/auth/device-link.ts`, `/link`).
     - A signed-in device shows an 8-character code and QR code (no look-alike characters). It is stored only as an HMAC and expires in 5 minutes.
     - The new device enters it, which only claims the code and gives that device a secret to poll with. The signed-in device then shows "Meta Quest browser wants to sign in" with Approve and Deny.
@@ -327,6 +329,7 @@ npm run upgrade:grant:prod -- learner@example.com 1 "paid by bank transfer"
 | Mock test recordings | Until the AI rating finishes (about a minute) | Deleted by the `mock_scoring` job; the result keeps bands and short comments |
 | Certificates | While the account exists | Deleted with the account; a revoked one shows "Revoked" on the check page |
 | Practice answers, plans, generated items, usage | While the account exists | `DELETE /api/account` deletes all rows and queues S3 clean-up |
+| Guest demo accounts | 48 hours | Deleted by the worker with their sessions, answers and progress; signed out as soon as they leave the VR area |
 | Rate-limit counters | 2 days | Pruned by the worker |
 
 ## Scores and costs

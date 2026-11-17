@@ -1,7 +1,8 @@
 /**
  * Question data for the study room: the signed-in learner's own study-plan questions from the
- * LafaekTOEFL API (same origin, session cookie). Visitors must sign in and have a study plan
- * before they can enter (see src/index.ts), so there is no demo data.
+ * LafaekTOEFL API (same origin, session cookie). Visitors sign in and need a study plan before
+ * they can enter (see src/index.ts), or try the demo as a guest, who gets the demo questions
+ * from the same API.
  */
 
 export interface Audio {
@@ -131,6 +132,8 @@ export interface AiScore {
 export interface User {
   id: string;
   name: string | null;
+  /** A visitor trying the demo without an account (practises with the demo questions). */
+  guest?: boolean;
 }
 
 class ApiError extends Error {
@@ -152,12 +155,22 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 const json = (data: unknown): RequestInit => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 
 export async function currentUser(): Promise<User | null> {
+  return (await sessionState()).user;
+}
+
+/** Who is signed in, and (when nobody is) whether the guest demo can be offered. */
+export async function sessionState(): Promise<{ user: User | null; guestDemo: boolean }> {
   try {
-    const r = await api<{ user: User | null }>('/api/auth/session');
-    return r.user;
+    const r = await api<{ user: User | null; guestDemo?: boolean }>('/api/auth/session');
+    return { user: r.user, guestDemo: Boolean(r.guestDemo) };
   } catch {
-    return null; // Not signed in, or not served by the LafaekTOEFL app.
+    return { user: null, guestDemo: false }; // Not signed in, or not served by the LafaekTOEFL app.
   }
+}
+
+/** "Try the demo": signs this browser in as a new guest. */
+export async function startGuestDemo(): Promise<void> {
+  await api('/api/auth/guest', json({}));
 }
 
 /** Whether the signed-in learner has an active study plan (the room uses its questions). */

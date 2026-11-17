@@ -3,6 +3,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 import { ShareDeviceButton } from "@/components/auth/DeviceSignIn";
+import { GuestDemoButton } from "@/components/vr/GuestDemoButton";
+import { guestDemoEnabled, isGuestEmail } from "@/lib/server/auth/guest";
 import { VrAccountMenu } from "@/components/vr/VrAccountMenu";
 import { VrReadiness } from "@/components/vr/VrReadiness";
 import { VR_ASSETS } from "@/lib/config/assets";
@@ -58,7 +60,10 @@ type Access = "signed-out" | "no-plan" | "ready";
 export default async function VrPage() {
   const auth = await getAuth().catch(() => null);
   const plan = auth ? await getActivePlan(auth.user.id).catch(() => null) : null;
-  const access: Access = !auth ? "signed-out" : plan ? "ready" : "no-plan";
+  // A guest (the "Try the demo" button) practises with the demo questions, so needs no plan.
+  const guest = !!auth && isGuestEmail(auth.user.emailNormalized);
+  const access: Access = !auth ? "signed-out" : plan || guest ? "ready" : "no-plan";
+  const demo = !auth && (await guestDemoEnabled().catch(() => false));
   const firstName = auth?.user.displayName?.trim().split(/\s+/)[0] ?? null;
 
   // Where the main button and the task cards lead, depending on the learner's state.
@@ -78,7 +83,7 @@ export default async function VrPage() {
 
   return (
     <div className="min-h-dvh bg-page text-body">
-      <VrHeader firstName={firstName} />
+      <VrHeader firstName={firstName} guest={guest} />
 
       <main id="main">
         {/* Hero */}
@@ -118,20 +123,31 @@ export default async function VrPage() {
               {access !== "ready" && (
                 <p className="mt-4 max-w-xl rounded-xl border border-primary/20 bg-primary-soft/80 px-4 py-3 text-sm font-medium text-ink">
                   {access === "signed-out"
-                    ? "The study room uses the questions from your own study plan. Sign in, or create a free account and a study plan first."
+                    ? demo
+                      ? "Try the demo with sample questions, no account needed. Or sign in to practise with the questions from your own study plan."
+                      : "The study room uses the questions from your own study plan. Sign in, or create a free account and a study plan first."
                     : `Hi ${firstName ?? "there"}! Create your study plan first. The study room uses the questions made for your plan.`}
                 </p>
               )}
 
+              {guest && (
+                <p className="mt-4 max-w-xl rounded-xl border border-primary/20 bg-primary-soft/80 px-4 py-3 text-sm font-medium text-ink">
+                  You are trying the demo as a guest, with sample questions. <Link href="/signup" className="font-bold text-primary hover:underline">Create a free account</Link> to get your own study plan and keep your progress.
+                </p>
+              )}
+
               <div className="mt-7 flex flex-wrap gap-3">
-                <CtaLink {...primary} variant="primary" icon={access === "ready" ? VR_ASSETS.vr : null} />
+                {/* No account needed: one tap signs a visitor in as a guest and opens the room. */}
+                {demo && <GuestDemoButton next={ROOM} icon={VR_ASSETS.vr.src} className={ctaClass("primary")} />}
+                <CtaLink {...primary} variant={demo ? "secondary" : "primary"} icon={access === "ready" ? VR_ASSETS.vr : null} />
                 <CtaLink {...secondary} variant="secondary" icon={secondaryIcon} />
                 {/* Signed in here (phone or computer): a one-time code / QR code signs the Quest in. */}
-                {access !== "signed-out" && <ShareDeviceButton returnTo={ROOM_PAGE} className={ctaClass("secondary")} />}
+                {access !== "signed-out" && !guest && <ShareDeviceButton returnTo={ROOM_PAGE} className={ctaClass("secondary")} />}
               </div>
               <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2">
-                <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm font-bold text-primary hover:underline">
-                  <Image src={VR_ASSETS.back.src} alt="" width={22} height={22} className="size-5" /> Back to LafaekTOEFL
+                {/* A guest leaves through the exit route, which signs them out on the way. */}
+                <Link href={guest ? "/api/auth/guest/exit?next=/" : "/dashboard"} prefetch={false} className="inline-flex items-center gap-2 text-sm font-bold text-primary hover:underline">
+                  <Image src={VR_ASSETS.back.src} alt="" width={22} height={22} className="size-5" /> {guest ? "Leave the demo" : "Back to LafaekTOEFL"}
                 </Link>
                 {access === "signed-out" && (
                   <Link href="/signup" className="text-sm font-bold text-primary hover:underline">
@@ -202,12 +218,12 @@ export default async function VrPage() {
 }
 
 /** Logo goes back to the main site (dashboard when signed in); the name chip opens a Log out menu. */
-function VrHeader({ firstName }: { firstName: string | null }) {
+function VrHeader({ firstName, guest }: { firstName: string | null; guest: boolean }) {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6">
         <span className="flex items-center gap-2">
-          <Logo size={34} href={firstName ? "/dashboard" : "/"} />
+          <Logo size={34} href={guest ? "/api/auth/guest/exit?next=/" : firstName ? "/dashboard" : "/"} />
           <span className="rounded-full bg-primary px-2.5 py-0.5 text-sm font-extrabold text-on-primary">VR</span>
         </span>
         <div className="ml-auto">{firstName && <VrAccountMenu firstName={firstName} />}</div>
