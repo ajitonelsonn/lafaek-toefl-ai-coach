@@ -78,7 +78,7 @@ I can take a full mock test that is timed like the real exam, with no pause, no 
 
 ### Practise in VR
 
-With a Meta Quest, I can step into a virtual study room inspired by Timor-Leste, with Dili outside the windows. It holds 9 of the TOEFL tasks in four zones (Reading, Listening, Speaking and Writing), all with my own study-plan questions. I use only my hands: I point and pinch to choose an answer, pick up word tiles to build a sentence, and speak to a crocodile interviewer across the desk. Everything I do there counts in the same progress as the website.
+With a Meta Quest, I can step into a virtual study room inspired by Timor-Leste, with Dili outside the windows. It holds 9 of the TOEFL tasks in four zones (Reading, Listening, Speaking and Writing), all with my own study-plan questions. I use only my hands: I point and pinch to choose an answer, pick up word tiles to build a sentence, and speak to Lafaek, a crocodile interviewer who sits across the desk. In Listening, people stand or sit beside me and talk, with voices that come from where they are. They look like people from home: students, a librarian, a professor, an older man wearing a *tais*. Everything I do there counts in the same progress as the website, and the room continues where I stopped.
 
 Typing a password on a headset is slow, so I sign the Quest in with a short code from my phone and approve it there.
 

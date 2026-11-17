@@ -196,7 +196,7 @@ The VR Study Room is a seated virtual classroom inspired by Timor-Leste, with vi
 1. The learner opens `lafaektoefl.tech/vr` in the Quest Browser. The page checks that the browser can start immersive VR.
 2. If they are signed out, they sign in with a code instead of typing an email and password on the headset (see [diagram 7](#7-sign-in-on-quest-with-a-code)).
 3. The room needs a study plan, because it uses the learner's own practice questions.
-4. `/vr/room` is a static build served by Vercel next to the web app. It starts a WebXR session with hand tracking. A short tutorial shows how to use your hands, and Recenter fits the desk to a seated learner.
+4. `/vr/room` is a static build served by Vercel next to the web app. A welcome card offers a short spoken introduction, then **Enter VR** starts a WebXR session with hand tracking. A short tutorial shows how to use your hands, and Recenter fits the desk to a seated learner.
 
 **Inside the room (panel 2):** 4 zones hold 9 of the 12 TOEFL tasks:
 
@@ -207,13 +207,16 @@ The VR Study Room is a seated virtual classroom inspired by Timor-Leste, with vi
 | Speaking  | Listen and Repeat, Take an Interview                                                              |
 | Writing   | Build a Sentence, with 3D word tiles                                                              |
 
-Write an Email and Write for an Academic Discussion are typing tasks, so they stay on the website. A dock just above the desk has Back, How to use and Recenter (Exit to 2D in the hub). Behind the learner, a progress wall shows their bands, accuracy, study days, mock-test band and certificate.
+Write an Email and Write for an Academic Discussion are typing tasks, so they stay on the website. A dock just above the desk has Back (Exit to 2D in the hub), How to use, Recenter and Music on / off. Behind the learner, a progress wall shows their bands, accuracy, study days, mock-test band and certificate.
+
+- **Characters.** Listening uses a cast of ten 3D people (students, a librarian, campus staff, an older man with a *tais*, professors, an announcer), picked for each question by the voice's gender, the scene and the title. The interviewer is Lafaek, a 3D crocodile. They are static glTF models: a vertex shader opens the jaw by the loudness of the voice and turns the forearms while a character speaks, so no skeleton or animation data is needed.
+- **Continue where you stopped.** Each activity opens at the first unanswered question and shows a live progress bar, from the same saved answers as the website. Start over calls the website's reset route.
 
 **Hands only, no controllers (panel 3):**
 
 - **Point and pinch:** a ray from the hand picks far cards and answers. Like Quest's own menus, it acts when the fingers part, so sliding off a button cancels it.
 - **Pinch and hold to grab:** pick up a word tile in Build a Sentence, move your hand and let go over a slot. Pinching a tile once also sends it to the next free slot.
-- **Touch:** the dock floats within arm's reach, so its buttons can be pressed with a finger.
+- **Touch:** the dock floats within arm's reach, so its buttons can be pressed with a finger. They also accept a pinch from a distance and a pinch with the hand right next to the button.
 - Buttons that play media stay off until their picture or audio has loaded. Controllers also work, but nothing needs them.
 
 **What each activity calls (bottom):** the room uses the **same API routes and session cookie as the website**, so practice in VR counts in the learner's progress.
@@ -222,8 +225,9 @@ Write an Email and Write for an Academic Discussion are typing tasks, so they st
 - Pictures and audio come from S3 through `/api/media/{id}/file`. In Listening, each voice comes from where that speaker stands in the room (spatial audio).
 - Listen and Repeat and Take an Interview record the headset microphone and turn the recording into 16 kHz WAV in the headset. `/api/practice/items/{id}/speaking` transcribes it with `muse-voice-transcribe-1.0`. For the interview, `/api/practice/items/{id}/feedback` has `muse-spark-1.3` give a band from 1 to 6 with coaching.
 - The progress wall reads `/api/progress` and `/api/mock-test/latest` each time the learner returns to the hub.
+- Start over in an activity calls `POST /api/practice/{task}/reset`, the same route as the website.
 
-The room is built from simple shapes and small textures so it stays at 72 fps or more on Quest. Adding `?fps=1` to the room's URL shows a frame-rate readout for testing.
+The room is drawn from simple shapes and small painted textures (wood, walls, soft shadows and sunlight are textures, not real-time lighting), and each character is about 15,000 to 20,000 triangles with only two on screen at once. The target is 72 fps or more on Quest; adding `?fps=1` to the room's URL shows a frame-rate readout for testing.
 
 ---
 

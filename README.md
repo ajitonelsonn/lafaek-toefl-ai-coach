@@ -24,9 +24,9 @@ Preparing for the TOEFL alone is hard to keep up. A book or a laptop looks the s
 
 - **A place to study, not another tab.** You sit at your own desk in a bright classroom inspired by Timor-Leste, with Dili outside the windows, and only the next question in front of you.
 - **Learn by doing.** In Build a Sentence you pick up word tiles and put them in order, so grammar becomes a puzzle for your hands. Answers are cards you point at and pinch.
-- **Speak to someone, not to a laptop.** The crocodile interviewer sits across the desk and asks each question out loud, which feels much closer to the real Take an Interview task.
-- **Hear who is talking.** In a conversation, each voice comes from where that speaker stands (spatial audio), so telling speakers apart works like a real room.
-- **Short, seated sessions.** Everything works from a chair, within arm's reach, with hands only. One activity takes a few minutes.
+- **Speak to someone, not to a laptop.** Lafaek, a 3D crocodile interviewer, sits across the desk and asks each question out loud with its mouth moving, which feels much closer to the real Take an Interview task.
+- **Hear who is talking.** In Listening, 3D people stand or sit to your left and right. Each voice comes from where that person is (spatial audio), their mouth and hands move while they speak, and each question brings different people from a cast of ten.
+- **Short, seated sessions.** Everything works from a chair, within arm's reach, with hands only. One activity takes a few minutes, and the room continues where you stopped.
 - **A reason to come back.** The hub counts your study days. Turn around, and a live progress wall behind you shows your questions answered, accuracy, study days, progress in each skill, mock-test band and certificate, updated every time you return to the hub.
 - **The same coach.** The room uses your own study-plan questions and the same AI scoring, and everything counts in your progress on the website.
 
@@ -43,7 +43,7 @@ Read more in the **[VR Study Room guide](https://www.lafaektoefl.tech/docs/vr)**
 | **Real accents** | American, British, Australian, Indian and African English voices, matched to each speaker's gender |
 | **Vocabulary** | Words chosen from the learner's own questions, with IPA, meaning, example and pronunciation |
 | **Full mock test** | All 12 task types, timed by section, with no pause or replay. Every section gets a band and a CEFR level. |
-| **VR Study Room (Meta Quest)** | 4 zones with 9 TOEFL tasks in a seated virtual classroom inspired by Timor-Leste. Hands only: point and pinch, grab word tiles, touch nearby buttons. Same questions, scoring and progress as the website. |
+| **VR Study Room (Meta Quest)** | 4 zones with 9 TOEFL tasks in a seated virtual classroom inspired by Timor-Leste. Hands only: point and pinch, grab word tiles, touch nearby buttons. A cast of ten 3D speakers and a 3D crocodile interviewer that move their mouths and hands as they talk. Continues where you stopped. Same questions, scoring and progress as the website. |
 | **Sign in on Quest with a code** | No password on the headset: a signed-in phone or laptop shows a code, the Quest enters it, and the phone approves. An account can be signed in on up to 3 devices, listed in Settings. |
 | **Verifiable certificates** | An overall band of 4.0 or higher (B2) earns a certificate with an ID and QR code, checked on a public page |
 | **Free to start** | Starter is free for life (1 plan, 1 mock test). A Boost Pack costs $5 (+1 plan, +2 mock tests). The project is MIT open source. |
@@ -242,7 +242,10 @@ Worker (npm run worker) ── claims jobs from the queue ──────┘
 - **VR Study Room** (source in `vr/`, built into `public/vr/room/`).
   - Built with Meta's IWSDK (`@iwsdk/core`, on Three.js) as a Vite app. The room is made from simple shapes and small canvas textures to stay at 72 fps or more on Quest.
   - `/vr` (Next.js) checks that the browser supports immersive VR and that the learner is signed in with a study plan, then links to `/vr/room`.
-  - Hands first: hand tracking is on, presses act on release, the dock above the desk can be touched, and Build a Sentence tiles can be grabbed. Controllers also work.
+  - Hands first: hand tracking is on, presses act on release, and Build a Sentence tiles can be grabbed. The dock above the desk accepts a fingertip touch, a far pinch and a pinch right next to a button. Controllers also work.
+  - Characters: ten Listening speakers and the interviewer are glTF models made with Meshy AI from our own design pictures (about 15,000 to 20,000 triangles each, see `vr/public/models/CREDITS.md`). `vr/src/speakers.ts` picks who appears by the voice's gender, the scene and the title. They have no skeleton: a vertex shader (`vr/src/talk.ts`) opens the jaw by the loudness of the voice and turns the forearms while speaking.
+  - Progress: each activity resumes at the first unanswered question, shows a live "Welcome back" bar, and has Start over (the website's reset endpoint).
+  - Sound: spatial voices, a recorded spoken introduction on the start screen, and background music that plays only on the quiet screens and can be turned off on the dock.
   - Questions, answers and scores use the same routes as the website (`/api/practice/...`). Pictures and audio load through `/api/media/[id]/file`, because WebGL and Web Audio cannot read cross-origin S3 links. Spoken answers are converted to 16 kHz WAV in the headset.
   - URL options: `?mode=preview` opens the room in a normal browser, `?open=<station>` starts at one activity, and `?fps=1` shows a frame-rate readout.
   - Vercel does not build `vr/`. After changing it, run `npm run vr:build` and commit `public/vr/room/`.
