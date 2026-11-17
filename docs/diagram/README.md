@@ -228,6 +228,12 @@ Write an Email and Write for an Academic Discussion are typing tasks, so they st
 - The progress wall reads `/api/progress` and `/api/mock-test/latest` each time the learner returns to the hub.
 - Start over in an activity calls `POST /api/practice/{task}/reset`, the same route as the website.
 
+**Proof in the logs.** Every Meta API call writes a `meta.api.call` line to the server logs: Meta's host and endpoint, the model, Meta's request or session id, the time, the tokens, a short preview of Meta's answer, and where it came from (`client: "vr-room"`, `"web"` or `"worker"`). This is a real production log from an interview answer in the room: Muse Spark returned the band and coaching.
+
+![Vercel log of a muse-spark-1.3 call from the VR room, with the band and coaching in the response](../vr/images/log-feedback.webp)
+
+More examples, including the transcription, are in the [VR Study Room guide](../vr/README.md#proof-the-headset-really-calls-metas-ai).
+
 The room is drawn from simple shapes and small painted textures (wood, walls, soft shadows and sunlight are textures, not real-time lighting), and each character is about 15,000 to 20,000 triangles with only two on screen at once. The target is 72 fps or more on Quest; adding `?fps=1` to the room's URL shows a frame-rate readout for testing.
 
 ---

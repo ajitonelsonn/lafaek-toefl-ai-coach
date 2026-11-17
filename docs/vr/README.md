@@ -182,4 +182,18 @@ The room is built with Meta's **Immersive Web SDK (IWSDK)** on Three.js and runs
 - **Sound:** the voices are spatial (Web Audio), the spoken introduction and the background music are two small recorded files, and the music fades out before any voice or recording.
 - **Frame rate:** the target is 72 frames per second or more on Quest. Add `?fps=1` to the room's address for a frame-rate readout.
 
+### Proof: the headset really calls Meta's AI
+
+Every call to Meta's API writes one line to the server logs (`meta.api.call`), tagged with where it came from. These are real production logs from Vercel, from one answer in **Take an Interview** in the room:
+
+1. **Transcription.** The spoken answer goes to Meta's `/asr/transcribe` with **`muse-voice-transcribe-1.0`**. The log shows Meta's host (`api.meta.ai`), Meta's own session id, the 38-second recording, and in `response` the words Meta heard. It is tagged `client: "vr-room"`, `feature: "speaking"`.
+
+   ![Vercel log: meta.api.call to api.meta.ai /asr/transcribe, model muse-voice-transcribe-1.0, status 200, with the transcript Meta returned, client vr-room](images/log-transcribe.webp)
+
+2. **Scoring.** The transcript goes to Meta's `/chat/completions` with **`muse-spark-1.3`**. The log shows Meta's request id, the tokens used, and in `response` the band (2.5) and the coaching Meta wrote, tagged `client: "vr-room"`, `feature: "feedback"`.
+
+   ![Vercel log: meta.api.call to api.meta.ai /chat/completions, model muse-spark-1.3, status 200, with the band and coaching Meta returned, client vr-room](images/log-feedback.webp)
+
+The same lines appear on Render for the background worker (`client: "worker"`), for example when Muse Image draws a picture or Muse Spark writes questions. Prompts, audio and keys are never logged, and the response preview is cut to 400 characters (`LOG_AI_RESPONSES=off` removes it).
+
 For the full picture, see [How it works](../diagram/README.md): diagram 6 shows the room and what each activity calls, and diagram 7 shows signing in on Quest with a code.
