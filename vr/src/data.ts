@@ -145,8 +145,14 @@ class ApiError extends Error {
   }
 }
 
+/**
+ * Every request says it comes from the VR room, so the server logs can show which Meta AI calls
+ * (speech transcription, interview scoring) were made from the headset.
+ */
+const CLIENT_HEADER = { 'X-Lafaek-Client': 'vr-room' };
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { credentials: 'same-origin', ...init });
+  const res = await fetch(path, { credentials: 'same-origin', ...init, headers: { ...CLIENT_HEADER, ...(init?.headers as Record<string, string> | undefined) } });
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, body?.error?.message ?? 'Something went wrong. Please try again.');
   return body as T;

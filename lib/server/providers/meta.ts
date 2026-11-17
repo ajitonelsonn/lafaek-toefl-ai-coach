@@ -2,6 +2,31 @@ import "server-only";
 import { z, type ZodType } from "zod";
 import { env, requireEnv } from "../env";
 import { ProviderError, providerFetch } from "./http";
+import { log } from "../log";
+import { callContext } from "../call-context";
+
+/**
+ * One log line per Meta API call, so the server logs (Vercel for the website and the VR room,
+ * Render for the worker) show every real call: which Meta endpoint and model, Meta's own request
+ * id, how long it took and the tokens used, and whether it came from the VR room, the website or
+ * a worker job. Prompts, transcripts, audio and keys are never logged.
+ */
+function logMetaCall(fields: { api: string; model: string; ms: number; status: number; requestId?: string | null; usage?: { input: number | null; output: number | null }; audioMs?: number | null; task?: string }) {
+  const ctx = callContext();
+  let host = "api.meta.ai";
+  try {
+    host = new URL(env().META_API_BASE_URL).host;
+  } catch {
+    /* keep the default */
+  }
+  log.info("meta.api.call", { provider: "meta", host, ...fields, client: ctx?.client ?? "web", feature: ctx?.feature, jobId: ctx?.jobId });
+}
+
+function logMetaFailure(api: string, model: string, started: number, e: unknown) {
+  const ctx = callContext();
+  const pe = e instanceof ProviderError ? e : null;
+  log.warn("meta.api.error", { provider: "meta", api, model, ms: Date.now() - started, status: pe?.status, kind: pe?.kind, errorCode: pe?.code, requestId: pe?.requestId, client: ctx?.client ?? "web", feature: ctx?.feature, jobId: ctx?.jobId });
+}
 
 // Server-only adapter for the Meta Model API (https://dev.meta.ai/docs).
 // Verified 2026-10-27: chat completions with json_schema structured output,
@@ -91,6 +116,7 @@ async function generateTextWith<T>(
   model: string,
   args: { task: TextTask; schema: ZodType<T>; system: string; user: string; temperature?: number; timeoutSeconds?: number; reasoningEffort?: "low" | "medium" | "high" },
 ): Promise<TextResult<T>> {
+  const started = Date.now();
   const res = await providerFetch(
     `${base()}/chat/completions`,
     {
@@ -111,9 +137,15 @@ async function generateTextWith<T>(
       }),
     },
     { provider: PROVIDER, timeoutMs: args.timeoutSeconds ? args.timeoutSeconds * 1000 : timeoutMs(), retries: 2 },
-  );
+  ).catch((e) => {
+    logMetaFailure("/chat/completions", model, started, e);
+    throw e;
+  });
   const requestId = res.headers.get("x-request-id");
   const body = chatResponse.safeParse(await res.json());
+  if (body.success) {
+    logMetaCall({ api: "/chat/completions", model: body.data.model ?? model, task: args.task, ms: Date.now() - started, status: res.status, requestId: requestId ?? body.data.id ?? null, usage: { input: body.data.usage?.prompt_tokens ?? null, output: body.data.usage?.completion_tokens ?? null } });
+  }
   if (!body.success) throw new ProviderError(PROVIDER, "invalid_output", "Unexpected response shape from Meta.", res.status, requestId ?? undefined);
   const content = body.data.choices[0].message.content ?? "";
   let parsed: unknown;
@@ -144,6 +176,7 @@ const imageResponse = z.object({
 /** Generates one image and returns its bytes (b64_json response format). */
 export async function generateImage(prompt: string, opts: { size?: string } = {}): Promise<{ bytes: Buffer; mimeType: string; model: string; requestId: string | null }> {
   const model = env().META_IMAGE_MODEL;
+  const started = Date.now();
   const res = await withModel(model, undefined, (m) =>
     providerFetch(
       `${base()}/images/generations`,
@@ -154,7 +187,11 @@ export async function generateImage(prompt: string, opts: { size?: string } = {}
       },
       { provider: PROVIDER, timeoutMs: Math.max(timeoutMs(), 120_000), retries: 2 },
     ),
-  );
+  ).catch((e) => {
+    logMetaFailure("/images/generations", model, started, e);
+    throw e;
+  });
+  logMetaCall({ api: "/images/generations", model, ms: Date.now() - started, status: res.status, requestId: res.headers.get("x-request-id") });
   const body = imageResponse.safeParse(await res.json());
   const b64 = body.success ? body.data.data[0].b64_json : undefined;
   if (!b64) throw new ProviderError(PROVIDER, "invalid_output", "Image response had no image data.", res.status);
@@ -162,19 +199,25 @@ export async function generateImage(prompt: string, opts: { size?: string } = {}
   return { bytes: Buffer.from(b64, "base64"), mimeType: `image/${fmt === "jpg" ? "jpeg" : fmt}`, model, requestId: res.headers.get("x-request-id") };
 }
 
-const asrResponse = z.object({ transcript: z.string(), audioDurationMs: z.number().optional() });
+const asrResponse = z.object({ transcript: z.string(), audioDurationMs: z.number().optional(), sessionId: z.string().optional() });
 
 /** Speech-to-text. Input must be WAV, mono, 16-bit PCM at 16 or 24 kHz (≤ 32 MB, ≤ 10 min). */
 export async function transcribeAudio(wav: Buffer): Promise<{ transcript: string; audioDurationMs: number | null; model: string }> {
   const model = env().META_TRANSCRIPTION_MODEL;
+  const started = Date.now();
   const res = await withModel(model, undefined, (m) => {
     const form = new FormData();
     form.append("request", new Blob([JSON.stringify({ model: m, mode: "PUSH_TO_TALK", audioEncoding: "WAV", languageBias: ["English"] })], { type: "application/json" }));
     form.append("audio", new Blob([new Uint8Array(wav)], { type: "audio/wav" }), "response.wav");
     return providerFetch(`${base()}/asr/transcribe`, { method: "POST", headers: headers({ Accept: "application/json" }), body: form }, { provider: PROVIDER, timeoutMs: 60_000, retries: 1 });
+  }).catch((e) => {
+    logMetaFailure("/asr/transcribe", model, started, e);
+    throw e;
   });
   const body = asrResponse.safeParse(await res.json());
   if (!body.success) throw new ProviderError(PROVIDER, "invalid_output", "Unexpected transcription response.", res.status);
+  logMetaCall({ api: "/asr/transcribe", model, ms: Date.now() - started, status: res.status, // Meta returns no request-id header here; its own session id identifies the call instead.
+    requestId: res.headers.get("x-request-id") ?? body.data.sessionId ?? null, audioMs: body.data.audioDurationMs ?? null });
   return { transcript: body.data.transcript, audioDurationMs: body.data.audioDurationMs ?? null, model };
 }
 

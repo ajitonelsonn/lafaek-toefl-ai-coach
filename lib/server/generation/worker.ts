@@ -7,6 +7,7 @@ import { log } from "../log";
 import { pruneRateLimits } from "../rate-limit";
 import { pruneDeviceLinks } from "../auth/device-link";
 import { pruneGuests } from "../auth/guest";
+import { withCallContext } from "../call-context";
 import { claimJobs, completeJob, failJob, heartbeat, recoverExpiredLeases, unblockJobs } from "./queue";
 import { JobFailure, reconcileMedia, runAudioAsset, runDeleteUserAssets, runImageAsset, runTaskPack, toJobFailure } from "./handlers";
 import { backfillVocabularyJobs, queueVocabularyFor, runVocabularyPack } from "./vocabulary";
@@ -16,6 +17,11 @@ import { runMockScoring } from "../mock-scoring";
 export const workerId = () => `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
 
 export async function processJob(job: GenerationJob, owner: string): Promise<void> {
+  // Meta calls made by this job are logged with client "worker", the job type and id.
+  return withCallContext({ client: "worker", feature: job.jobType, jobId: job.id }, () => runJob(job, owner));
+}
+
+async function runJob(job: GenerationJob, owner: string): Promise<void> {
   const started = Date.now();
   // Keep the lease alive while a long provider call is running.
   const beat = setInterval(() => void heartbeat(job.id, owner).catch(() => undefined), 20_000);
