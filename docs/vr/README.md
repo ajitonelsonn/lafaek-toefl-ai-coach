@@ -39,7 +39,18 @@ The room was designed around four simple tests:
 - Or no account at all: see [Try it without an account](#try-it-without-an-account).
 - A chair. Everything works seated, within arm's reach, and **no controllers are needed**.
 
-No headset? On a computer, the welcome card shows **Preview the room** as its main button: the room opens in the browser, and you look around and press with the mouse. **Enter VR** stays greyed out there, because a computer's browser cannot start VR.
+### No headset? Two ways to see the room on a computer
+
+**1. Preview the room (nothing to install).** On a computer, the welcome card shows **Preview the room** as its main button: the room opens in the browser, and you look around and press with the mouse. **Enter VR** stays greyed out, because a computer's browser cannot start VR by itself.
+
+**2. Enter VR with the Immersive Web Emulator (free).** Meta's [Immersive Web Emulator](https://chromewebstore.google.com/detail/immersive-web-emulator/cgffilbpcibhmcfbgggfhfolhkfbhmik) is a browser extension that gives Chrome or Edge a virtual Quest headset, so **Enter VR** works on a laptop.
+
+1. Open the [Immersive Web Emulator page](https://chromewebstore.google.com/detail/immersive-web-emulator/cgffilbpcibhmcfbgggfhfolhkfbhmik) in the Chrome Web Store and choose **Add to Chrome**.
+2. Open [www.lafaektoefl.tech/vr](https://www.lafaektoefl.tech/vr) and go into the room. If the page was already open, reload it.
+3. Choose **Enter VR**. It is now active, because the browser reports a headset.
+4. Open the browser's developer tools (F12, or Option + Command + I on a Mac) and pick the **WebXR** tab. There you move the virtual headset and its controllers, and press their trigger to select things in the room.
+
+The emulator is a developer tool, so it is less comfortable than a real headset, but it shows the room exactly as a Quest would draw it. We built and tested the whole room this way.
 
 ## Try it without an account
 
